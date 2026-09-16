@@ -579,8 +579,11 @@ export class DatabaseService {
         }
       }
 
-      const newLastModified =
-        lastModified || Math.max(...bookmarks.map((b) => b.lastModified || 0), Date.now());
+      // Down-sync carries its own timestamps; only fall back to now when the
+      // payload has none, so a download doesn't dirty the marker and trigger
+      // an immediate up-sync loop.
+      const fromBookmarks = Math.max(0, ...bookmarks.map((b) => b.lastModified || 0));
+      const newLastModified = lastModified || fromBookmarks || Date.now();
 
       await lmStore.put({
         title,

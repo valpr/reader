@@ -206,7 +206,9 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
     let isPresentAndUpToDate = false;
 
-    if (book) {
+    // Placeholders (no elementHtml) are metadata only and must never count
+    // as up-to-date, otherwise replication skips the real DATA copy.
+    if (book && book.elementHtml) {
       const { lastBookModified, lastBookOpen } =
         BaseStorageHandler.getBookMetadata(referenceFilename);
       const { lastBookModified: existingBookModified, lastBookOpen: existingBookOpen } = book;

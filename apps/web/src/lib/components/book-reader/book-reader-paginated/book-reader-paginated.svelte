@@ -232,10 +232,26 @@
   $: {
     if (calculator && width && height && !loadingState) {
       const c = calculator;
-      requestAnimationFrame(() => {
-        onContentDisplayChange(c);
-      });
+      queueContentDisplay(() => onContentDisplayChange(c));
     }
+  }
+
+  // requestAnimationFrame pauses in hidden tabs, which deadlocks allowDisplay.
+  // Queue via rAF when visible, with a setTimeout fallback so a tab-out
+  // during load still completes after refocus.
+  function queueContentDisplay(fn: () => void) {
+    let done = false;
+    const run = () => {
+      if (done) return;
+      done = true;
+      fn();
+    };
+    if (typeof document !== 'undefined' && document.hidden) {
+      setTimeout(run, 100);
+      return;
+    }
+    requestAnimationFrame(run);
+    setTimeout(run, 500);
   }
 
   $: {
@@ -270,7 +286,15 @@
   $: updateAfterCustomReadingPointUpdate(customReadingPointRange);
 
   /** Experimental Code - May be removed any time without warning */
-  onMount(() => document.addEventListener('ttu-action', handleAction, false));
+  onMount(() => {
+    document.addEventListener('ttu-action', handleAction, false);
+    document.addEventListener('visibilitychange', retryDisplayIfStalled, false);
+    window.addEventListener('focus', retryDisplayIfStalled, false);
+    return () => {
+      document.removeEventListener('visibilitychange', retryDisplayIfStalled, false);
+      window.removeEventListener('focus', retryDisplayIfStalled, false);
+    };
+  });
 
   async function handleAction({ detail }: any) {
     if (!detail.type || !calculator || !concretePageManager) {
@@ -441,11 +465,25 @@
       requestAnimationFrame(() => nestAnimationFrame(fn, count - 1));
     };
 
-    // 2x for loading screen to render
-    nestAnimationFrame(() => {
+    // 2x for loading screen to render; setTimeout fallback covers hidden tabs
+    // where rAF never fires, otherwise displayedHtml/onHtmlLoad stall forever.
+    let settled = false;
+    const setHtml = () => {
+      if (settled) return;
+      settled = true;
       displayedHtml = html;
-    }, 2);
+    };
+    nestAnimationFrame(setHtml, 2);
+    setTimeout(setHtml, 500);
   });
+
+  // Refocus retry: if loading stalled while hidden, re-run display once visible.
+  function retryDisplayIfStalled() {
+    if (calculator && width && height && !loadingState && !allowDisplay) {
+      const c = calculator;
+      queueContentDisplay(() => onContentDisplayChange(c));
+    }
+  }
 
   iffBrowser(() => fromEvent<WheelEvent>(document.body, 'wheel', { passive: true }))
     .pipe(

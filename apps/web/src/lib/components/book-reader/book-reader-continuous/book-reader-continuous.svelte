@@ -214,9 +214,30 @@
   $: {
     if (calculator && width && height && !loadingState) {
       const c = calculator;
-      requestAnimationFrame(() => {
-        onContentDisplayChange(c);
-      });
+      queueContentDisplay(() => onContentDisplayChange(c));
+    }
+  }
+
+  // requestAnimationFrame pauses in hidden tabs, which deadlocks allowDisplay.
+  function queueContentDisplay(fn: () => void) {
+    let done = false;
+    const run = () => {
+      if (done) return;
+      done = true;
+      fn();
+    };
+    if (typeof document !== 'undefined' && document.hidden) {
+      setTimeout(run, 100);
+      return;
+    }
+    requestAnimationFrame(run);
+    setTimeout(run, 500);
+  }
+
+  function retryDisplayIfStalled() {
+    if (calculator && width && height && !loadingState && !allowDisplay) {
+      const c = calculator;
+      queueContentDisplay(() => onContentDisplayChange(c));
     }
   }
 
@@ -273,7 +294,15 @@
   }
 
   /** Experimental Code - May be removed any time without warning */
-  onMount(() => document.addEventListener('ttu-action', handleAction, false));
+  onMount(() => {
+    document.addEventListener('ttu-action', handleAction, false);
+    document.addEventListener('visibilitychange', retryDisplayIfStalled, false);
+    window.addEventListener('focus', retryDisplayIfStalled, false);
+    return () => {
+      document.removeEventListener('visibilitychange', retryDisplayIfStalled, false);
+      window.removeEventListener('focus', retryDisplayIfStalled, false);
+    };
+  });
 
   function handleAction({ detail }: any) {
     if (!detail.type) {
