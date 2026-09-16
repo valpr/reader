@@ -1,8 +1,8 @@
 /* Write your global styles here, in SCSS syntax. Variables and mixins from the src/variables.scss file are available here without importing */
 /* Write your global styles here, in PostCSS syntax */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config '../tailwind.config.cjs';
+@custom-variant dark (&:where(.dark, .dark *));
 
 @import '@custom-ereader/ui/styles';
 
