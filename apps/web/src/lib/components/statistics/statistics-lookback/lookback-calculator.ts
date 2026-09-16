@@ -86,7 +86,7 @@ export const ARCHETYPES: Record<string, ReadingArchetype> = {
     badge: '🌱',
     tagline: 'Every journey begins with a single page',
     description:
-      'You are just beginning your reading journey for this period. Read across at least 3 books and 3+ days to unlock your reading persona!'
+      'You are just beginning your reading journey for this period. Complete at least 3 books and read on 3+ days to unlock your reading persona!'
   },
   STEADY: {
     id: 'steady-reader',
@@ -349,7 +349,7 @@ export function calculateLookbackMetrics(
   const completionRate = booksStarted > 0 ? Math.round((booksCompleted / booksStarted) * 100) : 0;
   const numberOneBook = topBooks.length > 0 ? topBooks[0] : undefined;
 
-  const hasSufficientData = booksStarted >= 3 && activeReadingDays > 2;
+  const hasSufficientData = booksCompleted >= 3 && activeReadingDays > 2;
 
   // Drop-off cliff analysis
   const dropOffAnalysis = calculateDropOffAnalysis(topBooks);

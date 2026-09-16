@@ -36,14 +36,15 @@ for (const width of [412, 360]) {
         maxReadingSpeed: 22000,
         lastStatisticModified: Date.now(),
         lookupCount: 300,
-        maxProgress: 0.85,
+        completedBook: 1,
+        maxProgress: 1.0,
         readingTimeByHour: [
           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3600, 3600
         ],
         readingTimeByProfile: { 'default-mobile': 7200 }
       },
       {
-        title: 'Second Book with Medium Length Title',
+        title: 'Finished Mobile Book Two',
         dateKey: `${currentYear}-02-11`,
         charactersRead: 15000,
         readingTime: 3600,
@@ -53,15 +54,48 @@ for (const width of [412, 360]) {
         maxReadingSpeed: 15000,
         lastStatisticModified: Date.now(),
         lookupCount: 50,
-        maxProgress: 0.3,
+        completedBook: 1,
+        maxProgress: 1.0,
         readingTimeByHour: [
           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1800, 1800
         ],
         readingTimeByProfile: { 'default-mobile': 3600 }
       },
       {
-        title: 'Third Book Abandoned Early',
+        title: 'Finished Mobile Book Three',
         dateKey: `${currentYear}-02-12`,
+        charactersRead: 18000,
+        readingTime: 3600,
+        minReadingSpeed: 18000,
+        altMinReadingSpeed: 18000,
+        lastReadingSpeed: 18000,
+        maxReadingSpeed: 18000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 60,
+        completedBook: 1,
+        maxProgress: 1.0,
+        readingTimeByHour: [
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1800, 1800
+        ],
+        readingTimeByProfile: { 'default-mobile': 3600 }
+      },
+      {
+        title: 'Second Book with Medium Length Title',
+        dateKey: `${currentYear}-02-13`,
+        charactersRead: 12000,
+        readingTime: 2400,
+        minReadingSpeed: 15000,
+        altMinReadingSpeed: 15000,
+        lastReadingSpeed: 15000,
+        maxReadingSpeed: 15000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 40,
+        maxProgress: 0.3,
+        readingTimeByProfile: { 'default-mobile': 2400 }
+      },
+      {
+        title: 'Third Book Abandoned Early',
+        dateKey: `${currentYear}-02-14`,
         charactersRead: 8000,
         readingTime: 1800,
         minReadingSpeed: 16000,
@@ -71,9 +105,20 @@ for (const width of [412, 360]) {
         lastStatisticModified: Date.now(),
         lookupCount: 20,
         maxProgress: 0.15,
-        readingTimeByHour: [
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 900, 900
-        ],
+        readingTimeByProfile: { 'default-mobile': 1800 }
+      },
+      {
+        title: 'Fourth Unfinished Book',
+        dateKey: `${currentYear}-02-15`,
+        charactersRead: 9000,
+        readingTime: 1800,
+        minReadingSpeed: 18000,
+        altMinReadingSpeed: 18000,
+        lastReadingSpeed: 18000,
+        maxReadingSpeed: 18000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 30,
+        maxProgress: 0.4,
         readingTimeByProfile: { 'default-mobile': 1800 }
       }
     ]);

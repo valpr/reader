@@ -237,7 +237,7 @@ test.describe('Reading Lookback Calculator', () => {
     expect(breakdown[2].percentage).toBe(20);
   });
 
-  test('assigns Emerging Reader when under sample gate (<3 books or <=2 days)', () => {
+  test('assigns Emerging Reader when under sample gate (<3 completed books or <=2 days)', () => {
     // Only 1 book and 1 day
     const statsFew: Partial<BooksDbStatistic>[] = [
       {
@@ -246,16 +246,51 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 180,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       }
     ];
     const metrics = calculateLookbackMetrics(statsFew as BooksDbStatistic[], 2026);
     expect(metrics.hasSufficientData).toBe(false);
     expect(metrics.primaryArchetype.id).toBe('emerging-reader');
+
+    // 3 books started across 3 days, but only 2 completed
+    const statsThreeStartedTwoCompleted: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Book A',
+        dateKey: '2026-04-10',
+        readingTime: 3600,
+        charactersRead: 10000,
+        completedBook: 1,
+        maxProgress: 1.0
+      },
+      {
+        title: 'Book B',
+        dateKey: '2026-04-11',
+        readingTime: 3600,
+        charactersRead: 10000,
+        completedBook: 1,
+        maxProgress: 1.0
+      },
+      {
+        title: 'Book C',
+        dateKey: '2026-04-12',
+        readingTime: 3600,
+        charactersRead: 10000,
+        maxProgress: 0.5 // unfinished
+      }
+    ];
+    const metricsTwoCompleted = calculateLookbackMetrics(
+      statsThreeStartedTwoCompleted as BooksDbStatistic[],
+      2026
+    );
+    expect(metricsTwoCompleted.hasSufficientData).toBe(false);
+    expect(metricsTwoCompleted.booksCompleted).toBe(2);
+    expect(metricsTwoCompleted.primaryArchetype.id).toBe('emerging-reader');
   });
 
   test('evaluates Reading Archetypes based on objective metrics when requirements met', () => {
-    // 3 books across 3 days with high lookups -> Vocab Hunter (Yomitan Addict)
+    // 3 completed books across 3 days with high lookups -> Vocab Hunter (Yomitan Addict)
     const statsVocab: Partial<BooksDbStatistic>[] = [
       {
         title: 'Dense Classic',
@@ -263,7 +298,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 180,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Essay Collection',
@@ -271,7 +307,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 150,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Poetry Anthology',
@@ -279,7 +316,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 120,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       }
     ];
 
@@ -320,7 +358,7 @@ test.describe('Reading Lookback Calculator', () => {
     expect(metricsSpeed.hasSufficientData).toBe(true);
     expect(metricsSpeed.primaryArchetype.id).toBe('ln-binger');
 
-    // Late night reading (23:00 to 03:00) across 3 books / 3 days -> Night Owl
+    // Late night reading (23:00 to 03:00) across 3 completed books / 3 days -> Night Owl
     const nightOwlReading = new Array(24).fill(0);
     nightOwlReading[23] = 1800; // 30 min at 11 PM
     nightOwlReading[1] = 1800; // 30 min at 1 AM
@@ -332,7 +370,8 @@ test.describe('Reading Lookback Calculator', () => {
         charactersRead: 12000,
         lookupCount: 5,
         readingTimeByHour: nightOwlReading,
-        maxProgress: 0.4
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Night Story 2',
@@ -341,7 +380,8 @@ test.describe('Reading Lookback Calculator', () => {
         charactersRead: 12000,
         lookupCount: 5,
         readingTimeByHour: nightOwlReading,
-        maxProgress: 0.4
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Night Story 3',
@@ -350,7 +390,8 @@ test.describe('Reading Lookback Calculator', () => {
         charactersRead: 12000,
         lookupCount: 5,
         readingTimeByHour: nightOwlReading,
-        maxProgress: 0.4
+        completedBook: 1,
+        maxProgress: 1.0
       }
     ];
 

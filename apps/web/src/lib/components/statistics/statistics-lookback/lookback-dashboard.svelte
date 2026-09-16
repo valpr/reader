@@ -75,7 +75,7 @@
     </div>
   </div>
 
-  <!-- Gating Banner: Unlocks with 3 Books & 3+ Days -->
+  <!-- Gating Banner: Unlocks with 3 Finished Books & 3+ Days -->
   {#if !metrics.hasSufficientData}
     <Card
       variant="surface"
@@ -85,21 +85,21 @@
     >
       <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-semibold text-sm">
         <span>🌱</span>
-        <span>Recap Unlocks with 3 Books &amp; 3+ Days</span>
+        <span>Recap Unlocks with 3 Finished Books &amp; 3+ Days</span>
       </div>
       <p
         class="text-xs text-[var(--astryx-color-fg-secondary,#52525b)] break-words [overflow-wrap:anywhere]"
       >
-        To generate personalized reading archetypes and your recap story, read across at least 3
-        books and on more than 2 distinct days.
+        To generate personalized reading archetypes and your recap story, complete at least 3 books
+        and read on more than 2 distinct days.
       </p>
       <div class="flex flex-wrap gap-4 pt-1 text-xs">
         <div class="flex items-center gap-1.5">
           <span class="font-bold text-[var(--astryx-color-fg-primary,#18181b)]"
-            >{metrics.booksStarted} / 3</span
+            >{metrics.booksCompleted} / 3</span
           >
           <span class="text-[var(--astryx-color-fg-muted,#71717a)]"
-            >Books Started {metrics.booksStarted >= 3 ? '✓' : ''}</span
+            >Books Finished {metrics.booksCompleted >= 3 ? '✓' : ''}</span
           >
         </div>
         <div class="flex items-center gap-1.5">
