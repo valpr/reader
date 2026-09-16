@@ -254,13 +254,24 @@
     .join(', ');
   const verticalTextOrientation = $verticalMode$ ? $verticalTextOrientation$ : '';
 
-  const bookId$ = iffBrowser(() => readableToObservable(page)).pipe(
-    map((pageObj) => Number(pageObj.url.searchParams.get('id'))),
+  const bookPageParams$ = iffBrowser(() => readableToObservable(page)).pipe(
+    map((pageObj) => ({
+      id: Number(pageObj.url.searchParams.get('id')),
+      // Set by manage/+page openBook after a cloud download: the local copy
+      // is already fresh, so the reader must not do any network sync on open
+      // (option B: zero extra calls; lastBookOpen uploads on exit sync).
+      justDownloaded: pageObj.url.searchParams.get('justDownloaded') === '1'
+    })),
     shareReplay({ refCount: true, bufferSize: 1 })
   );
 
-  const rawBookData$ = bookId$.pipe(
-    switchMap(async (id) => {
+  const bookId$ = bookPageParams$.pipe(
+    map((params) => params.id),
+    shareReplay({ refCount: true, bufferSize: 1 })
+  );
+
+  const rawBookData$ = bookPageParams$.pipe(
+    switchMap(async ({ id, justDownloaded }) => {
       let bookData: BooksDbBookData | undefined;
 
       try {
@@ -299,19 +310,34 @@
         bookData.lastBookOpen = new Date().getTime();
 
         await localStorageHandler.updateLastRead(bookData);
-        await syncDownData(externalStorageHandler, currentContext);
+        if (justDownloaded) {
+          // Option B: download already synced DATA/PROGRESS/BOOKMARKS. Skip
+          // all network on open; strip the flag so a refresh syncs normally.
+          // lastBookOpen stays local-only until the next/exit sync.
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('justDownloaded');
+            window.history.replaceState({}, '', url.toString());
+          } catch {
+            // no-op
+          }
+        } else {
+          await syncDownData(externalStorageHandler, currentContext);
+        }
 
         if (!$statisticsEnabled$) {
           const wasNew = (
             await database.setFirstBookRead(currentContext.title, $startDayHoursForTracker$)
           )[1];
 
-          if (wasNew) {
+          if (wasNew && !justDownloaded) {
             scheduleReplication(StorageDataType.STATISTICS);
           }
         }
 
-        bookData = await saveExternalLastRead(externalStorageHandler, bookData);
+        if (!justDownloaded) {
+          bookData = await saveExternalLastRead(externalStorageHandler, bookData);
+        }
 
         if (bookData.language) {
           document.documentElement.lang = bookData.language;

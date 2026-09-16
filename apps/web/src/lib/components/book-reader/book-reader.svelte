@@ -201,7 +201,7 @@
 
   const imageLoadingState$ = contentEl$.pipe(
     mergeMap((contentEl) => imageLoadingState(contentEl)),
-    share()
+    shareReplay({ refCount: true, bufferSize: 1 })
   );
 
   const blurListener$ = contentEl$.pipe(
@@ -215,6 +215,14 @@
   $: width$.next(width);
 
   $: height$.next(height);
+
+  // rAF-gated computedStyle$ stalls while the tab is hidden, leaving child
+  // width/height at 0 and the loading overlay stuck. Re-emit on visible so
+  // layout recomputes after a tab-out during load.
+  $: if (visibilityState === 'visible') {
+    width$.next(width);
+    height$.next(height);
+  }
 
   function getAdjustedWidth(widthValue: number) {
     if (ViewMode.Paginated === viewMode && !verticalMode && secondDimensionMaxValue) {
