@@ -19,6 +19,7 @@
   let timerInterval: ReturnType<typeof setInterval> | null = null;
   let startTime = Date.now();
   let elapsedBeforePause = 0;
+  let pointerDownTimestamp = 0;
 
   $: currentYearLabel = metrics.targetYear === 'all' ? 'All-Time' : String(metrics.targetYear);
 
@@ -65,6 +66,15 @@
     startTime = Date.now();
   }
 
+  function handlePointerDown() {
+    pointerDownTimestamp = Date.now();
+    pauseTimer();
+  }
+
+  function handlePointerUp() {
+    resumeTimer();
+  }
+
   function nextSlide() {
     if (currentSlide < TOTAL_SLIDES - 1) {
       currentSlide += 1;
@@ -101,6 +111,9 @@
   }
 
   function handleZoneClick(e: MouseEvent) {
+    if (Date.now() - pointerDownTimestamp > 250) {
+      return;
+    }
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -160,8 +173,8 @@
     class="relative w-full h-full sm:max-w-md sm:max-h-[860px] sm:rounded-3xl shadow-2xl flex flex-col justify-between overflow-hidden text-white"
     role="region"
     aria-label="Story Card"
-    on:pointerdown={pauseTimer}
-    on:pointerup={resumeTimer}
+    on:pointerdown={handlePointerDown}
+    on:pointerup={handlePointerUp}
   >
     <!-- Dynamic Gradient Background Based on Slide -->
     <div
@@ -213,7 +226,7 @@
         </div>
         <button
           type="button"
-          class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors cursor-pointer text-sm"
+          class="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors cursor-pointer text-sm"
           on:click|stopPropagation={() => dispatch('close')}
           aria-label="Close Story"
         >
@@ -231,7 +244,7 @@
 
     <!-- Slide Content Area -->
     <div
-      class="relative z-15 flex-1 flex flex-col justify-center px-6 sm:px-8 py-8 pointer-events-none"
+      class="relative z-[15] flex-1 flex flex-col justify-center px-6 sm:px-8 py-8 pointer-events-none"
     >
       {#if currentSlide === 0}
         <!-- Slide 0: Intro -->
@@ -580,7 +593,7 @@
     >
       <button
         type="button"
-        class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer {currentSlide ===
+        class="min-h-[44px] px-4 py-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer flex items-center {currentSlide ===
         0
           ? 'invisible'
           : ''}"
@@ -593,7 +606,7 @@
 
       <button
         type="button"
-        class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer {currentSlide ===
+        class="min-h-[44px] px-4 py-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer flex items-center {currentSlide ===
         TOTAL_SLIDES - 1
           ? 'invisible'
           : ''}"

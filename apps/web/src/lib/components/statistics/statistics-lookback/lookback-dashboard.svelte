@@ -493,7 +493,7 @@
     <!-- 24 Hourly Bars -->
     <div class="space-y-1">
       <div
-        class="grid grid-cols-24 gap-0.5 sm:gap-1 items-end h-28 pt-4 px-1 bg-[var(--astryx-color-surface-sunken,#f4f4f5)] dark:bg-zinc-800/50 rounded-lg"
+        class="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-0.5 sm:gap-1 items-end h-28 pt-4 px-1 bg-[var(--astryx-color-surface-sunken,#f4f4f5)] dark:bg-zinc-800/50 rounded-lg"
       >
         {#each metrics.hourlyDistribution as hourData}
           {@const maxHourSec = Math.max(

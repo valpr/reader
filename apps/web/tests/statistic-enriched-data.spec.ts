@@ -170,4 +170,63 @@ test.describe('Enriched statistics data and merging (v9)', () => {
     expect(result.readingTimeByProfile?.['default-mobile']).toBe(600);
     expect(result.readingTimeByProfile?.['default-desktop']).toBe(1200);
   });
+
+  test('merges telemetry bidirectionally even when incoming record has an older lastStatisticModified timestamp', () => {
+    // Phone read offline in morning with mobile profile (older lastStatisticModified)
+    const phoneRecord: BooksDbStatistic = {
+      title: 'Book C',
+      dateKey: '2026-09-16',
+      charactersRead: 2000,
+      readingTime: 600,
+      minReadingSpeed: 12000,
+      altMinReadingSpeed: 12000,
+      lastReadingSpeed: 12000,
+      maxReadingSpeed: 12000,
+      lastStatisticModified: 1000,
+      charactersByHour: [0, 0, 0, 0, 0, 0, 0, 0, 2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      readingTimeByHour: [0, 0, 0, 0, 0, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      lookupsByHour: [0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      readingTimeByProfile: { 'default-mobile': 600 }
+    };
+
+    // Laptop has newer reading session from evening (newer lastStatisticModified)
+    const laptopRecord: BooksDbStatistic = {
+      title: 'Book C',
+      dateKey: '2026-09-16',
+      charactersRead: 3500,
+      readingTime: 1200,
+      minReadingSpeed: 10500,
+      altMinReadingSpeed: 10500,
+      lastReadingSpeed: 10500,
+      maxReadingSpeed: 10500,
+      lastStatisticModified: 2000,
+      charactersByHour: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3500, 0, 0, 0],
+      readingTimeByHour: [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1200, 0, 0, 0
+      ],
+      lookupsByHour: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0],
+      readingTimeByProfile: { 'default-desktop': 1200 }
+    };
+
+    // Incoming is phone (older modified timestamp), existing on device is laptop (newer)
+    const merged = mergeStatistics([phoneRecord], [laptopRecord], true);
+    expect(merged).toHaveLength(1);
+    const result = merged[0];
+
+    // Newer scalar metrics preserved from existing laptop record
+    expect(result.charactersRead).toBe(3500);
+    expect(result.readingTime).toBe(1200);
+
+    // Telemetry from older incoming record must NOT be dropped
+    expect(result.charactersByHour?.[8]).toBe(2000);
+    expect(result.charactersByHour?.[20]).toBe(3500);
+    expect(result.readingTimeByHour?.[8]).toBe(600);
+    expect(result.readingTimeByHour?.[20]).toBe(1200);
+    expect(result.lookupsByHour?.[8]).toBe(15);
+    expect(result.lookupsByHour?.[20]).toBe(25);
+
+    // Both profiles preserved
+    expect(result.readingTimeByProfile?.['default-mobile']).toBe(600);
+    expect(result.readingTimeByProfile?.['default-desktop']).toBe(1200);
+  });
 });

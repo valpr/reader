@@ -126,8 +126,24 @@ const HOUR_LABELS: string[] = [
 
 export interface LookbackCalculatorOptions {
   profiles?: ReaderProfile[];
-  bookMetadataMap?: Map<string, { coverImage?: string | Blob; characters?: number }>;
+  bookMetadataMap?: Map<
+    string,
+    { coverImage?: string | Blob; characters?: number; progress?: number }
+  >;
   completedTitles?: Set<string>;
+}
+
+export function extractEarliestDate(statistics: BooksDbStatistic[]): string | undefined {
+  let earliest: string | undefined;
+  for (let i = 0; i < statistics.length; i += 1) {
+    const s = statistics[i];
+    if ((s.readingTime > 0 || s.charactersRead > 0) && s.dateKey) {
+      if (!earliest || s.dateKey < earliest) {
+        earliest = s.dateKey;
+      }
+    }
+  }
+  return earliest;
 }
 
 export function calculateLookbackMetrics(
@@ -136,6 +152,7 @@ export function calculateLookbackMetrics(
   options: LookbackCalculatorOptions = {}
 ): LookbackMetrics {
   const availableYears = extractAvailableYears(allStatistics);
+  const allTimeEarliestDate = extractEarliestDate(allStatistics);
 
   // Filter statistics for the target period
   const periodStatistics = allStatistics.filter((s) => {
@@ -161,6 +178,7 @@ export function calculateLookbackMetrics(
     charactersRead: number;
     lookupCount: number;
     maxProgress: number;
+    completed: boolean;
   }
   const bookAggMap = new Map<string, BookAgg>();
 
@@ -181,8 +199,10 @@ export function calculateLookbackMetrics(
       peakReadingSpeedCharsPerHour = s.maxReadingSpeed;
     }
 
-    if (s.longestSessionSeconds && s.longestSessionSeconds > longestSessionSeconds) {
-      longestSessionSeconds = s.longestSessionSeconds;
+    if (s.longestSessionSeconds) {
+      if (s.longestSessionSeconds > longestSessionSeconds) {
+        longestSessionSeconds = s.longestSessionSeconds;
+      }
     } else if (s.readingTime > longestSessionSeconds) {
       // Fallback estimate if longestSessionSeconds was not tracked
       longestSessionSeconds = s.readingTime;
@@ -218,7 +238,8 @@ export function calculateLookbackMetrics(
       readingTime: 0,
       charactersRead: 0,
       lookupCount: 0,
-      maxProgress: 0
+      maxProgress: 0,
+      completed: false
     };
     existing.readingTime += s.readingTime || 0;
     existing.charactersRead += s.charactersRead || 0;
@@ -226,13 +247,30 @@ export function calculateLookbackMetrics(
     if (s.maxProgress !== undefined && s.maxProgress > existing.maxProgress) {
       existing.maxProgress = s.maxProgress;
     }
+    if (s.completedBook === 1) {
+      existing.completed = true;
+    }
     bookAggMap.set(s.title, existing);
+  }
+
+  // Incorporate bookmark progress fallback from metadata
+  if (options.bookMetadataMap) {
+    for (const [title, existing] of bookAggMap.entries()) {
+      const meta = options.bookMetadataMap.get(title);
+      if (meta?.progress !== undefined && meta.progress > existing.maxProgress) {
+        existing.maxProgress = meta.progress;
+      }
+    }
   }
 
   // Active days and streaks
   const activeReadingDays = activeDatesSet.size;
   const longestStreakDays = computeLongestStreak(activeDatesSet);
-  const totalDaysInPeriod = computeTotalDaysInPeriod(targetYear, activeDatesSet);
+  const totalDaysInPeriod = computeTotalDaysInPeriod(
+    targetYear,
+    activeDatesSet,
+    allTimeEarliestDate
+  );
   const consistencyPercentage =
     totalDaysInPeriod > 0 ? Math.round((activeReadingDays / totalDaysInPeriod) * 100) : 0;
 
@@ -292,7 +330,7 @@ export function calculateLookbackMetrics(
   const topBooks: TopBookSummary[] = allBooksList
     .sort((a, b) => b.readingTime - a.readingTime || b.charactersRead - a.charactersRead)
     .map((b, idx) => {
-      const isCompleted = completedTitles.has(b.title) || b.maxProgress >= 0.95;
+      const isCompleted = b.completed || completedTitles.has(b.title) || b.maxProgress >= 0.95;
       const meta = bookMetadataMap.get(b.title);
       return {
         title: b.title,
@@ -435,29 +473,46 @@ export function computeLongestStreak(activeDates: Set<string>): number {
   return maxStreak;
 }
 
-function computeTotalDaysInPeriod(targetYear: number | 'all', activeDates: Set<string>): number {
+export function computeTotalDaysInPeriod(
+  targetYear: number | 'all',
+  activeDates: Set<string>,
+  allTimeEarliestDate?: string
+): number {
+  if (activeDates.size === 0) return 0;
+
+  const sortedActive = Array.from(activeDates).sort();
+
   if (targetYear === 'all') {
-    if (activeDates.size === 0) return 0;
-    const sorted = Array.from(activeDates).sort();
-    const first = new Date(`${sorted[0]}T00:00:00`).getTime();
-    const last = new Date(`${sorted[sorted.length - 1]}T00:00:00`).getTime();
+    const first = new Date(`${sortedActive[0]}T00:00:00`).getTime();
+    const last = new Date(`${sortedActive[sortedActive.length - 1]}T00:00:00`).getTime();
     return Math.max(1, Math.round((last - first) / (1000 * 60 * 60 * 24)) + 1);
   }
 
   const currentYear = new Date().getFullYear();
+  const startOfYear = `${targetYear}-01-01`;
+
+  // If the user's very first reading day began mid-way through this year,
+  // measure consistency against days since they started rather than Jan 1st.
+  const effectiveStartDateStr =
+    allTimeEarliestDate && allTimeEarliestDate > startOfYear ? allTimeEarliestDate : startOfYear;
+
+  const startTime = new Date(`${effectiveStartDateStr}T00:00:00`).getTime();
+
+  let endTime: number;
   if (targetYear === currentYear) {
-    const start = new Date(targetYear, 0, 1).getTime();
-    const now = new Date().getTime();
-    return Math.max(1, Math.round((now - start) / (1000 * 60 * 60 * 24)) + 1);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    endTime = today.getTime();
+  } else {
+    endTime = new Date(`${targetYear}-12-31T00:00:00`).getTime();
   }
 
-  // Completed past year: check if leap year
-  const isLeapYear = (targetYear % 4 === 0 && targetYear % 100 !== 0) || targetYear % 400 === 0;
-  return isLeapYear ? 366 : 365;
+  return Math.max(1, Math.round((endTime - startTime) / (1000 * 60 * 60 * 24)) + 1);
 }
 
 export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalysis {
-  const unfinished = books.filter((b) => !b.completed && b.maxProgress > 0);
+  const unfinished = books.filter((b) => !b.completed);
+  const allFinished = books.length > 0 && books.every((b) => b.completed);
 
   const bracketLabels = [
     '0–10%',
@@ -483,17 +538,16 @@ export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalys
         bracket,
         count: bucketCounts[i]
       })),
-      summaryMessage:
-        books.length > 0
-          ? '100% Completion! You finished every book you started reading!'
-          : 'No reading drop-offs recorded.'
+      summaryMessage: allFinished
+        ? '100% Completion! You finished every book you started reading!'
+        : 'No reading drop-offs recorded.'
     };
   }
 
   const progressValues: number[] = [];
 
   for (let i = 0; i < unfinished.length; i += 1) {
-    const pct = Math.min(94.9, unfinished[i].maxProgress * 100);
+    const pct = Math.min(94.9, Math.max(0, (unfinished[i].maxProgress || 0) * 100));
     progressValues.push(pct);
 
     let bracketIndex = Math.floor(pct / 10);
