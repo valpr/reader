@@ -16,7 +16,7 @@
   import { applyAppTheme } from '$lib/functions/app-theme';
   import { dummyFn, isMobile, isMobile$ } from '$lib/functions/utils';
   import { MetaTags } from 'svelte-meta-tags';
-  import '../app.scss';
+  import '../app.css';
 
   let path = '';
   let dialogs: Dialog[] = [];
