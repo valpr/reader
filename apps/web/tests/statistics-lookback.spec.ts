@@ -30,11 +30,42 @@ test.describe('Reading Lookback E2E', () => {
         maxReadingSpeed: 25000,
         lastStatisticModified: Date.now(),
         lookupCount: 450, // High lookup count -> Vocab Hunter
-        maxProgress: 0.85,
+        completedBook: 1,
+        maxProgress: 1.0,
         readingTimeByHour: [
           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2700, 2700
         ], // 10 PM & 11 PM -> Night Owl
         readingTimeByProfile: { 'default-mobile': 4000, 'default-desktop': 1400 }
+      },
+      {
+        title: 'Finished Novel Two',
+        dateKey: `${currentYear}-03-16`,
+        charactersRead: 15000,
+        readingTime: 2000,
+        minReadingSpeed: 27000,
+        altMinReadingSpeed: 27000,
+        lastReadingSpeed: 27000,
+        maxReadingSpeed: 27000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 20,
+        completedBook: 1,
+        maxProgress: 1.0,
+        readingTimeByProfile: { 'default-mobile': 2000 }
+      },
+      {
+        title: 'Finished Novel Three',
+        dateKey: `${currentYear}-03-17`,
+        charactersRead: 18000,
+        readingTime: 2200,
+        minReadingSpeed: 29000,
+        altMinReadingSpeed: 29000,
+        lastReadingSpeed: 29000,
+        maxReadingSpeed: 29000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 25,
+        completedBook: 1,
+        maxProgress: 1.0,
+        readingTimeByProfile: { 'default-desktop': 2200 }
       },
       {
         title: 'Another Book',
@@ -61,8 +92,22 @@ test.describe('Reading Lookback E2E', () => {
         maxReadingSpeed: 24000,
         lastStatisticModified: Date.now(),
         lookupCount: 60,
-        maxProgress: 0.35, // Unfinished at 35% drop-off (total 3 unfinished -> cliff shown)
+        maxProgress: 0.35, // Unfinished at 35% drop-off
         readingTimeByProfile: { 'default-desktop': 2400 }
+      },
+      {
+        title: 'Fourth Novel',
+        dateKey: `${currentYear}-05-02`,
+        charactersRead: 10000,
+        readingTime: 1800,
+        minReadingSpeed: 20000,
+        altMinReadingSpeed: 20000,
+        lastReadingSpeed: 20000,
+        maxReadingSpeed: 20000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 40,
+        maxProgress: 0.45, // Unfinished at 45% drop-off (total 3 unfinished -> cliff shown)
+        readingTimeByProfile: { 'default-mobile': 1800 }
       }
     ]);
   });

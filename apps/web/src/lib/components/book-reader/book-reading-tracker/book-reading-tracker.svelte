@@ -325,6 +325,8 @@
       currentSessionDurationSeconds = 0;
 
       todaysStatistics.sessionCount = (todaysStatistics.sessionCount || 0) + 1;
+      todaysStatistics.lastStatisticModified = now;
+      statistics.set(todayKey, todaysStatistics);
       statisticsToStore.add(todayKey);
 
       return interval(1000);
@@ -431,13 +433,16 @@
     const isDisplayed = isDictionaryDisplayed();
 
     if (isDisplayed && !wasDictionaryDisplayed) {
+      const now = Date.now();
       todaysStatistics.lookupCount = (todaysStatistics.lookupCount || 0) + 1;
+      todaysStatistics.lastStatisticModified = now;
       const currentHour = new Date().getHours();
       if (!todaysStatistics.lookupsByHour) {
         todaysStatistics.lookupsByHour = new Array(24).fill(0);
       }
       todaysStatistics.lookupsByHour[currentHour] =
         (todaysStatistics.lookupsByHour[currentHour] || 0) + 1;
+      statistics.set(todayKey, todaysStatistics);
       statisticsToStore.add(todayKey);
     }
     wasDictionaryDisplayed = isDisplayed;

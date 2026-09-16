@@ -12,7 +12,9 @@ import {
   calculateLookbackMetrics,
   calculateProfileBreakdown,
   computeLongestStreak,
-  extractAvailableYears
+  computeTotalDaysInPeriod,
+  extractAvailableYears,
+  extractEarliestDate
 } from '$lib/components/statistics/statistics-lookback/lookback-calculator';
 
 test.describe('Reading Lookback Calculator', () => {
@@ -192,7 +194,50 @@ test.describe('Reading Lookback Calculator', () => {
     expect(breakdown[2].percentage).toBe(10);
   });
 
-  test('assigns Emerging Reader when under sample gate (<3 books or <=2 days)', () => {
+  test('calculateProfileBreakdown supports user-added custom profiles and handles deleted profiles', () => {
+    const customProfiles: ReaderProfile[] = [
+      ...dummyProfiles,
+      {
+        id: 'profile-boox-palma',
+        name: '  Boox Palma  ',
+        icon: 'tablet',
+        updatedAt: 1,
+        settings: {} as any
+      },
+      {
+        id: 'profile-night-phone',
+        name: 'Bedtime Reading',
+        icon: 'mobile',
+        updatedAt: 1,
+        settings: {} as any
+      }
+    ];
+
+    const profileSeconds = new Map<string, number>([
+      ['profile-boox-palma', 5000], // Custom added profile
+      ['profile-night-phone', 3000], // Custom added profile
+      ['profile-deleted-device', 2000] // Deleted profile whose ID was in historical data
+    ]);
+
+    const breakdown = calculateProfileBreakdown(profileSeconds, customProfiles);
+    expect(breakdown).toHaveLength(3);
+    // #1 Boox Palma (trimmed name, custom icon)
+    expect(breakdown[0].profileName).toBe('Boox Palma');
+    expect(breakdown[0].profileIcon).toBe('tablet');
+    expect(breakdown[0].percentage).toBe(50);
+
+    // #2 Bedtime Reading
+    expect(breakdown[1].profileName).toBe('Bedtime Reading');
+    expect(breakdown[1].profileIcon).toBe('mobile');
+    expect(breakdown[1].percentage).toBe(30);
+
+    // #3 Archived Profile (deleted custom profile)
+    expect(breakdown[2].profileName).toBe('Archived Profile');
+    expect(breakdown[2].profileIcon).toBe('custom');
+    expect(breakdown[2].percentage).toBe(20);
+  });
+
+  test('assigns Emerging Reader when under sample gate (<3 completed books or <=2 days)', () => {
     // Only 1 book and 1 day
     const statsFew: Partial<BooksDbStatistic>[] = [
       {
@@ -201,16 +246,51 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 180,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       }
     ];
     const metrics = calculateLookbackMetrics(statsFew as BooksDbStatistic[], 2026);
     expect(metrics.hasSufficientData).toBe(false);
     expect(metrics.primaryArchetype.id).toBe('emerging-reader');
+
+    // 3 books started across 3 days, but only 2 completed
+    const statsThreeStartedTwoCompleted: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Book A',
+        dateKey: '2026-04-10',
+        readingTime: 3600,
+        charactersRead: 10000,
+        completedBook: 1,
+        maxProgress: 1.0
+      },
+      {
+        title: 'Book B',
+        dateKey: '2026-04-11',
+        readingTime: 3600,
+        charactersRead: 10000,
+        completedBook: 1,
+        maxProgress: 1.0
+      },
+      {
+        title: 'Book C',
+        dateKey: '2026-04-12',
+        readingTime: 3600,
+        charactersRead: 10000,
+        maxProgress: 0.5 // unfinished
+      }
+    ];
+    const metricsTwoCompleted = calculateLookbackMetrics(
+      statsThreeStartedTwoCompleted as BooksDbStatistic[],
+      2026
+    );
+    expect(metricsTwoCompleted.hasSufficientData).toBe(false);
+    expect(metricsTwoCompleted.booksCompleted).toBe(2);
+    expect(metricsTwoCompleted.primaryArchetype.id).toBe('emerging-reader');
   });
 
   test('evaluates Reading Archetypes based on objective metrics when requirements met', () => {
-    // 3 books across 3 days with high lookups -> Vocab Hunter (Yomitan Addict)
+    // 3 completed books across 3 days with high lookups -> Vocab Hunter (Yomitan Addict)
     const statsVocab: Partial<BooksDbStatistic>[] = [
       {
         title: 'Dense Classic',
@@ -218,7 +298,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 180,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Essay Collection',
@@ -226,7 +307,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 150,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Poetry Anthology',
@@ -234,7 +316,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 120,
-        maxProgress: 0.5
+        completedBook: 1,
+        maxProgress: 1.0
       }
     ];
 
@@ -275,7 +358,7 @@ test.describe('Reading Lookback Calculator', () => {
     expect(metricsSpeed.hasSufficientData).toBe(true);
     expect(metricsSpeed.primaryArchetype.id).toBe('ln-binger');
 
-    // Late night reading (23:00 to 03:00) across 3 books / 3 days -> Night Owl
+    // Late night reading (23:00 to 03:00) across 3 completed books / 3 days -> Night Owl
     const nightOwlReading = new Array(24).fill(0);
     nightOwlReading[23] = 1800; // 30 min at 11 PM
     nightOwlReading[1] = 1800; // 30 min at 1 AM
@@ -287,7 +370,8 @@ test.describe('Reading Lookback Calculator', () => {
         charactersRead: 12000,
         lookupCount: 5,
         readingTimeByHour: nightOwlReading,
-        maxProgress: 0.4
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Night Story 2',
@@ -296,7 +380,8 @@ test.describe('Reading Lookback Calculator', () => {
         charactersRead: 12000,
         lookupCount: 5,
         readingTimeByHour: nightOwlReading,
-        maxProgress: 0.4
+        completedBook: 1,
+        maxProgress: 1.0
       },
       {
         title: 'Night Story 3',
@@ -305,7 +390,8 @@ test.describe('Reading Lookback Calculator', () => {
         charactersRead: 12000,
         lookupCount: 5,
         readingTimeByHour: nightOwlReading,
-        maxProgress: 0.4
+        completedBook: 1,
+        maxProgress: 1.0
       }
     ];
 
@@ -360,5 +446,183 @@ test.describe('Reading Lookback Calculator', () => {
     expect(emptyMetrics.dropOffAnalysis.abandonedBooksCount).toBe(0);
     expect(emptyMetrics.dropOffAnalysis.hasDropOffData).toBe(false);
     expect(emptyMetrics.yoyComparison).toBeUndefined();
+  });
+
+  test('calculateDropOffAnalysis does not falsely claim 100% completion when 0 books completed and 0% progress', () => {
+    // 3 books started, none completed, all with 0% progress (e.g. metadata or progress not recorded)
+    const unfinishedZeroProgress = [
+      {
+        title: 'Book 1',
+        readingTimeSeconds: 1200,
+        charactersRead: 3000,
+        lookupCount: 0,
+        maxProgress: 0,
+        completed: false,
+        rank: 1
+      },
+      {
+        title: 'Book 2',
+        readingTimeSeconds: 1500,
+        charactersRead: 4000,
+        lookupCount: 1,
+        maxProgress: 0,
+        completed: false,
+        rank: 2
+      },
+      {
+        title: 'Book 3',
+        readingTimeSeconds: 800,
+        charactersRead: 2000,
+        lookupCount: 0,
+        maxProgress: 0,
+        completed: false,
+        rank: 3
+      }
+    ];
+
+    const result = calculateDropOffAnalysis(unfinishedZeroProgress);
+    expect(result.hasDropOffData).toBe(true);
+    expect(result.abandonedBooksCount).toBe(3);
+    expect(result.modalDropOffBracket).toBe('0–10%');
+    expect(result.medianDropOffPercentage).toBe(0);
+    expect(result.summaryMessage).not.toContain('100% Completion');
+    expect(result.summaryMessage).toContain('0%');
+
+    // 1 book started, none completed, 0% progress -> insufficient sample gate, but NOT 100% completion
+    const singleZeroProgress = [
+      {
+        title: 'Book 1',
+        readingTimeSeconds: 1200,
+        charactersRead: 3000,
+        lookupCount: 0,
+        maxProgress: 0,
+        completed: false,
+        rank: 1
+      }
+    ];
+    const singleResult = calculateDropOffAnalysis(singleZeroProgress);
+    expect(singleResult.hasDropOffData).toBe(false);
+    expect(singleResult.abandonedBooksCount).toBe(1);
+    expect(singleResult.summaryMessage).not.toContain('100% Completion');
+    expect(singleResult.summaryMessage).toContain('more than 2 books are left unfinished');
+  });
+
+  test('extractEarliestDate finds the earliest date across all statistics', () => {
+    const stats: Partial<BooksDbStatistic>[] = [
+      { dateKey: '2026-05-10', readingTime: 100 },
+      { dateKey: '2025-11-20', readingTime: 200 },
+      { dateKey: '2025-07-15', readingTime: 300 },
+      { dateKey: '2026-01-01', readingTime: 0, charactersRead: 0 } // inactive day
+    ];
+    expect(extractEarliestDate(stats as BooksDbStatistic[])).toBe('2025-07-15');
+  });
+
+  test('computeTotalDaysInPeriod measures consistency from mid-year start date', () => {
+    // If user's first read was 2025-07-01, baseline for 2025 is 184 days (July 1 to Dec 31)
+    const activeDates = new Set(['2025-07-01', '2025-08-01']);
+    const daysMidYear = computeTotalDaysInPeriod(2025, activeDates, '2025-07-01');
+    expect(daysMidYear).toBe(184);
+
+    // If user started in previous year (e.g. 2024), full 2025 is measured (365 days)
+    const daysFullYear = computeTotalDaysInPeriod(2025, activeDates, '2024-05-10');
+    expect(daysFullYear).toBe(365);
+  });
+
+  test('does not inflate longestSessionSeconds with daily total reading time when telemetry exists', () => {
+    // If all stats have longestSessionSeconds, daily readingTime is NEVER used
+    const statsWithTelemetry: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Book A',
+        dateKey: '2026-04-10',
+        readingTime: 10000, // 2.7 hours total
+        longestSessionSeconds: 1500, // 25 min
+        charactersRead: 10000,
+        maxProgress: 0.5
+      },
+      {
+        title: 'Book B',
+        dateKey: '2026-04-11',
+        readingTime: 8000,
+        longestSessionSeconds: 2000, // 33 min
+        charactersRead: 10000,
+        maxProgress: 0.5
+      },
+      {
+        title: 'Book C',
+        dateKey: '2026-04-12',
+        readingTime: 6000,
+        longestSessionSeconds: 1800, // 30 min
+        charactersRead: 10000,
+        maxProgress: 0.5
+      }
+    ];
+    const metricsTelemetry = calculateLookbackMetrics(
+      statsWithTelemetry as BooksDbStatistic[],
+      2026
+    );
+    expect(metricsTelemetry.longestSessionSeconds).toBe(2000);
+
+    // If legacy stat lacks longestSessionSeconds, it falls back to readingTime
+    const statsLegacy: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Book A',
+        dateKey: '2026-04-10',
+        readingTime: 4200,
+        // No longestSessionSeconds recorded
+        charactersRead: 10000,
+        maxProgress: 0.5
+      }
+    ];
+    const metricsLegacy = calculateLookbackMetrics(statsLegacy as BooksDbStatistic[], 2026);
+    expect(metricsLegacy.longestSessionSeconds).toBe(4200);
+  });
+
+  test('integrates bookMetadataMap progress fallback and completedTitles in lookback calculation', () => {
+    const stats: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Book Without MaxProgress',
+        dateKey: '2026-04-10',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 2
+        // maxProgress omitted/undefined
+      },
+      {
+        title: 'Completed Novel',
+        dateKey: '2026-04-11',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 2,
+        maxProgress: 0.8
+        // completedBook not set in stat
+      },
+      {
+        title: 'Book Three',
+        dateKey: '2026-04-12',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 2,
+        maxProgress: 0.4
+      }
+    ];
+
+    const bookMetadataMap = new Map([
+      ['Book Without MaxProgress', { progress: 0.65 }],
+      ['Completed Novel', { progress: 0.98 }]
+    ]);
+    const completedTitles = new Set(['Completed Novel']);
+
+    const metrics = calculateLookbackMetrics(stats as BooksDbStatistic[], 2026, {
+      bookMetadataMap,
+      completedTitles
+    });
+
+    const bookNoProgress = metrics.topBooks.find((b) => b.title === 'Book Without MaxProgress');
+    expect(bookNoProgress?.maxProgress).toBe(0.65);
+
+    const completedBook = metrics.topBooks.find((b) => b.title === 'Completed Novel');
+    expect(completedBook?.completed).toBe(true);
+    expect(completedBook?.maxProgress).toBe(0.98);
+    expect(metrics.booksCompleted).toBe(1);
   });
 });

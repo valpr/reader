@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { readerProfiles$ } from '$lib/data/store';
+  import { onMount } from 'svelte';
+  import { database, readerProfiles$ } from '$lib/data/store';
   import { calculateLookbackMetrics, extractAvailableYears } from './lookback-calculator';
   import LookbackDashboard from './lookback-dashboard.svelte';
   import LookbackStoryPlayer from './lookback-story-player.svelte';
@@ -9,6 +10,54 @@
 
   let showStoryPlayer = false;
   let selectedYear: number | 'all' = new Date().getFullYear();
+  let bookMetadataMap = new Map<
+    string,
+    { coverImage?: string | Blob; characters?: number; progress?: number }
+  >();
+  let completedTitles = new Set<string>();
+
+  onMount(async () => {
+    try {
+      const db = await database.db;
+      const [books, bookmarks] = await Promise.all([db.getAll('data'), db.getAll('bookmark')]);
+
+      const bookmarkByDataId = new Map<number, any>();
+      for (let i = 0; i < bookmarks.length; i += 1) {
+        bookmarkByDataId.set(bookmarks[i].dataId, bookmarks[i]);
+      }
+
+      const metaMap = new Map<
+        string,
+        { coverImage?: string | Blob; characters?: number; progress?: number }
+      >();
+      const completed = new Set<string>();
+
+      for (let i = 0; i < books.length; i += 1) {
+        const book = books[i];
+        const bm = bookmarkByDataId.get(book.id);
+        const rawProgress = bm?.progress;
+        const progress =
+          typeof rawProgress === 'string'
+            ? (Number(rawProgress.slice(0, -1)) || 0) / 100
+            : Number(rawProgress) || 0;
+
+        metaMap.set(book.title, {
+          coverImage: book.coverImage,
+          characters: book.characters,
+          progress
+        });
+
+        if (progress >= 0.95) {
+          completed.add(book.title);
+        }
+      }
+
+      bookMetadataMap = metaMap;
+      completedTitles = completed;
+    } catch {
+      // Graceful fallback if database read fails
+    }
+  });
 
   $: availableYears = extractAvailableYears(statisticsData);
 
@@ -22,7 +71,9 @@
   }
 
   $: metrics = calculateLookbackMetrics(statisticsData, selectedYear, {
-    profiles: $readerProfiles$
+    profiles: $readerProfiles$,
+    bookMetadataMap,
+    completedTitles
   });
 </script>
 
