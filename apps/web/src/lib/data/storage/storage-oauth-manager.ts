@@ -474,6 +474,8 @@ export class StorageOAuthManager {
     } catch (error: any) {
       errorMessage = error.message;
     } finally {
+      // Wipe the secret from memory; the value is intentionally never read afterwards.
+      // eslint-disable-next-line no-useless-assignment
       secret = '';
       this.clearAuthData();
     }
