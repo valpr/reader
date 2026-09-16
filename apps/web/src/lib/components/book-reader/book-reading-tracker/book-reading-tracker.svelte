@@ -20,6 +20,7 @@
   import { MergeMode } from '$lib/data/merge-mode';
   import { getReadingGoalWindow, type ReadingGoal } from '$lib/data/reading-goal';
   import {
+    activeProfileId$,
     adjustStatisticsAfterIdleTime$,
     database,
     readingGoal$,
@@ -115,7 +116,13 @@
       const otherDayStatistics =
         statistics.get(otherDayKey) || getDefaultStatistic(bookTitle, otherDayKey);
 
-      updateStatistic(otherDayStatistics, otherDayTimeDiff, characterDiff, lastStatisticModified);
+      updateStatistic(
+        otherDayStatistics,
+        otherDayTimeDiff,
+        characterDiff,
+        lastStatisticModified,
+        referenceDate.getHours()
+      );
 
       statistics.set(otherDayKey, otherDayStatistics);
       statisticsToStore.add(otherDayKey);
@@ -142,7 +149,8 @@
         todaysStatistics,
         isNegativeTimeDiff ? -timeDiffForToday : timeDiffForToday,
         characterDiff,
-        lastStatisticModified
+        lastStatisticModified,
+        referenceDate.getHours()
       );
     } else {
       updateStatistic(todaysStatistics, 0, 0, lastStatisticModified);
@@ -151,8 +159,20 @@
     statistics.set(todayKey, todaysStatistics);
     statisticsToStore.add(todayKey);
 
-    updateStatistic(sessionStatistics, timeDiff, characterDiff, lastStatisticModified);
-    updateStatistic(allTimeStatistics, timeDiff, characterDiff, lastStatisticModified);
+    updateStatistic(
+      sessionStatistics,
+      timeDiff,
+      characterDiff,
+      lastStatisticModified,
+      referenceDate.getHours()
+    );
+    updateStatistic(
+      allTimeStatistics,
+      timeDiff,
+      characterDiff,
+      lastStatisticModified,
+      referenceDate.getHours()
+    );
 
     for (let index = 0, { length } = trackerHistory; index < length; index += 1) {
       if (historyIndex > 59) {
@@ -262,8 +282,7 @@
   let todaysStatistics = getDefaultStatistic(bookTitle, todayKey);
   let allTimeStatistics = getDefaultStatistic(bookTitle, todayKey);
   let bookCompletionStatistics:
-    | Omit<BooksDbStatistic, 'title' | 'lastStatisticModified'>
-    | undefined;
+    Omit<BooksDbStatistic, 'title' | 'lastStatisticModified'> | undefined;
   let bookStartDate = todayKey;
   let timeToFinishBook = 'N/A';
   let lastExploredCharCount = exploredCharCount;
@@ -277,6 +296,8 @@
   let lastTrackerTick = 0;
   let lastTrackerFlushTime = 0;
   let trackerIdleTime = 0;
+  let wasDictionaryDisplayed = false;
+  let currentSessionDurationSeconds = 0;
 
   const dispatch = createEventDispatcher<{
     trackerAvailable: void;
@@ -290,6 +311,7 @@
     switchMap((isPaused) => {
       if (isPaused) {
         trackerIdleTime = 0;
+        currentSessionDurationSeconds = 0;
 
         flushUpdates();
 
@@ -300,6 +322,10 @@
 
       lastTrackerFlushTime = now;
       lastTrackerTick = now;
+      currentSessionDurationSeconds = 0;
+
+      todaysStatistics.sessionCount = (todaysStatistics.sessionCount || 0) + 1;
+      statisticsToStore.add(todayKey);
 
       return interval(1000);
     }),
@@ -362,7 +388,7 @@
     );
   }
 
-  $: if ($trackerAutoPause$ !== TrackerAutoPause.OFF && !yomiPopover) {
+  $: if (!yomiPopover) {
     yomiPopover = document.querySelector(
       '.yomichan-popup,.yomichan-float,.yomitan-popup,.yomitan-float'
     );
@@ -370,20 +396,14 @@
     if (!yomiPopover) {
       yomiObserver.observe(document.body, { childList: true, subtree: false });
     }
-  } else {
-    yomiObserver.disconnect();
   }
 
-  $: if ($trackerAutoPause$ !== TrackerAutoPause.OFF && !$trackerPopupDetection$) {
-    if (yomiPopover) {
-      dictionaryObserver.observe(yomiPopover, { attributes: true });
-    }
+  $: if (yomiPopover) {
+    dictionaryObserver.observe(yomiPopover, { attributes: true });
+  }
 
-    if (jpdbPopover) {
-      dictionaryObserver.observe(jpdbPopover, { attributes: true });
-    }
-  } else {
-    dictionaryObserver.disconnect();
+  $: if (jpdbPopover) {
+    dictionaryObserver.observe(jpdbPopover, { attributes: true });
   }
 
   onMount(init);
@@ -410,6 +430,22 @@
 
     const isDisplayed = isDictionaryDisplayed();
 
+    if (isDisplayed && !wasDictionaryDisplayed) {
+      todaysStatistics.lookupCount = (todaysStatistics.lookupCount || 0) + 1;
+      const currentHour = new Date().getHours();
+      if (!todaysStatistics.lookupsByHour) {
+        todaysStatistics.lookupsByHour = new Array(24).fill(0);
+      }
+      todaysStatistics.lookupsByHour[currentHour] =
+        (todaysStatistics.lookupsByHour[currentHour] || 0) + 1;
+      statisticsToStore.add(todayKey);
+    }
+    wasDictionaryDisplayed = isDisplayed;
+
+    if ($trackerAutoPause$ === TrackerAutoPause.OFF || $trackerPopupDetection$) {
+      return;
+    }
+
     if (isDisplayed && !$isTrackerPaused$) {
       pausedByAutoPause = true;
       isTrackerPaused$.next(true);
@@ -419,8 +455,8 @@
     }
   }
 
-  function isDictionaryDisplayed() {
-    return (
+  function isDictionaryDisplayed(): boolean {
+    return !!(
       (yomiPopover && yomiPopover.style.visibility !== 'hidden') ||
       (jpdbPopover && jpdbPopover.style.opacity !== '0')
     );
@@ -662,6 +698,12 @@
       return;
     }
 
+    currentSessionDurationSeconds += elapsed;
+    todaysStatistics.longestSessionSeconds = Math.max(
+      todaysStatistics.longestSessionSeconds || 0,
+      currentSessionDurationSeconds
+    );
+
     if (frozenPosition === -1) {
       const characterDiff = exploredCharCount - lastExploredCharCount;
       let finalCharacterDiff =
@@ -717,13 +759,75 @@
       statistic.lastStatisticModified,
       entry.lastStatisticModified
     );
+
+    if (entry.readingTimeByHour) {
+      if (!statistic.readingTimeByHour) {
+        statistic.readingTimeByHour = [...entry.readingTimeByHour];
+      } else {
+        for (let i = 0; i < 24; i += 1) {
+          statistic.readingTimeByHour[i] =
+            (statistic.readingTimeByHour[i] || 0) + (entry.readingTimeByHour[i] || 0);
+        }
+      }
+    }
+    if (entry.charactersByHour) {
+      if (!statistic.charactersByHour) {
+        statistic.charactersByHour = [...entry.charactersByHour];
+      } else {
+        for (let i = 0; i < 24; i += 1) {
+          statistic.charactersByHour[i] =
+            (statistic.charactersByHour[i] || 0) + (entry.charactersByHour[i] || 0);
+        }
+      }
+    }
+    if (entry.lookupCount) {
+      statistic.lookupCount = (statistic.lookupCount || 0) + entry.lookupCount;
+    }
+    if (entry.lookupsByHour) {
+      if (!statistic.lookupsByHour) {
+        statistic.lookupsByHour = [...entry.lookupsByHour];
+      } else {
+        for (let i = 0; i < 24; i += 1) {
+          statistic.lookupsByHour[i] =
+            (statistic.lookupsByHour[i] || 0) + (entry.lookupsByHour[i] || 0);
+        }
+      }
+    }
+    if (entry.sessionCount) {
+      statistic.sessionCount = (statistic.sessionCount || 0) + entry.sessionCount;
+    }
+    if (entry.longestSessionSeconds) {
+      statistic.longestSessionSeconds = Math.max(
+        statistic.longestSessionSeconds || 0,
+        entry.longestSessionSeconds
+      );
+    }
+    if (entry.maxProgress !== undefined) {
+      statistic.maxProgress = Math.max(statistic.maxProgress || 0, entry.maxProgress);
+    }
+    if (entry.readingTimeByProfile) {
+      if (!statistic.readingTimeByProfile) {
+        statistic.readingTimeByProfile = { ...entry.readingTimeByProfile };
+      } else {
+        const profiles = new Set([
+          ...Object.keys(statistic.readingTimeByProfile),
+          ...Object.keys(entry.readingTimeByProfile)
+        ]);
+        for (const profile of profiles) {
+          statistic.readingTimeByProfile[profile] =
+            (statistic.readingTimeByProfile[profile] || 0) +
+            (entry.readingTimeByProfile[profile] || 0);
+        }
+      }
+    }
   }
 
   function updateStatistic(
     statisticObject: BooksDbStatistic,
     timeDiff: number,
     characterDiff: number,
-    lastStatisticModified: number
+    lastStatisticModified: number,
+    hourOfDay?: number
   ) {
     const statistic = statisticObject;
 
@@ -742,6 +846,35 @@
       statistic.altMinReadingSpeed = statistic.altMinReadingSpeed
         ? Math.min(statistic.altMinReadingSpeed, statistic.lastReadingSpeed)
         : statistic.lastReadingSpeed;
+    }
+
+    if (hourOfDay !== undefined && timeDiff > 0) {
+      if (!statistic.readingTimeByHour) {
+        statistic.readingTimeByHour = new Array(24).fill(0);
+      }
+      statistic.readingTimeByHour[hourOfDay] =
+        (statistic.readingTimeByHour[hourOfDay] || 0) + timeDiff;
+    }
+
+    if (hourOfDay !== undefined && characterDiff > 0) {
+      if (!statistic.charactersByHour) {
+        statistic.charactersByHour = new Array(24).fill(0);
+      }
+      statistic.charactersByHour[hourOfDay] =
+        (statistic.charactersByHour[hourOfDay] || 0) + characterDiff;
+    }
+
+    if (timeDiff > 0 && $activeProfileId$) {
+      if (!statistic.readingTimeByProfile) {
+        statistic.readingTimeByProfile = {};
+      }
+      statistic.readingTimeByProfile[$activeProfileId$] =
+        (statistic.readingTimeByProfile[$activeProfileId$] || 0) + timeDiff;
+    }
+
+    if (bookCharCount > 0 && exploredCharCount > 0) {
+      const currentProgress = Math.min(1, Math.max(0, exploredCharCount / bookCharCount));
+      statistic.maxProgress = Math.max(statistic.maxProgress || 0, currentProgress);
     }
 
     return statistic;

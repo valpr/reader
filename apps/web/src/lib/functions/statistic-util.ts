@@ -137,7 +137,74 @@ export function mergeStatistics(
       !existingStatistic ||
       statistic.lastStatisticModified > existingStatistic.lastStatisticModified
     ) {
-      groupedStatistics.set(statistic.dateKey, statistic);
+      if (existingStatistic) {
+        const winner =
+          statistic.lastStatisticModified >= existingStatistic.lastStatisticModified
+            ? statistic
+            : existingStatistic;
+        const loser = winner === statistic ? existingStatistic : statistic;
+        const merged: BooksDbStatistic = { ...winner };
+
+        if (!merged.readingTimeByHour && loser.readingTimeByHour) {
+          merged.readingTimeByHour = [...loser.readingTimeByHour];
+        } else if (merged.readingTimeByHour && loser.readingTimeByHour) {
+          merged.readingTimeByHour = merged.readingTimeByHour.map((val, i) =>
+            Math.max(val, loser.readingTimeByHour?.[i] || 0)
+          );
+        }
+
+        if (!merged.charactersByHour && loser.charactersByHour) {
+          merged.charactersByHour = [...loser.charactersByHour];
+        } else if (merged.charactersByHour && loser.charactersByHour) {
+          merged.charactersByHour = merged.charactersByHour.map((val, i) =>
+            Math.max(val, loser.charactersByHour?.[i] || 0)
+          );
+        }
+
+        if (!merged.lookupsByHour && loser.lookupsByHour) {
+          merged.lookupsByHour = [...loser.lookupsByHour];
+        } else if (merged.lookupsByHour && loser.lookupsByHour) {
+          merged.lookupsByHour = merged.lookupsByHour.map((val, i) =>
+            Math.max(val, loser.lookupsByHour?.[i] || 0)
+          );
+        }
+
+        if (loser.lookupCount) {
+          merged.lookupCount = Math.max(merged.lookupCount || 0, loser.lookupCount);
+        }
+        if (loser.sessionCount) {
+          merged.sessionCount = Math.max(merged.sessionCount || 0, loser.sessionCount);
+        }
+        if (loser.longestSessionSeconds) {
+          merged.longestSessionSeconds = Math.max(
+            merged.longestSessionSeconds || 0,
+            loser.longestSessionSeconds
+          );
+        }
+        if (loser.maxProgress !== undefined) {
+          merged.maxProgress = Math.max(merged.maxProgress || 0, loser.maxProgress);
+        }
+
+        if (loser.readingTimeByProfile) {
+          if (!merged.readingTimeByProfile) {
+            merged.readingTimeByProfile = { ...loser.readingTimeByProfile };
+          } else {
+            const profiles = new Set([
+              ...Object.keys(merged.readingTimeByProfile),
+              ...Object.keys(loser.readingTimeByProfile)
+            ]);
+            for (const profile of profiles) {
+              merged.readingTimeByProfile[profile] = Math.max(
+                merged.readingTimeByProfile[profile] || 0,
+                loser.readingTimeByProfile[profile] || 0
+              );
+            }
+          }
+        }
+        groupedStatistics.set(statistic.dateKey, merged);
+      } else {
+        groupedStatistics.set(statistic.dateKey, statistic);
+      }
     }
   }
 

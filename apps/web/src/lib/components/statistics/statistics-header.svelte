@@ -32,7 +32,8 @@
 
   const tabOptions = [
     { value: StatisticsTab.SUMMARY, label: 'Summary' },
-    { value: StatisticsTab.OVERVIEW, label: 'Heatmap' }
+    { value: StatisticsTab.OVERVIEW, label: 'Heatmap' },
+    { value: StatisticsTab.LOOKBACK, label: 'Recap' }
   ];
 
   let copyStatisticsDataPopover: Popover;
@@ -89,26 +90,28 @@
       </Popover>
     </div>
 
-    <!-- Title Filter Trigger -->
-    <Tooltip
-      text={$statisticsTitleFilterEnabled$ ? 'Open Title Filter' : 'Title filter not applicable'}
-    >
-      <IconButton
-        nativeTooltip={false}
-        variant="ghost"
-        size="md"
-        label="Open Title Filter"
-        disabled={!$statisticsTitleFilterEnabled$}
-        active={$statisticsTitleFilterIsOpen$}
-        on:click={() => {
-          if ($statisticsTitleFilterEnabled$) {
-            $statisticsTitleFilterIsOpen$ = true;
-          }
-        }}
+    <!-- Title Filter Trigger (not applicable on Recap tab) -->
+    {#if $lastStatisticsTab$ !== StatisticsTab.LOOKBACK}
+      <Tooltip
+        text={$statisticsTitleFilterEnabled$ ? 'Open Title Filter' : 'Title filter not applicable'}
       >
-        <Fa icon={faFilter} />
-      </IconButton>
-    </Tooltip>
+        <IconButton
+          nativeTooltip={false}
+          variant="ghost"
+          size="md"
+          label="Open Title Filter"
+          disabled={!$statisticsTitleFilterEnabled$}
+          active={$statisticsTitleFilterIsOpen$}
+          on:click={() => {
+            if ($statisticsTitleFilterEnabled$) {
+              $statisticsTitleFilterIsOpen$ = true;
+            }
+          }}
+        >
+          <Fa icon={faFilter} />
+        </IconButton>
+      </Tooltip>
+    {/if}
 
     <!-- Statistics Settings Trigger -->
     <Tooltip text="Statistics Settings">
