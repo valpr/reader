@@ -65,6 +65,7 @@
       <Button
         variant="primary"
         size="sm"
+        disabled={!metrics.hasSufficientData}
         class="font-medium shadow-sm flex items-center gap-1.5"
         on:click={() => dispatch('playStory')}
       >
@@ -73,6 +74,45 @@
       </Button>
     </div>
   </div>
+
+  <!-- Gating Banner: Unlocks with 3 Books & 3+ Days -->
+  {#if !metrics.hasSufficientData}
+    <Card
+      variant="surface"
+      padding="md"
+      radius="lg"
+      class="border border-amber-500/30 bg-amber-500/5 space-y-2.5"
+    >
+      <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-semibold text-sm">
+        <span>🌱</span>
+        <span>Recap Unlocks with 3 Books &amp; 3+ Days</span>
+      </div>
+      <p
+        class="text-xs text-[var(--astryx-color-fg-secondary,#52525b)] break-words [overflow-wrap:anywhere]"
+      >
+        To generate personalized reading archetypes and your recap story, read across at least 3
+        books and on more than 2 distinct days.
+      </p>
+      <div class="flex flex-wrap gap-4 pt-1 text-xs">
+        <div class="flex items-center gap-1.5">
+          <span class="font-bold text-[var(--astryx-color-fg-primary,#18181b)]"
+            >{metrics.booksStarted} / 3</span
+          >
+          <span class="text-[var(--astryx-color-fg-muted,#71717a)]"
+            >Books Started {metrics.booksStarted >= 3 ? '✓' : ''}</span
+          >
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="font-bold text-[var(--astryx-color-fg-primary,#18181b)]"
+            >{metrics.activeReadingDays} / 3</span
+          >
+          <span class="text-[var(--astryx-color-fg-muted,#71717a)]"
+            >Reading Days (need &gt; 2) {metrics.activeReadingDays > 2 ? '✓' : ''}</span
+          >
+        </div>
+      </div>
+    </Card>
+  {/if}
 
   <!-- Hero Persona Card -->
   <Card
@@ -305,45 +345,47 @@
         {metrics.dropOffAnalysis.summaryMessage}
       </p>
 
-      <!-- Progress Buckets Bar Chart -->
-      <div class="space-y-2 pt-1">
-        <div class="text-xs text-[var(--astryx-color-fg-muted,#71717a)] font-medium">
-          Abandonment frequency by book progress mark:
-        </div>
-        <div
-          class="grid grid-cols-9 gap-1 items-end h-24 pt-4 px-1 bg-[var(--astryx-color-surface-sunken,#f4f4f5)] dark:bg-zinc-800/50 rounded-lg"
-        >
-          {#each metrics.dropOffAnalysis.bucketDistribution as bucket}
-            {@const maxCount = Math.max(
-              1,
-              ...metrics.dropOffAnalysis.bucketDistribution.map((b) => b.count)
-            )}
-            {@const heightPercent =
-              bucket.count > 0 ? Math.max(15, Math.round((bucket.count / maxCount) * 100)) : 4}
-            {@const isModal =
-              bucket.bracket === metrics.dropOffAnalysis.modalDropOffBracket && bucket.count > 0}
-            <div class="flex flex-col items-center justify-end h-full gap-1 group relative">
-              <div
-                class="w-full rounded-t transition-all duration-300 {isModal
-                  ? 'bg-amber-500 dark:bg-amber-400'
-                  : 'bg-indigo-400/60 dark:bg-indigo-500/40'}"
-                style="height: {heightPercent}%;"
-              ></div>
-              <span
-                class="text-[9px] text-[var(--astryx-color-fg-muted,#71717a)] truncate w-full text-center"
-              >
-                {bucket.bracket.split('–')[0]}
-              </span>
-              <!-- Tooltip on hover -->
-              <div
-                class="absolute -top-7 px-1.5 py-0.5 rounded bg-zinc-900 text-white text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow"
-              >
-                {bucket.bracket}: {bucket.count}
+      <!-- Progress Buckets Bar Chart (only shown when more than 2 books unfinished) -->
+      {#if metrics.dropOffAnalysis.hasDropOffData}
+        <div class="space-y-2 pt-1">
+          <div class="text-xs text-[var(--astryx-color-fg-muted,#71717a)] font-medium">
+            Abandonment frequency by book progress mark:
+          </div>
+          <div
+            class="grid grid-cols-9 gap-1 items-end h-24 pt-4 px-1 bg-[var(--astryx-color-surface-sunken,#f4f4f5)] dark:bg-zinc-800/50 rounded-lg"
+          >
+            {#each metrics.dropOffAnalysis.bucketDistribution as bucket}
+              {@const maxCount = Math.max(
+                1,
+                ...metrics.dropOffAnalysis.bucketDistribution.map((b) => b.count)
+              )}
+              {@const heightPercent =
+                bucket.count > 0 ? Math.max(15, Math.round((bucket.count / maxCount) * 100)) : 4}
+              {@const isModal =
+                bucket.bracket === metrics.dropOffAnalysis.modalDropOffBracket && bucket.count > 0}
+              <div class="flex flex-col items-center justify-end h-full gap-1 group relative">
+                <div
+                  class="w-full rounded-t transition-all duration-300 {isModal
+                    ? 'bg-amber-500 dark:bg-amber-400'
+                    : 'bg-indigo-400/60 dark:bg-indigo-500/40'}"
+                  style="height: {heightPercent}%;"
+                ></div>
+                <span
+                  class="text-[9px] text-[var(--astryx-color-fg-muted,#71717a)] truncate w-full text-center"
+                >
+                  {bucket.bracket.split('–')[0]}
+                </span>
+                <!-- Tooltip on hover -->
+                <div
+                  class="absolute -top-7 px-1.5 py-0.5 rounded bg-zinc-900 text-white text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow"
+                >
+                  {bucket.bracket}: {bucket.count}
+                </div>
               </div>
-            </div>
-          {/each}
+            {/each}
+          </div>
         </div>
-      </div>
+      {/if}
     </Card>
 
     <!-- Reading Device & Profile Breakdown -->

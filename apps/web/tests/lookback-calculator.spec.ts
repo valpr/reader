@@ -120,6 +120,7 @@ test.describe('Reading Lookback Calculator', () => {
     ];
 
     const result = calculateDropOffAnalysis(topBooks);
+    expect(result.hasDropOffData).toBe(true);
     expect(result.abandonedBooksCount).toBe(4);
     // Modal bucket should be 20-30% (contains Book B at 22% and Book C at 25%)
     expect(result.modalDropOffBracket).toBe('20–30%');
@@ -127,6 +128,33 @@ test.describe('Reading Lookback Calculator', () => {
     expect(result.medianDropOffPercentage).toBe(24);
     expect(result.summaryMessage).toContain('24%');
     expect(result.summaryMessage).toContain('20–30%');
+  });
+
+  test('calculateDropOffAnalysis hides cliff when 2 or fewer books unfinished', () => {
+    const topBooks = [
+      {
+        title: 'Book A',
+        readingTimeSeconds: 2000,
+        charactersRead: 10000,
+        lookupCount: 5,
+        maxProgress: 0.15,
+        completed: false,
+        rank: 1
+      },
+      {
+        title: 'Book B',
+        readingTimeSeconds: 3000,
+        charactersRead: 15000,
+        lookupCount: 8,
+        maxProgress: 0.22,
+        completed: false,
+        rank: 2
+      }
+    ];
+    const result = calculateDropOffAnalysis(topBooks);
+    expect(result.hasDropOffData).toBe(false);
+    expect(result.abandonedBooksCount).toBe(2);
+    expect(result.summaryMessage).toContain('more than 2 books are left unfinished');
   });
 
   test('calculateDropOffAnalysis handles 100% completion gracefully', () => {
@@ -142,8 +170,9 @@ test.describe('Reading Lookback Calculator', () => {
       }
     ];
     const result = calculateDropOffAnalysis(topBooks);
+    expect(result.hasDropOffData).toBe(false);
     expect(result.abandonedBooksCount).toBe(0);
-    expect(result.summaryMessage).toBe('You finished every book you started reading!');
+    expect(result.summaryMessage).toContain('100% Completion');
   });
 
   test('calculateProfileBreakdown accurately splits device reading time', () => {
@@ -163,46 +192,115 @@ test.describe('Reading Lookback Calculator', () => {
     expect(breakdown[2].percentage).toBe(10);
   });
 
-  test('evaluates Reading Archetypes based on objective metrics', () => {
-    // High lookups -> Vocab Hunter (Yomitan Addict)
+  test('assigns Emerging Reader when under sample gate (<3 books or <=2 days)', () => {
+    // Only 1 book and 1 day
+    const statsFew: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Book A',
+        dateKey: '2026-04-10',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 180,
+        maxProgress: 0.5
+      }
+    ];
+    const metrics = calculateLookbackMetrics(statsFew as BooksDbStatistic[], 2026);
+    expect(metrics.hasSufficientData).toBe(false);
+    expect(metrics.primaryArchetype.id).toBe('emerging-reader');
+  });
+
+  test('evaluates Reading Archetypes based on objective metrics when requirements met', () => {
+    // 3 books across 3 days with high lookups -> Vocab Hunter (Yomitan Addict)
     const statsVocab: Partial<BooksDbStatistic>[] = [
       {
         title: 'Dense Classic',
         dateKey: '2026-04-10',
         readingTime: 3600,
         charactersRead: 10000,
-        lookupCount: 180, // 18 lookups per 1k chars
+        lookupCount: 180,
+        maxProgress: 0.5
+      },
+      {
+        title: 'Essay Collection',
+        dateKey: '2026-04-11',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 150,
+        maxProgress: 0.5
+      },
+      {
+        title: 'Poetry Anthology',
+        dateKey: '2026-04-12',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 120,
         maxProgress: 0.5
       }
     ];
 
     const metricsVocab = calculateLookbackMetrics(statsVocab as BooksDbStatistic[], 2026);
+    expect(metricsVocab.hasSufficientData).toBe(true);
     expect(metricsVocab.primaryArchetype.id).toBe('vocab-hunter');
-    expect(metricsVocab.lookupsPer1kChars).toBe(18);
+    expect(metricsVocab.lookupsPer1kChars).toBe(15);
 
-    // High speed (>20k chars/hr) -> Light Novel Binger
+    // High speed (>20k chars/hr) across 3 books / 3 days -> Light Novel Binger
     const statsSpeed: Partial<BooksDbStatistic>[] = [
       {
         title: 'Isekai Vol 1',
         dateKey: '2026-05-15',
-        readingTime: 3600, // 1 hr
-        charactersRead: 25000, // 25,000 chars/hr
+        readingTime: 3600,
+        charactersRead: 25000,
+        lookupCount: 2,
+        maxProgress: 1.0
+      },
+      {
+        title: 'Isekai Vol 2',
+        dateKey: '2026-05-16',
+        readingTime: 3600,
+        charactersRead: 25000,
+        lookupCount: 2,
+        maxProgress: 1.0
+      },
+      {
+        title: 'Isekai Vol 3',
+        dateKey: '2026-05-17',
+        readingTime: 3600,
+        charactersRead: 25000,
         lookupCount: 2,
         maxProgress: 1.0
       }
     ];
 
     const metricsSpeed = calculateLookbackMetrics(statsSpeed as BooksDbStatistic[], 2026);
+    expect(metricsSpeed.hasSufficientData).toBe(true);
     expect(metricsSpeed.primaryArchetype.id).toBe('ln-binger');
 
-    // Late night reading (23:00 to 03:00) -> Night Owl
+    // Late night reading (23:00 to 03:00) across 3 books / 3 days -> Night Owl
     const nightOwlReading = new Array(24).fill(0);
     nightOwlReading[23] = 1800; // 30 min at 11 PM
     nightOwlReading[1] = 1800; // 30 min at 1 AM
     const statsNight: Partial<BooksDbStatistic>[] = [
       {
-        title: 'Night Story',
+        title: 'Night Story 1',
         dateKey: '2026-06-20',
+        readingTime: 3600,
+        charactersRead: 12000,
+        lookupCount: 5,
+        readingTimeByHour: nightOwlReading,
+        maxProgress: 0.4
+      },
+      {
+        title: 'Night Story 2',
+        dateKey: '2026-06-21',
+        readingTime: 3600,
+        charactersRead: 12000,
+        lookupCount: 5,
+        readingTimeByHour: nightOwlReading,
+        maxProgress: 0.4
+      },
+      {
+        title: 'Night Story 3',
+        dateKey: '2026-06-22',
         readingTime: 3600,
         charactersRead: 12000,
         lookupCount: 5,
@@ -212,6 +310,7 @@ test.describe('Reading Lookback Calculator', () => {
     ];
 
     const metricsNight = calculateLookbackMetrics(statsNight as BooksDbStatistic[], 2026);
+    expect(metricsNight.hasSufficientData).toBe(true);
     expect(metricsNight.peakTimeCategory).toBe('Night Owl');
     expect(metricsNight.primaryArchetype.id).toBe('night-owl');
   });
@@ -252,12 +351,14 @@ test.describe('Reading Lookback Calculator', () => {
 
   test('handles All Time mode and empty statistics gracefully', () => {
     const emptyMetrics = calculateLookbackMetrics([], 'all');
+    expect(emptyMetrics.hasSufficientData).toBe(false);
     expect(emptyMetrics.totalReadingTimeSeconds).toBe(0);
     expect(emptyMetrics.totalCharactersRead).toBe(0);
     expect(emptyMetrics.booksStarted).toBe(0);
     expect(emptyMetrics.booksCompleted).toBe(0);
-    expect(emptyMetrics.primaryArchetype.id).toBe('steady-reader');
+    expect(emptyMetrics.primaryArchetype.id).toBe('emerging-reader');
     expect(emptyMetrics.dropOffAnalysis.abandonedBooksCount).toBe(0);
+    expect(emptyMetrics.dropOffAnalysis.hasDropOffData).toBe(false);
     expect(emptyMetrics.yoyComparison).toBeUndefined();
   });
 });

@@ -80,6 +80,14 @@ export const ARCHETYPES: Record<string, ReadingArchetype> = {
     description:
       'You dipped into many different books and worlds this year, exploring broadly across stories.'
   },
+  EMERGING: {
+    id: 'emerging-reader',
+    name: 'Emerging Reader',
+    badge: '🌱',
+    tagline: 'Every journey begins with a single page',
+    description:
+      'You are just beginning your reading journey for this period. Read across at least 3 books and 3+ days to unlock your reading persona!'
+  },
   STEADY: {
     id: 'steady-reader',
     name: 'Dedicated Reader',
@@ -303,6 +311,8 @@ export function calculateLookbackMetrics(
   const completionRate = booksStarted > 0 ? Math.round((booksCompleted / booksStarted) * 100) : 0;
   const numberOneBook = topBooks.length > 0 ? topBooks[0] : undefined;
 
+  const hasSufficientData = booksStarted >= 3 && activeReadingDays > 2;
+
   // Drop-off cliff analysis
   const dropOffAnalysis = calculateDropOffAnalysis(topBooks);
 
@@ -312,6 +322,7 @@ export function calculateLookbackMetrics(
 
   // Reading personas
   const { primaryArchetype, earnedArchetypes } = evaluateArchetypes({
+    hasSufficientData,
     lookupsPer1kChars,
     totalLookups,
     averageReadingSpeedCharsPerHour,
@@ -346,6 +357,7 @@ export function calculateLookbackMetrics(
   }
 
   return {
+    hasSufficientData,
     targetYear,
     availableYears,
     totalReadingTimeSeconds,
@@ -463,6 +475,7 @@ export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalys
 
   if (unfinished.length === 0) {
     return {
+      hasDropOffData: false,
       abandonedBooksCount: 0,
       modalDropOffBracket: 'N/A',
       medianDropOffPercentage: 0,
@@ -472,7 +485,7 @@ export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalys
       })),
       summaryMessage:
         books.length > 0
-          ? 'You finished every book you started reading!'
+          ? '100% Completion! You finished every book you started reading!'
           : 'No reading drop-offs recorded.'
     };
   }
@@ -511,8 +524,14 @@ export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalys
   }
 
   const modalDropOffBracket = bracketLabels[modalIndex];
+  const hasDropOffData = unfinished.length > 2;
+
+  const summaryMessage = hasDropOffData
+    ? `You are most likely to stop reading around ${medianDropOffPercentage}% (peak drop-off in the ${modalDropOffBracket} range).`
+    : `Drop-off cliff analysis unlocks once more than 2 books are left unfinished (currently ${unfinished.length} / 3).`;
 
   return {
+    hasDropOffData,
     abandonedBooksCount: unfinished.length,
     modalDropOffBracket,
     medianDropOffPercentage,
@@ -520,7 +539,7 @@ export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalys
       bracket,
       count: bucketCounts[i]
     })),
-    summaryMessage: `You are most likely to stop reading around ${medianDropOffPercentage}% (peak drop-off in the ${modalDropOffBracket} range).`
+    summaryMessage
   };
 }
 
@@ -575,6 +594,7 @@ export function calculateProfileBreakdown(
 }
 
 interface ArchetypeEvalContext {
+  hasSufficientData: boolean;
   lookupsPer1kChars: number;
   totalLookups: number;
   averageReadingSpeedCharsPerHour: number;
@@ -596,6 +616,13 @@ export function evaluateArchetypes(ctx: ArchetypeEvalContext): {
   primaryArchetype: ReadingArchetype;
   earnedArchetypes: ReadingArchetype[];
 } {
+  if (!ctx.hasSufficientData) {
+    return {
+      primaryArchetype: ARCHETYPES.EMERGING,
+      earnedArchetypes: [ARCHETYPES.EMERGING]
+    };
+  }
+
   const earned: ReadingArchetype[] = [];
 
   // Criteria evaluation

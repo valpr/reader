@@ -40,6 +40,7 @@ export interface ProfileReadingShare {
 }
 
 export interface DropOffAnalysis {
+  hasDropOffData: boolean;
   abandonedBooksCount: number;
   modalDropOffBracket: string;
   medianDropOffPercentage: number;
@@ -58,6 +59,7 @@ export interface YearOverYearComparison {
 }
 
 export interface LookbackMetrics {
+  hasSufficientData: boolean;
   targetYear: number | 'all';
   availableYears: number[];
   totalReadingTimeSeconds: number;

@@ -300,15 +300,7 @@
             </h2>
           </div>
 
-          {#if metrics.dropOffAnalysis.abandonedBooksCount === 0}
-            <div class="py-6 bg-white/5 rounded-2xl border border-white/10 p-4 space-y-2">
-              <div class="text-3xl">🏆</div>
-              <div class="text-xl font-bold text-emerald-400">100% Completion!</div>
-              <div class="text-xs text-white/70">
-                You did not abandon a single book you opened this year.
-              </div>
-            </div>
-          {:else}
+          {#if metrics.dropOffAnalysis.hasDropOffData}
             <div class="py-6 bg-white/5 rounded-2xl border border-white/10 p-4 space-y-2">
               <div class="text-xs text-white/60">Most likely to set a book down at:</div>
               <div class="text-5xl font-black text-amber-400">
@@ -318,12 +310,27 @@
                 Peak abandonment cliff in the {metrics.dropOffAnalysis.modalDropOffBracket} range.
               </div>
             </div>
+            <p class="text-xs text-white/60 max-w-xs mx-auto break-words [overflow-wrap:anywhere]">
+              Knowing your drop-off cliff helps you recognize when you are entering the danger zone
+              of a story!
+            </p>
+          {:else if metrics.booksCompleted === metrics.booksStarted && metrics.booksStarted > 0}
+            <div class="py-6 bg-white/5 rounded-2xl border border-white/10 p-4 space-y-2">
+              <div class="text-3xl">🏆</div>
+              <div class="text-xl font-bold text-emerald-400">100% Completion!</div>
+              <div class="text-xs text-white/70">
+                You did not abandon a single book you opened this period.
+              </div>
+            </div>
+          {:else}
+            <div class="py-6 bg-white/5 rounded-2xl border border-white/10 p-4 space-y-2">
+              <div class="text-3xl">🌱</div>
+              <div class="text-base font-bold text-amber-300">Building Habits</div>
+              <div class="text-xs text-white/70">
+                Drop-off cliff analysis unlocks once more than 2 books are left unfinished.
+              </div>
+            </div>
           {/if}
-
-          <p class="text-xs text-white/60 max-w-xs mx-auto break-words [overflow-wrap:anywhere]">
-            Knowing your drop-off cliff helps you recognize when you are entering the danger zone of
-            a story!
-          </p>
         </div>
       {:else if currentSlide === 3}
         <!-- Slide 3: Device Sanctuary -->

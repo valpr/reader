@@ -36,11 +36,45 @@ for (const width of [412, 360]) {
         maxReadingSpeed: 22000,
         lastStatisticModified: Date.now(),
         lookupCount: 300,
-        maxProgress: 0.95,
+        maxProgress: 0.85,
         readingTimeByHour: [
           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3600, 3600
         ],
         readingTimeByProfile: { 'default-mobile': 7200 }
+      },
+      {
+        title: 'Second Book with Medium Length Title',
+        dateKey: `${currentYear}-02-11`,
+        charactersRead: 15000,
+        readingTime: 3600,
+        minReadingSpeed: 15000,
+        altMinReadingSpeed: 15000,
+        lastReadingSpeed: 15000,
+        maxReadingSpeed: 15000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 50,
+        maxProgress: 0.3,
+        readingTimeByHour: [
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1800, 1800
+        ],
+        readingTimeByProfile: { 'default-mobile': 3600 }
+      },
+      {
+        title: 'Third Book Abandoned Early',
+        dateKey: `${currentYear}-02-12`,
+        charactersRead: 8000,
+        readingTime: 1800,
+        minReadingSpeed: 16000,
+        altMinReadingSpeed: 16000,
+        lastReadingSpeed: 16000,
+        maxReadingSpeed: 16000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 20,
+        maxProgress: 0.15,
+        readingTimeByHour: [
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 900, 900
+        ],
+        readingTimeByProfile: { 'default-mobile': 1800 }
       }
     ]);
 
@@ -63,8 +97,8 @@ for (const width of [412, 360]) {
 
     // Verify key elements are visible and bounded
     await expect(page.getByRole('heading', { name: 'Vocab Hunter' })).toBeVisible();
-    await expect(page.getByText('Drop-off Cliff Analysis')).toBeVisible();
-    await expect(page.getByText('Device Sanctuary')).toBeVisible();
+    await expect(page.getByText('Drop-off Cliff Analysis', { exact: true })).toBeVisible();
+    await expect(page.getByText('Device Sanctuary', { exact: true })).toBeVisible();
 
     // Tap Play Story
     const playBtn = page.getByRole('button', { name: /Play Story/ });

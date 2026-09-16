@@ -49,6 +49,20 @@ test.describe('Reading Lookback E2E', () => {
         lookupCount: 120,
         maxProgress: 0.25, // Unfinished at 25% drop-off
         readingTimeByProfile: { 'default-mobile': 2400 }
+      },
+      {
+        title: 'Third Novel',
+        dateKey: `${currentYear}-05-01`,
+        charactersRead: 16000,
+        readingTime: 2400,
+        minReadingSpeed: 24000,
+        altMinReadingSpeed: 24000,
+        lastReadingSpeed: 24000,
+        maxReadingSpeed: 24000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 60,
+        maxProgress: 0.35, // Unfinished at 35% drop-off (total 3 unfinished -> cliff shown)
+        readingTimeByProfile: { 'default-desktop': 2400 }
       }
     ]);
   });
