@@ -215,3 +215,41 @@ export async function seedReaderBook(
 
   return fullBook;
 }
+
+/**
+ * Seeds statistics records directly into the 'statistic' store in IndexedDB.
+ */
+export async function seedStatistics(page: Page, statistics: any[]): Promise<void> {
+  await page.evaluate(
+    async ({ stats, version }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('books', version);
+        request.onupgradeneeded = () => {
+          const d = request.result;
+          if (!d.objectStoreNames.contains('data')) {
+            const ds = d.createObjectStore('data', { keyPath: 'id', autoIncrement: true });
+            ds.createIndex('title', 'title');
+          }
+          if (!d.objectStoreNames.contains('statistic')) {
+            const ss = d.createObjectStore('statistic', { keyPath: ['title', 'dateKey'] });
+            ss.createIndex('dateKey', 'dateKey');
+            ss.createIndex('completedBook', ['completedBook', 'title']);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(['statistic'], 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        const store = tx.objectStore('statistic');
+        for (const s of stats) {
+          store.put(s);
+        }
+      });
+    },
+    { stats: statistics, version: currentDbVersion }
+  );
+}

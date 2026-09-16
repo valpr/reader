@@ -7,6 +7,7 @@
   import { HeatmapType } from '$lib/components/statistics/statistics-heatmap/statistics-heatmap';
   import StatisticsHeatmap from '$lib/components/statistics/statistics-heatmap/statistics-heatmap.svelte';
   import StatisticsSummary from '$lib/components/statistics/statistics-summary/statistics-summary.svelte';
+  import StatisticsLookback from '$lib/components/statistics/statistics-lookback/statistics-lookback.svelte';
   import type {
     StatisticsDeleteRequest,
     StatisticsEditRequest
@@ -842,6 +843,9 @@
       on:delete={handleDeleteRequest}
       on:edit={handleEditRequest}
     />
+  {/if}
+  {#if $lastStatisticsTab$ === StatisticsTab.LOOKBACK}
+    <StatisticsLookback {statisticsData} />
   {/if}
 {/if}
 {#if $statisticsTitleFilterIsOpen$}
