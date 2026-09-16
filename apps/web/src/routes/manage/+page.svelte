@@ -117,10 +117,44 @@
 
   function resolveReadSource(card: BookCardProps | undefined): StorageKey {
     if (!card?.sources?.length) return $storageSource$;
+    // Browser wins only when it holds real content. Placeholders (metadata
+    // only) fall through to cloud below via resolvePlaceholderSource().
     if (card.sources.includes(StorageKey.BROWSER)) return StorageKey.BROWSER;
     if (card.sources.includes(StorageKey.GDRIVE)) return StorageKey.GDRIVE;
     if (card.sources.includes(StorageKey.ONEDRIVE)) return StorageKey.ONEDRIVE;
     return card.sources[0];
+  }
+
+  async function resolvePlaceholderSource(
+    title: string
+  ): Promise<{ key: StorageKey; name: string } | undefined> {
+    const local = await database.getDataByTitle(title).catch(() => undefined);
+    const lastSource = local?.storageSource;
+    if (local?.elementHtml || !lastSource) return undefined;
+    if (
+      lastSource === StorageSourceDefault.GDRIVE_DEFAULT ||
+      lastSource === $gDriveStorageSource$
+    ) {
+      return { key: StorageKey.GDRIVE, name: lastSource };
+    }
+    if (
+      lastSource === StorageSourceDefault.ONEDRIVE_DEFAULT ||
+      lastSource === $oneDriveStorageSource$
+    ) {
+      return { key: StorageKey.ONEDRIVE, name: lastSource };
+    }
+    try {
+      const db = await database.db;
+      const record = await db.get('storageSource', lastSource);
+      if (record) return { key: record.type as StorageKey, name: lastSource };
+    } catch {
+      // fall through to heuristic
+    }
+    const lowered = lastSource.toLowerCase();
+    if (lowered.includes('onedrive')) return { key: StorageKey.ONEDRIVE, name: lastSource };
+    if (lowered.includes('gdrive') || lowered.includes('drive'))
+      return { key: StorageKey.GDRIVE, name: lastSource };
+    return undefined;
   }
 
   const unifiedLists$ = combineLatest([
@@ -361,19 +395,48 @@
       $readingGoalsMergeMode$
     );
 
-    const error = await replicateData(
-      sourceHandler,
-      browserHandler,
+    // Cloud handlers created for streaming return File payloads when
+    // isForBrowser=false, which Browser.save* silently ignores. Force
+    // object mode for the download so DATA/PROGRESS actually land locally.
+    const sourceName = sourceHandler.getCurrentStorageSource?.() || '';
+    sourceHandler.updateSettings(
+      window,
+      true,
+      $replicationSaveBehavior$,
+      $statisticsMergeMode$,
+      $readingGoalsMergeMode$,
+      $cacheStorageData$,
       false,
-      [{ title, imagePath }],
-      [
-        StorageDataType.DATA,
-        StorageDataType.PROGRESS,
-        StorageDataType.USER_BOOKMARKS,
-        StorageDataType.BOOK_TAGS
-      ],
-      cancelSignal
-    ).catch((err) => err.message);
+      sourceName
+    );
+
+    let error: string | undefined;
+    try {
+      error = await replicateData(
+        sourceHandler,
+        browserHandler,
+        false,
+        [{ title, imagePath }],
+        [
+          StorageDataType.DATA,
+          StorageDataType.PROGRESS,
+          StorageDataType.USER_BOOKMARKS,
+          StorageDataType.BOOK_TAGS
+        ],
+        cancelSignal
+      ).catch((err) => err.message);
+    } finally {
+      sourceHandler.updateSettings(
+        window,
+        false,
+        $replicationSaveBehavior$,
+        $statisticsMergeMode$,
+        $readingGoalsMergeMode$,
+        $cacheStorageData$,
+        false,
+        sourceName
+      );
+    }
 
     if (error) {
       throw new Error(error);
@@ -416,8 +479,27 @@
 
         failedBookTitle = bookItem.title;
 
-        const readSource = resolveReadSource(bookItem);
+        let readSource = resolveReadSource(bookItem);
+        let readSourceName =
+          readSource === StorageKey.GDRIVE
+            ? $gDriveStorageSource$
+            : readSource === StorageKey.ONEDRIVE
+              ? $oneDriveStorageSource$
+              : '';
         failedReadSource = readSource;
+
+        // Placeholder trap: Browser is preferred above, but a placeholder row
+        // (no elementHtml) cannot be read locally. Fall back to its original
+        // cloud source so All-view opens work.
+        let downloadedInThisClick = false;
+        if (readSource === StorageKey.BROWSER) {
+          const fallback = await resolvePlaceholderSource(bookItem.title);
+          if (fallback) {
+            readSource = fallback.key;
+            readSourceName = fallback.name;
+            failedReadSource = readSource;
+          }
+        }
 
         if (!operationAllowed(readSource)) {
           dialogManager.dialogs$.next([]);
@@ -428,11 +510,7 @@
         const handler = getStorageHandler(
           window,
           readSource,
-          readSource === StorageKey.GDRIVE
-            ? $gDriveStorageSource$
-            : readSource === StorageKey.ONEDRIVE
-              ? $oneDriveStorageSource$
-              : '',
+          readSourceName,
           isForBrowser,
           $cacheStorageData$,
           $replicationSaveBehavior$,
@@ -454,9 +532,10 @@
 
         if (handler instanceof ApiStorageHandler) {
           const remembered = externalReadAction$.getValue();
-          // Books that also exist locally open from Browser via resolveReadSource,
-          // so reaching here with a local copy means no sync-first warning: just continue.
-          const hasLocalCopy = (bookItem.sources || []).includes(StorageKey.BROWSER);
+          // A BROWSER source means metadata only until elementHtml exists;
+          // placeholders must still trigger the download/stream prompt.
+          const localCopy = await database.getDataByTitle(bookItem.title).catch(() => undefined);
+          const hasLocalCopy = !!localCopy?.elementHtml;
 
           if (remembered === 'download' && !hasLocalCopy) {
             idToOpen = await downloadCloudBookToBrowser(
@@ -464,6 +543,7 @@
               bookItem.title,
               bookItem.imagePath
             );
+            downloadedInThisClick = true;
           } else if (remembered !== 'stream' && !hasLocalCopy) {
             const nextAction = await new Promise<'download' | 'continue' | 'cancel'>((resolver) => {
               dialogManager.dialogs$.next([
@@ -489,11 +569,14 @@
                 bookItem.title,
                 bookItem.imagePath
               );
+              downloadedInThisClick = true;
             }
           }
         }
 
         dialogManager.dialogs$.next([]);
+        openBook(idToOpen, downloadedInThisClick);
+        return;
       } catch (error: any) {
         const message = `Error opening book: ${error.message}`;
 
@@ -544,7 +627,6 @@
         return;
       }
 
-      openBook(idToOpen);
       return;
     }
 
@@ -583,17 +665,17 @@
     return !replicationToProgress && connectivityPass;
   }
 
-  function openBook(bookId: number) {
+  function openBook(bookId: number, justDownloaded = false) {
     if (!bookId) {
       return;
     }
 
     database.putLastItem(bookId);
-    gotoBook(bookId);
+    gotoBook(bookId, justDownloaded);
   }
 
-  async function gotoBook(id: number) {
-    await goto(`${pagePath}/b?id=${id}`);
+  async function gotoBook(id: number, justDownloaded = false) {
+    await goto(`${pagePath}/b?id=${id}${justDownloaded ? '&justDownloaded=1' : ''}`);
   }
 
   async function onFilesChange(fileList: FileList | File[]) {
