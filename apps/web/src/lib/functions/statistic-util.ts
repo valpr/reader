@@ -137,7 +137,41 @@ export function mergeStatistics(
       !existingStatistic ||
       statistic.lastStatisticModified > existingStatistic.lastStatisticModified
     ) {
-      groupedStatistics.set(statistic.dateKey, statistic);
+      if (existingStatistic) {
+        const winner =
+          statistic.lastStatisticModified >= existingStatistic.lastStatisticModified
+            ? statistic
+            : existingStatistic;
+        const loser = winner === statistic ? existingStatistic : statistic;
+        const merged: BooksDbStatistic = { ...winner };
+
+        if (!merged.readingTimeByHour && loser.readingTimeByHour) {
+          merged.readingTimeByHour = [...loser.readingTimeByHour];
+        } else if (merged.readingTimeByHour && loser.readingTimeByHour) {
+          merged.readingTimeByHour = merged.readingTimeByHour.map((val, i) =>
+            Math.max(val, loser.readingTimeByHour?.[i] || 0)
+          );
+        }
+
+        if (loser.lookupCount) {
+          merged.lookupCount = Math.max(merged.lookupCount || 0, loser.lookupCount);
+        }
+        if (loser.sessionCount) {
+          merged.sessionCount = Math.max(merged.sessionCount || 0, loser.sessionCount);
+        }
+        if (loser.longestSessionSeconds) {
+          merged.longestSessionSeconds = Math.max(
+            merged.longestSessionSeconds || 0,
+            loser.longestSessionSeconds
+          );
+        }
+        if (loser.maxProgress !== undefined) {
+          merged.maxProgress = Math.max(merged.maxProgress || 0, loser.maxProgress);
+        }
+        groupedStatistics.set(statistic.dateKey, merged);
+      } else {
+        groupedStatistics.set(statistic.dateKey, statistic);
+      }
     }
   }
 
