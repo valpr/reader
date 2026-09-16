@@ -20,6 +20,7 @@
   import { MergeMode } from '$lib/data/merge-mode';
   import { getReadingGoalWindow, type ReadingGoal } from '$lib/data/reading-goal';
   import {
+    activeProfileId$,
     adjustStatisticsAfterIdleTime$,
     database,
     readingGoal$,
@@ -431,6 +432,12 @@
 
     if (isDisplayed && !wasDictionaryDisplayed) {
       todaysStatistics.lookupCount = (todaysStatistics.lookupCount || 0) + 1;
+      const currentHour = new Date().getHours();
+      if (!todaysStatistics.lookupsByHour) {
+        todaysStatistics.lookupsByHour = new Array(24).fill(0);
+      }
+      todaysStatistics.lookupsByHour[currentHour] =
+        (todaysStatistics.lookupsByHour[currentHour] || 0) + 1;
       statisticsToStore.add(todayKey);
     }
     wasDictionaryDisplayed = isDisplayed;
@@ -763,8 +770,28 @@
         }
       }
     }
+    if (entry.charactersByHour) {
+      if (!statistic.charactersByHour) {
+        statistic.charactersByHour = [...entry.charactersByHour];
+      } else {
+        for (let i = 0; i < 24; i += 1) {
+          statistic.charactersByHour[i] =
+            (statistic.charactersByHour[i] || 0) + (entry.charactersByHour[i] || 0);
+        }
+      }
+    }
     if (entry.lookupCount) {
       statistic.lookupCount = (statistic.lookupCount || 0) + entry.lookupCount;
+    }
+    if (entry.lookupsByHour) {
+      if (!statistic.lookupsByHour) {
+        statistic.lookupsByHour = [...entry.lookupsByHour];
+      } else {
+        for (let i = 0; i < 24; i += 1) {
+          statistic.lookupsByHour[i] =
+            (statistic.lookupsByHour[i] || 0) + (entry.lookupsByHour[i] || 0);
+        }
+      }
     }
     if (entry.sessionCount) {
       statistic.sessionCount = (statistic.sessionCount || 0) + entry.sessionCount;
@@ -777,6 +804,21 @@
     }
     if (entry.maxProgress !== undefined) {
       statistic.maxProgress = Math.max(statistic.maxProgress || 0, entry.maxProgress);
+    }
+    if (entry.readingTimeByProfile) {
+      if (!statistic.readingTimeByProfile) {
+        statistic.readingTimeByProfile = { ...entry.readingTimeByProfile };
+      } else {
+        const profiles = new Set([
+          ...Object.keys(statistic.readingTimeByProfile),
+          ...Object.keys(entry.readingTimeByProfile)
+        ]);
+        for (const profile of profiles) {
+          statistic.readingTimeByProfile[profile] =
+            (statistic.readingTimeByProfile[profile] || 0) +
+            (entry.readingTimeByProfile[profile] || 0);
+        }
+      }
     }
   }
 
@@ -812,6 +854,22 @@
       }
       statistic.readingTimeByHour[hourOfDay] =
         (statistic.readingTimeByHour[hourOfDay] || 0) + timeDiff;
+    }
+
+    if (hourOfDay !== undefined && characterDiff > 0) {
+      if (!statistic.charactersByHour) {
+        statistic.charactersByHour = new Array(24).fill(0);
+      }
+      statistic.charactersByHour[hourOfDay] =
+        (statistic.charactersByHour[hourOfDay] || 0) + characterDiff;
+    }
+
+    if (timeDiff > 0 && $activeProfileId$) {
+      if (!statistic.readingTimeByProfile) {
+        statistic.readingTimeByProfile = {};
+      }
+      statistic.readingTimeByProfile[$activeProfileId$] =
+        (statistic.readingTimeByProfile[$activeProfileId$] || 0) + timeDiff;
     }
 
     if (bookCharCount > 0 && exploredCharCount > 0) {

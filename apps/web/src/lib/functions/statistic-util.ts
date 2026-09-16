@@ -153,6 +153,22 @@ export function mergeStatistics(
           );
         }
 
+        if (!merged.charactersByHour && loser.charactersByHour) {
+          merged.charactersByHour = [...loser.charactersByHour];
+        } else if (merged.charactersByHour && loser.charactersByHour) {
+          merged.charactersByHour = merged.charactersByHour.map((val, i) =>
+            Math.max(val, loser.charactersByHour?.[i] || 0)
+          );
+        }
+
+        if (!merged.lookupsByHour && loser.lookupsByHour) {
+          merged.lookupsByHour = [...loser.lookupsByHour];
+        } else if (merged.lookupsByHour && loser.lookupsByHour) {
+          merged.lookupsByHour = merged.lookupsByHour.map((val, i) =>
+            Math.max(val, loser.lookupsByHour?.[i] || 0)
+          );
+        }
+
         if (loser.lookupCount) {
           merged.lookupCount = Math.max(merged.lookupCount || 0, loser.lookupCount);
         }
@@ -167,6 +183,23 @@ export function mergeStatistics(
         }
         if (loser.maxProgress !== undefined) {
           merged.maxProgress = Math.max(merged.maxProgress || 0, loser.maxProgress);
+        }
+
+        if (loser.readingTimeByProfile) {
+          if (!merged.readingTimeByProfile) {
+            merged.readingTimeByProfile = { ...loser.readingTimeByProfile };
+          } else {
+            const profiles = new Set([
+              ...Object.keys(merged.readingTimeByProfile),
+              ...Object.keys(loser.readingTimeByProfile)
+            ]);
+            for (const profile of profiles) {
+              merged.readingTimeByProfile[profile] = Math.max(
+                merged.readingTimeByProfile[profile] || 0,
+                loser.readingTimeByProfile[profile] || 0
+              );
+            }
+          }
         }
         groupedStatistics.set(statistic.dateKey, merged);
       } else {

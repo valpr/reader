@@ -116,4 +116,58 @@ test.describe('Enriched statistics data and merging (v9)', () => {
     expect(result.readingTimeByHour).toBeDefined();
     expect(result.readingTimeByHour?.[14]).toBe(500);
   });
+
+  test('merges concurrent offline sessions across different hours and profiles without overwriting', () => {
+    // Phone read offline at 8 AM with mobile profile
+    const phoneRecord: BooksDbStatistic = {
+      title: 'Book C',
+      dateKey: '2026-09-16',
+      charactersRead: 2000,
+      readingTime: 600,
+      minReadingSpeed: 12000,
+      altMinReadingSpeed: 12000,
+      lastReadingSpeed: 12000,
+      maxReadingSpeed: 12000,
+      lastStatisticModified: 1000,
+      charactersByHour: [0, 0, 0, 0, 0, 0, 0, 0, 2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      readingTimeByHour: [0, 0, 0, 0, 0, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      lookupsByHour: [0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      readingTimeByProfile: { 'default-mobile': 600 }
+    };
+
+    // Laptop read offline at 8 PM with desktop profile
+    const laptopRecord: BooksDbStatistic = {
+      title: 'Book C',
+      dateKey: '2026-09-16',
+      charactersRead: 3500,
+      readingTime: 1200,
+      minReadingSpeed: 10500,
+      altMinReadingSpeed: 10500,
+      lastReadingSpeed: 10500,
+      maxReadingSpeed: 10500,
+      lastStatisticModified: 2000,
+      charactersByHour: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3500, 0, 0, 0],
+      readingTimeByHour: [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1200, 0, 0, 0
+      ],
+      lookupsByHour: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0],
+      readingTimeByProfile: { 'default-desktop': 1200 }
+    };
+
+    const merged = mergeStatistics([laptopRecord], [phoneRecord], true);
+    expect(merged).toHaveLength(1);
+    const result = merged[0];
+
+    // Both hours are preserved
+    expect(result.charactersByHour?.[8]).toBe(2000);
+    expect(result.charactersByHour?.[20]).toBe(3500);
+    expect(result.readingTimeByHour?.[8]).toBe(600);
+    expect(result.readingTimeByHour?.[20]).toBe(1200);
+    expect(result.lookupsByHour?.[8]).toBe(15);
+    expect(result.lookupsByHour?.[20]).toBe(25);
+
+    // Both profiles are preserved
+    expect(result.readingTimeByProfile?.['default-mobile']).toBe(600);
+    expect(result.readingTimeByProfile?.['default-desktop']).toBe(1200);
+  });
 });
