@@ -161,7 +161,7 @@
 {#if isOpen}
   <div
     data-popover
-    class="max-w-60vw absolute z-10 rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] text-sm text-[var(--astryx-color-fg-primary,#18181b)] shadow-lg md:max-w-lg"
+    class="max-w-[calc(100vw-1rem)] max-w-[calc(100dvw-1rem)] absolute z-10 rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] text-sm text-[var(--astryx-color-fg-primary,#18181b)] shadow-lg md:max-w-lg"
     class:whitespace-pre-wrap={contentText}
     bind:this={popoverElement}
   >
