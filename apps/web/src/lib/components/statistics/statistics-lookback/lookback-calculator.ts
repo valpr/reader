@@ -568,7 +568,8 @@ export function calculateProfileBreakdown(
     let profileIcon = knownProfile?.icon;
 
     if (knownProfile) {
-      profileName = knownProfile.name;
+      profileName = knownProfile.name.trim() || 'Custom Profile';
+      profileIcon = knownProfile.icon || 'custom';
     } else if (profId === 'default-desktop') {
       profileName = 'PC / Desktop';
       profileIcon = 'desktop';
@@ -578,6 +579,9 @@ export function calculateProfileBreakdown(
     } else if (profId === 'default-tablet') {
       profileName = 'Tablet / E-Reader';
       profileIcon = 'tablet';
+    } else if (profId.startsWith('profile-')) {
+      profileName = 'Archived Profile';
+      profileIcon = 'custom';
     }
 
     const percentage = Math.round((sec / totalProfileSeconds) * 100);

@@ -367,7 +367,21 @@
           <div class="space-y-2 max-w-xs mx-auto text-xs text-left">
             {#each metrics.profileBreakdown as prof (prof.profileId)}
               <div class="flex justify-between text-white/80">
-                <span class="truncate max-w-[180px]">{prof.profileName}</span>
+                <span
+                  class="truncate max-w-[180px] flex items-center gap-1.5"
+                  title={prof.profileName}
+                >
+                  <span aria-hidden="true">
+                    {prof.profileIcon === 'desktop'
+                      ? '💻'
+                      : prof.profileIcon === 'mobile'
+                        ? '📱'
+                        : prof.profileIcon === 'tablet'
+                          ? '📟'
+                          : '🔖'}
+                  </span>
+                  <span class="truncate">{prof.profileName}</span>
+                </span>
                 <span class="font-bold">{prof.percentage}%</span>
               </div>
             {/each}

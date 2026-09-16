@@ -429,9 +429,19 @@
           <div class="space-y-1">
             <div class="flex items-center justify-between text-xs">
               <span
-                class="font-medium text-[var(--astryx-color-fg-primary,#18181b)] truncate max-w-[200px]"
+                class="font-medium text-[var(--astryx-color-fg-primary,#18181b)] truncate max-w-[200px] flex items-center gap-1.5"
+                title={prof.profileName}
               >
-                {prof.profileName}
+                <span aria-hidden="true">
+                  {prof.profileIcon === 'desktop'
+                    ? '💻'
+                    : prof.profileIcon === 'mobile'
+                      ? '📱'
+                      : prof.profileIcon === 'tablet'
+                        ? '📟'
+                        : '🔖'}
+                </span>
+                <span class="truncate">{prof.profileName}</span>
               </span>
               <span class="text-[var(--astryx-color-fg-muted,#71717a)]">
                 {formatSeconds(prof.readingTimeSeconds)} ({prof.percentage}%)

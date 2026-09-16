@@ -192,6 +192,49 @@ test.describe('Reading Lookback Calculator', () => {
     expect(breakdown[2].percentage).toBe(10);
   });
 
+  test('calculateProfileBreakdown supports user-added custom profiles and handles deleted profiles', () => {
+    const customProfiles: ReaderProfile[] = [
+      ...dummyProfiles,
+      {
+        id: 'profile-boox-palma',
+        name: '  Boox Palma  ',
+        icon: 'tablet',
+        updatedAt: 1,
+        settings: {} as any
+      },
+      {
+        id: 'profile-night-phone',
+        name: 'Bedtime Reading',
+        icon: 'mobile',
+        updatedAt: 1,
+        settings: {} as any
+      }
+    ];
+
+    const profileSeconds = new Map<string, number>([
+      ['profile-boox-palma', 5000], // Custom added profile
+      ['profile-night-phone', 3000], // Custom added profile
+      ['profile-deleted-device', 2000] // Deleted profile whose ID was in historical data
+    ]);
+
+    const breakdown = calculateProfileBreakdown(profileSeconds, customProfiles);
+    expect(breakdown).toHaveLength(3);
+    // #1 Boox Palma (trimmed name, custom icon)
+    expect(breakdown[0].profileName).toBe('Boox Palma');
+    expect(breakdown[0].profileIcon).toBe('tablet');
+    expect(breakdown[0].percentage).toBe(50);
+
+    // #2 Bedtime Reading
+    expect(breakdown[1].profileName).toBe('Bedtime Reading');
+    expect(breakdown[1].profileIcon).toBe('mobile');
+    expect(breakdown[1].percentage).toBe(30);
+
+    // #3 Archived Profile (deleted custom profile)
+    expect(breakdown[2].profileName).toBe('Archived Profile');
+    expect(breakdown[2].profileIcon).toBe('custom');
+    expect(breakdown[2].percentage).toBe(20);
+  });
+
   test('assigns Emerging Reader when under sample gate (<3 books or <=2 days)', () => {
     // Only 1 book and 1 day
     const statsFew: Partial<BooksDbStatistic>[] = [
