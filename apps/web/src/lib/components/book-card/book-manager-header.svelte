@@ -648,7 +648,7 @@
           </div>
         </Popover>
 
-        <Popover placement="bottom" fallbackPlacements={['bottom-end', 'bottom-start']} yOffset={4}>
+        <Popover placement="bottom-end" fallbackPlacements={['bottom-start', 'bottom']} yOffset={4}>
           <div slot="icon">
             <Tooltip text="Search and filter library">
               <Button
@@ -672,7 +672,7 @@
             </Tooltip>
           </div>
           <div
-            class="flex w-72 flex-col gap-3 rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] bg-[var(--astryx-color-surface,#ffffff)] p-3 shadow-lg"
+            class="flex w-72 max-w-[calc(100vw-2rem)] max-w-[calc(100dvw-2rem)] flex-col gap-3 p-3"
             slot="content"
           >
             <Input
