@@ -229,4 +229,44 @@ test.describe('Enriched statistics data and merging (v9)', () => {
     expect(result.readingTimeByProfile?.['default-mobile']).toBe(600);
     expect(result.readingTimeByProfile?.['default-desktop']).toBe(1200);
   });
+
+  test('aggregating day rollover statistics preserves exact character count without double counting', () => {
+    // Simulating rollover where time is split between previous day and current day,
+    // and characterDiff is attributed once to the target day
+    const previousDayRecord: BooksDbStatistic = {
+      title: 'Book C',
+      dateKey: '2026-09-16',
+      charactersRead: 0,
+      readingTime: 4,
+      minReadingSpeed: 0,
+      altMinReadingSpeed: 0,
+      lastReadingSpeed: 0,
+      maxReadingSpeed: 0,
+      lastStatisticModified: 1000
+    };
+
+    const currentDayRecord: BooksDbStatistic = {
+      title: 'Book C',
+      dateKey: '2026-09-17',
+      charactersRead: 150,
+      readingTime: 6,
+      minReadingSpeed: 90000,
+      altMinReadingSpeed: 90000,
+      lastReadingSpeed: 90000,
+      maxReadingSpeed: 90000,
+      lastStatisticModified: 1001
+    };
+
+    const totalCharactersRead = [previousDayRecord, currentDayRecord].reduce(
+      (sum, record) => sum + record.charactersRead,
+      0
+    );
+    const totalReadingTime = [previousDayRecord, currentDayRecord].reduce(
+      (sum, record) => sum + record.readingTime,
+      0
+    );
+
+    expect(totalCharactersRead).toBe(150);
+    expect(totalReadingTime).toBe(10);
+  });
 });

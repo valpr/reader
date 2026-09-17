@@ -116,12 +116,17 @@
       const otherDayStatistics =
         statistics.get(otherDayKey) || getDefaultStatistic(bookTitle, otherDayKey);
 
+      const otherDayCharDiff = overlappedDay ? 0 : characterDiff;
+      const otherDayHour = overlappedDay
+        ? new Date(referenceTick - secondsOnDay * 1000).getHours()
+        : referenceDate.getHours();
+
       updateStatistic(
         otherDayStatistics,
         otherDayTimeDiff,
-        characterDiff,
+        otherDayCharDiff,
         lastStatisticModified,
-        referenceDate.getHours()
+        otherDayHour
       );
 
       statistics.set(otherDayKey, otherDayStatistics);
@@ -133,7 +138,7 @@
           dateKey: otherDayStatistics.dateKey,
           dateTimeKey,
           timeDiff: otherDayTimeDiff,
-          characterDiff,
+          characterDiff: otherDayCharDiff,
           saved: false
         });
       }
@@ -358,8 +363,15 @@
 
   $: updateReadingGoalWindowForPausedState($isTrackerMenuOpen$);
 
-  $: if (!$isTrackerPaused$) {
-    updateLastExploredCharCount();
+  let wasPaused = true;
+  $: {
+    if ($isTrackerPaused$) {
+      updateLastExploredCharCount(exploredCharCount, frozenPosition);
+      wasPaused = true;
+    } else if (wasPaused) {
+      updateLastExploredCharCount(exploredCharCount, frozenPosition);
+      wasPaused = false;
+    }
   }
 
   $: if (autoScroller && !autoScrollerTimer$) {
@@ -411,6 +423,7 @@
   onMount(init);
 
   onDestroy(() => {
+    isTrackerPaused$.next(true);
     yomiObserver.disconnect();
     dictionaryObserver.disconnect();
   });
@@ -495,8 +508,8 @@
     isTrackerPaused$.next(false);
   }
 
-  function updateLastExploredCharCount() {
-    const referenceCharCount = frozenPosition !== -1 ? frozenPosition : exploredCharCount;
+  function updateLastExploredCharCount(charCount = exploredCharCount, frozen = frozenPosition) {
+    const referenceCharCount = frozen !== -1 ? frozen : charCount;
 
     if (lastExploredCharCount !== referenceCharCount) {
       previousLastExploredCharCount = lastExploredCharCount;
@@ -947,7 +960,7 @@
       bind:wasTrackerPaused
       on:trackerMenuClosed
       on:freezeCurrentLocation
-      on:updateCurrentLocation={updateLastExploredCharCount}
+      on:updateCurrentLocation={() => updateLastExploredCharCount()}
       on:saveStatistics={() => flushUpdates()}
       on:revertStatistic={revertTrackerHistory}
     />
