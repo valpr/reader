@@ -184,9 +184,21 @@
 
   const destroy$ = new Subject<void>();
 
+  let hasScrolledToInitialBookmark = false;
+
   $: bookmarkData.then((data) => {
     useExploredCharCount = false;
     updateBookmarkScreen(data);
+    if (
+      !hasScrolledToInitialBookmark &&
+      data &&
+      (data.exploredCharCount || 0) > 0 &&
+      bookmarkManager
+    ) {
+      hasScrolledToInitialBookmark = true;
+      exploredCharCount = data.exploredCharCount || 0;
+      bookmarkManager.scrollToBookmark(data);
+    }
   });
 
   $: if (width) width$.next(width);
@@ -198,6 +210,7 @@
   $: {
     if (htmlContent) {
       scrollWhenReady = true;
+      hasScrolledToInitialBookmark = false;
     }
   }
 
@@ -585,6 +598,7 @@
       scrollWhenReady = false;
       bookmarkData.then((data) => {
         if (!data || !bookmarkManager) return;
+        hasScrolledToInitialBookmark = true;
         exploredCharCount = data.exploredCharCount || 0;
         bookmarkManager.scrollToBookmark(data);
       });
