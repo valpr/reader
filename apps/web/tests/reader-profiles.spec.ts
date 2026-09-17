@@ -19,7 +19,7 @@ test.describe('Reader Profiles System', () => {
   test('displays default reader profiles and active indicator', async ({ page }) => {
     await expect(page.locator('text=PC / Desktop')).toBeVisible();
     await expect(page.locator('text=Mobile / Phone')).toBeVisible();
-    await expect(page.locator('text=Tablet')).toBeVisible();
+    await expect(page.locator('[role="button"]:has-text("Tablet")')).toBeVisible();
     await expect(page.locator('text=E-Reader / E-Ink')).toBeVisible();
 
     // Default profile should show Active badge
