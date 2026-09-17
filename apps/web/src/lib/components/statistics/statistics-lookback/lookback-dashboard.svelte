@@ -439,7 +439,9 @@
                       ? '📱'
                       : prof.profileIcon === 'tablet'
                         ? '📟'
-                        : '🔖'}
+                        : prof.profileIcon === 'ereader'
+                          ? '📖'
+                          : '🔖'}
                 </span>
                 <span class="truncate">{prof.profileName}</span>
               </span>

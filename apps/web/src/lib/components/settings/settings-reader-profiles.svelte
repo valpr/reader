@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    faBookOpen,
     faCheck,
     faClone,
     faComputer,
@@ -41,6 +42,7 @@
   } from '$lib/data/profiles/profile-manager';
   import {
     defaultDesktopSettings,
+    defaultEReaderSettings,
     defaultMobileSettings,
     defaultReaderProfiles,
     defaultTabletSettings,
@@ -203,6 +205,8 @@
         return faMobileScreen;
       case 'tablet':
         return faTabletScreenButton;
+      case 'ereader':
+        return faBookOpen;
       default:
         return faSliders;
     }
@@ -243,6 +247,8 @@
       templateSettings = defaultMobileSettings;
     } else if (newProfileTemplate === 'tablet') {
       templateSettings = defaultTabletSettings;
+    } else if (newProfileTemplate === 'ereader') {
+      templateSettings = defaultEReaderSettings;
     }
 
     suppressAutosave = true;
@@ -571,7 +577,8 @@
         options={[
           { value: 'desktop', label: 'Desktop / PC' },
           { value: 'mobile', label: 'Mobile / Phone' },
-          { value: 'tablet', label: 'Tablet / E-Reader' },
+          { value: 'tablet', label: 'Tablet / iPad' },
+          { value: 'ereader', label: 'E-Reader / E-Ink' },
           { value: 'custom', label: 'Custom / Sliders' }
         ]}
         size="sm"
@@ -592,7 +599,8 @@
           { value: 'current', label: 'Current Reader Settings' },
           { value: 'desktop', label: 'Desktop Preset (20px, Auto Columns)' },
           { value: 'mobile', label: 'Mobile Preset (17px, 1 Column, Tap Edge)' },
-          { value: 'tablet', label: 'Tablet Preset (22px, Balanced Margins)' }
+          { value: 'tablet', label: 'Tablet Preset (22px, Balanced Margins)' },
+          { value: 'ereader', label: 'E-Reader Preset (20px, 500 Weight, E-Ink)' }
         ]}
         size="sm"
       />
@@ -643,7 +651,8 @@
         options={[
           { value: 'desktop', label: 'Desktop / PC' },
           { value: 'mobile', label: 'Mobile / Phone' },
-          { value: 'tablet', label: 'Tablet / E-Reader' },
+          { value: 'tablet', label: 'Tablet / iPad' },
+          { value: 'ereader', label: 'E-Reader / E-Ink' },
           { value: 'custom', label: 'Custom / Sliders' }
         ]}
         size="sm"

@@ -611,3 +611,44 @@ export async function syncProfilesToCloudTarget(): Promise<string | undefined> {
     return err?.message || String(err);
   }
 }
+
+export const PROFILES_SCHEMA_VERSION = 2;
+
+export function ensureDefaultProfiles(): void {
+  if (!browser) return;
+  const storedVersion = Number(localStorage.getItem('readerProfilesVersion') || 0);
+  if (storedVersion >= PROFILES_SCHEMA_VERSION) return;
+
+  const currentProfiles = readerProfiles$.getValue() || [];
+  let modified = false;
+  const updated = [...currentProfiles];
+
+  // 1. If 'default-tablet' is still named 'Tablet / E-Reader', update name and description
+  const tabletIndex = updated.findIndex((p) => p.id === 'default-tablet');
+  if (tabletIndex !== -1 && updated[tabletIndex].name === 'Tablet / E-Reader') {
+    updated[tabletIndex] = {
+      ...updated[tabletIndex],
+      name: 'Tablet',
+      description: 'Spacious touch layout with generous margins for tablets (22px font)'
+    };
+    modified = true;
+  }
+
+  // 2. If 'default-ereader' does not exist, append it
+  if (!updated.some((p) => p.id === 'default-ereader')) {
+    const ereaderProfile = defaultReaderProfiles.find((p) => p.id === 'default-ereader');
+    if (ereaderProfile) {
+      updated.push(ereaderProfile);
+      modified = true;
+    }
+  }
+
+  if (modified) {
+    readerProfiles$.next(updated);
+  }
+  localStorage.setItem('readerProfilesVersion', String(PROFILES_SCHEMA_VERSION));
+}
+
+if (browser) {
+  ensureDefaultProfiles();
+}

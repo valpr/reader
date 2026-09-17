@@ -631,8 +631,11 @@ export function calculateProfileBreakdown(
       profileName = 'Mobile / Phone';
       profileIcon = 'mobile';
     } else if (profId === 'default-tablet') {
-      profileName = 'Tablet / E-Reader';
+      profileName = 'Tablet';
       profileIcon = 'tablet';
+    } else if (profId === 'default-ereader') {
+      profileName = 'E-Reader / E-Ink';
+      profileIcon = 'ereader';
     } else if (profId.startsWith('profile-')) {
       profileName = 'Archived Profile';
       profileIcon = 'custom';
