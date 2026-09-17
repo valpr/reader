@@ -11,6 +11,7 @@ export const SETTINGS_TABS = ['Reader', 'Data', 'Statistics'] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export const READER_SECTIONS = [
+  'profiles',
   'all',
   'appearance',
   'layout',
