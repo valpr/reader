@@ -4,6 +4,7 @@
   import { afterNavigate, beforeNavigate } from '$app/navigation';
   import SettingsContent from '$lib/components/settings/settings-content.svelte';
   import SettingsHeader from '$lib/components/settings/settings-header.svelte';
+  import { DEFAULT_READER_SECTION } from '$lib/components/settings/settings-tabs';
   import { pxScreen } from '$lib/css-classes';
   import {
     isStatisticsSettingsSyncSuppressed,
@@ -152,7 +153,7 @@
   let prevPage = `${pagePath}${mergeEntries.MANAGE.routeId}`;
 
   $: activeSettings = data.tab;
-  $: activeReaderSection = data.section ?? 'appearance';
+  $: activeReaderSection = data.section ?? DEFAULT_READER_SECTION;
   $: activeReaderSectionExplicit = data.sectionParam !== null;
 
   // Reader sections switch locally without navigation (see settings-content.svelte),

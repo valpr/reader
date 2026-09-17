@@ -9,6 +9,7 @@ import type { PageLoad } from './$types';
 import {
   DEFAULT_READER_SECTION,
   isReaderSection,
+  type ReaderSection,
   settingsTabFromSlug,
   settingsTabToSlug,
   settingsUrl
@@ -30,7 +31,12 @@ export const load: PageLoad = ({ params }) => {
     error(404, `Unknown settings section: ${rawSection}`);
   }
 
-  const section = rawSection?.toLowerCase() ?? (tab === 'Reader' ? DEFAULT_READER_SECTION : null);
+  const section: ReaderSection | null =
+    rawSection !== undefined && isReaderSection(rawSection)
+      ? (rawSection.toLowerCase() as ReaderSection)
+      : tab === 'Reader'
+        ? DEFAULT_READER_SECTION
+        : null;
 
   if (
     params.tab !== settingsTabToSlug(tab) ||

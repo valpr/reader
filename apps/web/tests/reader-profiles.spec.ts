@@ -59,7 +59,7 @@ test.describe('Reader Profiles System', () => {
 
   test('auto-saves modifications to active profile locally without a banner', async ({ page }) => {
     // Font size slider lives in the Typography section (bare /settings/reader
-    // defaults to the appearance section, which has no sliders).
+    // defaults to the profiles section, which has no sliders).
     await page.goto('/settings/reader/typography');
     await expect(
       page

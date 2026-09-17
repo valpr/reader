@@ -20,12 +20,12 @@ test.describe('Reader Settings Astryx List Layout', () => {
       const sidebar = page.getByTestId('reader-settings-sidebar');
       await expect(sidebar).toBeVisible();
 
-      // "Theme & Appearance" is selected by default
-      const appearanceItem = sidebar.locator('.astryx-list-item', {
-        hasText: 'Theme & Appearance'
+      // "Reader Profiles" is selected by default
+      const profilesItem = sidebar.locator('.astryx-list-item', {
+        hasText: 'Reader Profiles'
       });
-      await expect(appearanceItem).toBeVisible();
-      await expect(appearanceItem).toHaveClass(/is-selected/);
+      await expect(profilesItem).toBeVisible();
+      await expect(profilesItem).toHaveClass(/is-selected/);
 
       // "Typography & Fonts" is not selected
       const typographyItem = sidebar.locator('.astryx-list-item', {

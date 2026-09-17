@@ -78,7 +78,7 @@ test.describe('Navigation Performance & Mechanisms', () => {
     await page.goto('/settings/reader');
 
     // Reader settings (active by default) must be rendered
-    await expect(page.getByText('Appearance & Themes')).toBeVisible();
+    await expect(page.getByText('Active Device Profile')).toBeVisible();
 
     // Inactive tabs (Data and Statistics) must NOT be mounted in the DOM initially
     await expect(page.locator('text=Local Storage & Caching')).toHaveCount(0);
@@ -99,7 +99,7 @@ test.describe('Navigation Performance & Mechanisms', () => {
     await readerTab.click();
 
     // Both Reader and Data are in DOM, but Data is hidden
-    await expect(page.getByText('Appearance & Themes')).toBeVisible();
+    await expect(page.getByText('Active Device Profile')).toBeVisible();
     await expect(page.locator('text=Local Storage & Caching')).toBeHidden();
   });
 });

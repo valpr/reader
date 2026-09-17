@@ -76,19 +76,19 @@ test.describe('Settings tab URLs', () => {
       ).toHaveClass(/is-selected/);
     });
 
-    test('bare reader URL defaults to the appearance section', async ({ page }) => {
+    test('bare reader URL defaults to the reader profiles section', async ({ page }) => {
       await page.goto('/settings/reader');
       await expect(page).toHaveURL(/\/settings\/reader\/?$/);
       const contentPanel = page.getByTestId('reader-settings-content-panel');
       await expect(
-        contentPanel.getByRole('heading', { name: 'Appearance & Themes' })
+        contentPanel.getByRole('button', { name: 'Rename profile' }).first()
       ).toBeVisible();
       await expect(
         contentPanel.getByRole('heading', { name: 'Typography & Fonts' })
       ).not.toBeVisible();
       const sidebar = page.getByTestId('reader-settings-sidebar');
       await expect(
-        sidebar.locator('.astryx-list-item', { hasText: 'Theme & Appearance' })
+        sidebar.locator('.astryx-list-item', { hasText: 'Reader Profiles' })
       ).toHaveClass(/is-selected/);
     });
 
