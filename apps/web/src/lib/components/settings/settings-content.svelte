@@ -56,6 +56,7 @@
   import { defaultStorageSources } from '$lib/data/storage/storage-types';
   import { isStorageSourceAvailable } from '$lib/data/storage/storage-view';
   import {
+    activeProfileId$,
     appThemeMode$,
     type AppThemeMode,
     customThemes$,
@@ -63,6 +64,7 @@
     fontFamilyGroupOne$,
     fontFamilyGroupTwo$,
     horizontalCustomReadingPosition$,
+    readerProfiles$,
     textMarginMode$,
     textMarginValue$,
     theme$,
@@ -484,12 +486,17 @@
     { value: 'stream', label: 'Just continue' }
   ];
 
-  const readerSections = [
+  $: activeProfile = ($readerProfiles$ || []).find((p) => p.id === $activeProfileId$);
+  $: activeProfileDescription = activeProfile
+    ? `Active: ${activeProfile.name} • Device presets & backups`
+    : 'Device presets, custom profiles & backups';
+
+  $: readerSections = [
     {
-      id: 'all',
-      headline: 'All Settings',
-      description: 'View all reader settings continuously',
-      icon: faListUl
+      id: 'profiles',
+      headline: 'Reader Profiles',
+      description: 'Device presets, custom profiles & backups',
+      icon: faSliders
     },
     {
       id: 'appearance',
@@ -865,12 +872,6 @@
 
 {#if visitedTabs.has('Reader')}
   <div class="flex flex-col gap-5 w-full mx-auto pb-16" class:hidden={activeSettings !== 'Reader'}>
-    <!-- Reader Profiles (Universally accessible on both desktop and mobile) -->
-    <SettingsReaderProfiles
-      on:spinner={({ detail }) => (showSpinner = detail)}
-      on:profileChange={handleProfileChange}
-    />
-
     <!-- Main Settings Area: Left Astryx List (Desktop) & Drill-down (Mobile) -->
     <div class="flex flex-col md:flex-row gap-6 items-start w-full">
       <!-- Left Navigation Sidebar: Astryx List -->
@@ -921,6 +922,17 @@
           >
             {readerSections.find((s) => s.id === selectedReaderSection)?.headline ?? ''}
           </span>
+        </div>
+
+        <!-- Section: Reader Profiles -->
+        <div
+          class="flex flex-col gap-6"
+          class:hidden={currentActiveSection !== 'all' && currentActiveSection !== 'profiles'}
+        >
+          <SettingsReaderProfiles
+            on:spinner={({ detail }) => (showSpinner = detail)}
+            on:profileChange={handleProfileChange}
+          />
         </div>
 
         <!-- Section 1: Appearance & Theme -->

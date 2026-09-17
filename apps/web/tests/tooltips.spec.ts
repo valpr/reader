@@ -12,7 +12,7 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     page
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/settings/reader');
+    await page.goto('/settings/reader/profiles');
 
     // Ensure Reader Profiles section is loaded
     await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
@@ -57,7 +57,7 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     page
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/settings/reader');
+    await page.goto('/settings/reader/profiles');
 
     await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
     // Tooltips require JS hydration
