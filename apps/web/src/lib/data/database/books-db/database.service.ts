@@ -269,7 +269,7 @@ export class DatabaseService {
       }
     } else {
       // Until https://github.com/jakearchibald/idb/issues/150 resolves
-      const bookDataWithoutKey: Omit<BooksDbBookData, 'id'> = data;
+      const { id: _ignored, ...bookDataWithoutKey } = data as any;
       dataId = await store.add(bookDataWithoutKey as BooksDbBookData);
       bookData = { ...data, id: dataId };
     }
@@ -395,7 +395,12 @@ export class DatabaseService {
 
   async putUserBookmark(data: BooksDbUserBookmarkData): Promise<number> {
     const db = await this.db;
-    const id = (await db.put('userBookmark', data)) as number;
+    let dataToStore = data;
+    if (dataToStore.id === undefined) {
+      const { id: _ignored, ...withoutId } = dataToStore;
+      dataToStore = withoutId as BooksDbUserBookmarkData;
+    }
+    const id = (await db.put('userBookmark', dataToStore)) as number;
     if (!data.isAutosave) {
       const book = await db.get('data', data.dataId);
       if (book?.title) {
@@ -429,8 +434,9 @@ export class DatabaseService {
       await store.delete(nearby.id);
     }
 
+    const { id: _ignored, ...dataWithoutId } = data;
     await store.add({
-      ...data,
+      ...dataWithoutId,
       isAutosave: true
     });
 
@@ -499,6 +505,7 @@ export class DatabaseService {
   }
 
   async deleteUserBookmark(id: number): Promise<void> {
+    if (id === undefined || Number.isNaN(id)) return;
     const db = await this.db;
     const bookmark = await db.get('userBookmark', id);
     await db.delete('userBookmark', id);
@@ -544,9 +551,9 @@ export class DatabaseService {
         }
 
         for (const bm of bookmarks) {
+          const { id: _ignored, ...bmWithoutId } = bm;
           await ubStore.add({
-            ...bm,
-            id: undefined,
+            ...bmWithoutId,
             dataId
           });
         }
@@ -570,9 +577,9 @@ export class DatabaseService {
               });
             }
           } else {
+            const { id: _ignored, ...incomingWithoutId } = incoming;
             await ubStore.add({
-              ...incoming,
-              id: undefined,
+              ...incomingWithoutId,
               dataId
             });
           }
@@ -845,6 +852,7 @@ export class DatabaseService {
     statisticsMergeMode: MergeMode,
     currentLastModified = Date.now()
   ) {
+    if (!bookTitle) return;
     const db = await this.db;
 
     let statisticsToStore: BooksDbStatistic[] = statistics;
@@ -887,19 +895,24 @@ export class DatabaseService {
         );
       }
 
-      statisticsToStore.forEach((statistic) =>
-        tasks.push(
-          limiter(async () => {
-            try {
-              await statisticsStore.put(statistic);
-            } catch (error: any) {
-              limiter.clearQueue();
-
-              throw error;
-            }
-          })
+      statisticsToStore
+        .filter(
+          (statistic) =>
+            statistic && typeof statistic.dateKey === 'string' && statistic.dateKey.length > 0
         )
-      );
+        .forEach((statistic) =>
+          tasks.push(
+            limiter(async () => {
+              try {
+                await statisticsStore.put({ ...statistic, title: bookTitle });
+              } catch (error: any) {
+                limiter.clearQueue();
+
+                throw error;
+              }
+            })
+          )
+        );
 
       tasks.push(
         limiter(async () => {
@@ -1304,19 +1317,26 @@ export class DatabaseService {
         })
       );
 
-      readingGoalsToStore.forEach((readingGoal) =>
-        tasks.push(
-          limiter(async () => {
-            try {
-              await readingGoalStore.put(readingGoal);
-            } catch (error: any) {
-              limiter.clearQueue();
-
-              throw error;
-            }
-          })
+      readingGoalsToStore
+        .filter(
+          (readingGoal) =>
+            readingGoal &&
+            typeof readingGoal.goalStartDate === 'string' &&
+            readingGoal.goalStartDate.length > 0
         )
-      );
+        .forEach((readingGoal) =>
+          tasks.push(
+            limiter(async () => {
+              try {
+                await readingGoalStore.put(readingGoal);
+              } catch (error: any) {
+                limiter.clearQueue();
+
+                throw error;
+              }
+            })
+          )
+        );
 
       await Promise.all(tasks);
       await tx.done;
