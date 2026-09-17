@@ -27,9 +27,11 @@ test.describe('Reader Settings Astryx List Layout', () => {
       await expect(appearanceItem).toBeVisible();
       await expect(appearanceItem).toHaveClass(/is-selected/);
 
-      // "All Settings" is not selected
-      const allSettingsItem = sidebar.locator('.astryx-list-item', { hasText: 'All Settings' });
-      await expect(allSettingsItem).not.toHaveClass(/is-selected/);
+      // "Typography & Fonts" is not selected
+      const typographyItem = sidebar.locator('.astryx-list-item', {
+        hasText: 'Typography & Fonts'
+      });
+      await expect(typographyItem).not.toHaveClass(/is-selected/);
     });
 
     test('switches active section when clicking sidebar items in desktop view', async ({
@@ -72,16 +74,19 @@ test.describe('Reader Settings Astryx List Layout', () => {
         contentPanel.getByRole('heading', { name: 'Appearance & Themes' })
       ).not.toBeVisible();
 
-      // 3. Click "All Settings" to return to unified continuous view
-      const allSettingsItem = sidebar.locator('.astryx-list-item', { hasText: 'All Settings' });
-      await allSettingsItem.click();
-      await expect(allSettingsItem).toHaveClass(/is-selected/);
+      // 3. Click "Reader Profiles" to switch to profiles section
+      const profilesItem = sidebar.locator('.astryx-list-item', { hasText: 'Reader Profiles' });
+      await profilesItem.click();
+      await expect(profilesItem).toHaveClass(/is-selected/);
+      await expect(typographyItem).not.toHaveClass(/is-selected/);
 
-      // Both sections should now be visible
+      // Profiles section should now be visible
       await expect(
-        contentPanel.getByRole('heading', { name: 'Appearance & Themes' })
+        contentPanel.getByRole('button', { name: 'Rename profile' }).first()
       ).toBeVisible();
-      await expect(contentPanel.getByRole('heading', { name: 'Typography & Fonts' })).toBeVisible();
+      await expect(
+        contentPanel.getByRole('heading', { name: 'Typography & Fonts' })
+      ).not.toBeVisible();
     });
   });
 
@@ -139,16 +144,16 @@ test.describe('Reader Settings Astryx List Layout', () => {
       const sidebar = page.getByTestId('reader-settings-sidebar');
       await expect(sidebar).toBeVisible();
 
-      // Check "All Settings" item
-      const allSettingsHeadline = sidebar.locator('.astryx-list-item-headline', {
-        hasText: 'All Settings'
+      // Check "Reader Profiles" item
+      const profilesHeadline = sidebar.locator('.astryx-list-item-headline', {
+        hasText: 'Reader Profiles'
       });
-      await expect(allSettingsHeadline).toBeVisible();
-      const allBox = await allSettingsHeadline.boundingBox();
-      expect(allBox).not.toBeNull();
+      await expect(profilesHeadline).toBeVisible();
+      const profBox = await profilesHeadline.boundingBox();
+      expect(profBox).not.toBeNull();
       // Headline must be wide horizontally (>70px) and single-line height (<35px), not a 1-character vertical strip
-      expect(allBox!.width).toBeGreaterThan(70);
-      expect(allBox!.height).toBeLessThan(35);
+      expect(profBox!.width).toBeGreaterThan(70);
+      expect(profBox!.height).toBeLessThan(35);
 
       // Check "Theme & Appearance" item
       const themeHeadline = sidebar.locator('.astryx-list-item-headline', {
@@ -168,6 +173,50 @@ test.describe('Reader Settings Astryx List Layout', () => {
       const suffixBox = await chevronSuffix.boundingBox();
       expect(suffixBox).not.toBeNull();
       expect(suffixBox!.width).toBeLessThan(40);
+    });
+
+    test('mobile: sections list starts at top of viewport without profiles clutter and drill-down excludes profiles', async ({
+      page
+    }) => {
+      const sidebar = page.getByTestId('reader-settings-sidebar');
+      const contentPanel = page.getByTestId('reader-settings-content-panel');
+
+      // Sidebar list is at the top of the viewport
+      await expect(sidebar).toBeVisible();
+      const sidebarBox = await sidebar.boundingBox();
+      expect(sidebarBox).not.toBeNull();
+      expect(sidebarBox!.y).toBeLessThan(120);
+
+      // Tap "Typography & Fonts"
+      const typoItem = sidebar.locator('.astryx-list-item', {
+        hasText: 'Typography & Fonts'
+      });
+      await typoItem.click();
+
+      // Content panel is visible and starts at the top
+      await expect(contentPanel).toBeVisible();
+      const panelBox = await contentPanel.boundingBox();
+      expect(panelBox).not.toBeNull();
+      expect(panelBox!.y).toBeLessThan(120);
+
+      // Profiles card block is NOT visible in typography section
+      await expect(contentPanel.getByRole('button', { name: 'Rename profile' })).toBeHidden();
+      await expect(contentPanel.getByRole('heading', { name: 'Typography & Fonts' })).toBeVisible();
+
+      // Tap "All Settings" to return, then tap "Reader Profiles"
+      await contentPanel.getByRole('button', { name: /All Settings/i }).click();
+      await expect(sidebar).toBeVisible();
+
+      const profilesItem = sidebar.locator('.astryx-list-item', {
+        hasText: 'Reader Profiles'
+      });
+      await profilesItem.click();
+
+      // Profiles view is now visible with profile action controls
+      await expect(contentPanel).toBeVisible();
+      await expect(
+        contentPanel.getByRole('button', { name: 'Rename profile' }).first()
+      ).toBeVisible();
     });
   });
 });

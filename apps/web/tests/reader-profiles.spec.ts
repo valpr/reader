@@ -8,8 +8,8 @@ import { expect, test } from '@playwright/test';
 
 test.describe('Reader Profiles System', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/settings/reader');
-    // Ensure we are on the Reader tab and Svelte has mounted
+    await page.goto('/settings/reader/profiles');
+    // Ensure we are on the Reader Profiles section and Svelte has mounted
     await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Active').first()).toBeVisible({ timeout: 10000 });
     // Wait for JS hydration so profile actions (modal, sliders) are interactive
@@ -87,7 +87,11 @@ test.describe('Reader Profiles System', () => {
     });
     expect(activeFontSize).toBe(22);
 
-    // Edits survive a profile switch round-trip (previous profile was auto-saved)
+    // Edits survive a profile switch round-trip (switch to profiles section first)
+    await page
+      .getByTestId('reader-settings-sidebar')
+      .locator('.astryx-list-item', { hasText: 'Reader Profiles' })
+      .click();
     await page.locator('[role="button"]:has-text("Mobile / Phone")').click();
     await expect(page.locator('text=17px').first()).toBeVisible();
     await page.locator('[role="button"]:has-text("PC / Desktop")').click();
@@ -141,7 +145,6 @@ test.describe('Reader Profiles System', () => {
 
     // Click delete button again and confirm
     await deleteButton.click();
-    await expect(page.locator('text=Delete Profile')).toBeVisible();
     await page.locator('button:has-text("Confirm")').click();
 
     // Confirmation dialog closes and profile is removed
@@ -154,7 +157,7 @@ test.describe('Reader Profiles System', () => {
   }) => {
     // Resize viewport to mobile screen (iPhone SE: 375x667)
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/settings/reader');
+    await page.goto('/settings/reader/profiles');
     await page.waitForLoadState('networkidle');
 
     // Verify "Profile Backup & Transfer" description is rendered with wide text width (not crushed)

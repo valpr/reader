@@ -103,13 +103,15 @@ test.describe('Settings tab URLs', () => {
       await sidebar.locator('.astryx-list-item', { hasText: 'Typography & Fonts' }).click();
       await expect(page).toHaveURL(/\/settings\/reader\/typography\/?$/);
 
-      await sidebar.locator('.astryx-list-item', { hasText: 'All Settings' }).click();
-      await expect(page).toHaveURL(/\/settings\/reader\/all\/?$/);
+      await sidebar.locator('.astryx-list-item', { hasText: 'Reader Profiles' }).click();
+      await expect(page).toHaveURL(/\/settings\/reader\/profiles\/?$/);
       const contentPanel = page.getByTestId('reader-settings-content-panel');
       await expect(
-        contentPanel.getByRole('heading', { name: 'Appearance & Themes' })
+        contentPanel.getByRole('button', { name: 'Rename profile' }).first()
       ).toBeVisible();
-      await expect(contentPanel.getByRole('heading', { name: 'Typography & Fonts' })).toBeVisible();
+      await expect(
+        contentPanel.getByRole('heading', { name: 'Typography & Fonts' })
+      ).not.toBeVisible();
     });
   });
 
