@@ -205,9 +205,12 @@
     })`;
   }
 
+  let hasScrolledToInitialBookmark = false;
+
   $: {
     if (htmlContent) {
       scrollWhenReady = true;
+      hasScrolledToInitialBookmark = false;
     }
   }
 
@@ -259,11 +262,17 @@
   }
 
   $: {
-    if (contentReadyEvent) {
+    if (contentReadyEvent || (calculator && !loadingState)) {
       bookmarkPos = undefined;
       bookmarkData.then((data) => {
         if (!data) return;
+        const bm = bookmarkManagerConcrete || bookmarkManager;
         bookmarkPos = bookmarkManagerConcrete?.getBookmarkBarPosition(data);
+        if (!hasScrolledToInitialBookmark && (data.exploredCharCount || 0) > 0 && bm) {
+          hasScrolledToInitialBookmark = true;
+          prevIntendedCharCount = data.exploredCharCount || 0;
+          bm.scrollToBookmark(data, customReadingPointScrollOffset);
+        }
       });
     }
   }
@@ -483,12 +492,14 @@
 
       bookmarkData
         .then((data) => {
-          if (!data || !bookmarkManager) {
+          const bm = bookmarkManagerConcrete || bookmarkManager;
+          if (!data || !bm) {
             return;
           }
 
+          hasScrolledToInitialBookmark = true;
           prevIntendedCharCount = data.exploredCharCount || 0;
-          bookmarkManager.scrollToBookmark(data, customReadingPointScrollOffset);
+          bm.scrollToBookmark(data, customReadingPointScrollOffset);
         })
         .finally(() => {
           sectionList$
