@@ -159,12 +159,11 @@
 
   const unifiedLists$ = combineLatest([
     database.dataListChanged$.pipe(startWith(undefined)),
-    database.dataList$,
     gDriveStorageSource$,
     oneDriveStorageSource$,
     syncTarget$
   ]).pipe(
-    switchMap(([, , gDriveSource, oneDriveSource, primary]) => {
+    switchMap(([, gDriveSource, oneDriveSource, primary]) => {
       if (!browser || typeof window === 'undefined') return from([[]]);
       unifiedLoading$.next(true);
       // The first stream emission is always the local Browser list; later
@@ -1440,7 +1439,7 @@
         on:reconnect={handleCloudReconnect}
       />
     {/if}
-    {#if !$bookCards$ || $booksAreLoading$}
+    {#if !$bookCards$ || ($booksAreLoading$ && !$bookCards$.length)}
       <div class="flex justify-center pt-28 text-sm opacity-60">Loading...</div>
     {:else if $bookCards$.length}
       <BookCardList

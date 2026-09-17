@@ -169,7 +169,8 @@ export async function replicateData(
   refreshDataList: boolean,
   contexts: ReplicationContext[],
   dataToReplicate: StorageDataType[],
-  cancelSignal?: AbortSignal
+  cancelSignal?: AbortSignal,
+  skipTimestamp = false
 ) {
   const nonBookOperations = [
     StorageDataType.READING_GOALS,
@@ -197,6 +198,8 @@ export async function replicateData(
   const replicationLimiter = pLimit(1);
   const replicationTasks: Promise<void>[] = [];
 
+  let anyBookmarksChanged = false;
+  let anyUserBookmarksChanged = false;
   let errorMessage = '';
   let processed = 0;
 
@@ -372,11 +375,11 @@ export async function replicateData(
             }
 
             if (targetHandler.storageType === StorageKey.BROWSER && processProgressData) {
-              database.bookmarksChanged$.next();
+              anyBookmarksChanged = true;
             }
 
             if (targetHandler.storageType === StorageKey.BROWSER && processUserBookmarks) {
-              database.userBookmarksChanged$.next();
+              anyUserBookmarksChanged = true;
             }
           } else {
             checkCancelAndProgress(cancelSignal, true, true);
@@ -514,6 +517,14 @@ export async function replicateData(
 
   await Promise.all(replicationTasks).catch(() => {});
 
+  if (anyBookmarksChanged) {
+    database.bookmarksChanged$.next();
+  }
+
+  if (anyUserBookmarksChanged) {
+    database.userBookmarksChanged$.next();
+  }
+
   if (targetHandler instanceof BackupStorageHandler) {
     await targetHandler
       .createExportZip(document, cancelSignal?.aborted || !processed)
@@ -523,6 +534,7 @@ export async function replicateData(
   }
 
   if (
+    !skipTimestamp &&
     !errorMessage &&
     !cancelSignal?.aborted &&
     !(targetHandler instanceof BackupStorageHandler) &&
