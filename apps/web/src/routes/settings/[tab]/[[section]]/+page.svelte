@@ -155,9 +155,20 @@
   $: activeReaderSection = data.section ?? 'appearance';
   $: activeReaderSectionExplicit = data.sectionParam !== null;
 
+  // Reader sections switch locally without navigation (see settings-content.svelte),
+  // so the document title follows the silent `sectionChange` event. Real route
+  // changes reseed via `data` and clear the override.
+  let readerSectionOverride: string | null = null;
+  $: {
+    data.section;
+    data.sectionParam;
+    readerSectionOverride = null;
+  }
+  $: effectiveReaderSection = readerSectionOverride ?? activeReaderSection;
+
   $: settingsTitle =
-    activeSettings === 'Reader' && activeReaderSection !== 'all'
-      ? `Settings – Reader – ${activeReaderSection.charAt(0).toUpperCase()}${activeReaderSection.slice(1)}`
+    activeSettings === 'Reader' && effectiveReaderSection !== 'all'
+      ? `Settings – Reader – ${effectiveReaderSection.charAt(0).toUpperCase()}${effectiveReaderSection.slice(1)}`
       : `Settings – ${activeSettings}`;
 
   let storageQuota = '';
@@ -223,6 +234,7 @@
       {activeSettings}
       {activeReaderSection}
       {activeReaderSectionExplicit}
+      on:sectionChange={(e) => (readerSectionOverride = e.detail.section)}
       {storageQuota}
       bind:appThemeMode={$appThemeMode$}
       bind:selectedTheme={$theme$}

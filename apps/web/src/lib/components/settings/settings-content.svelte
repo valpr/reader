@@ -82,8 +82,7 @@
   } from '$lib/functions/replication/replication-options';
   import { map } from 'rxjs';
   import Fa from 'svelte-fa';
-  import { onDestroy } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { settingsUrl } from '$lib/components/settings/settings-tabs';
 
   export let appThemeMode: AppThemeMode = 'system';
@@ -247,8 +246,6 @@
   }));
 
   $: currentThemeOption = availableThemes.find(({ theme }) => theme === selectedTheme)?.option;
-
-  onDestroy(() => dialogManager.dialogs$.next([]));
 
   const optionsForFuriganaStyle: ToggleOption<FuriganaStyle>[] = [
     {
@@ -538,14 +535,108 @@
     }
   ];
 
-  // Reader sections are URL-driven (see routes/settings/[tab]/[[section]]).
-  // `activeReaderSection` comes from the route params (defaulting to 'appearance').
-  // The mobile drill-down opens only for explicit section URLs, so the mobile list
-  // stays the landing view while deep-links, back/forward and taps stay in sync.
-  $: selectedReaderSection = activeReaderSection;
-  $: mobileSelectedSection =
-    activeReaderSection === 'all' || !activeReaderSectionExplicit ? null : activeReaderSection;
-  $: currentActiveSection = activeReaderSection;
+  // Reader sections are local state (see routes/settings/[tab]/[[section]]).
+  // `activeReaderSection` / `activeReaderSectionExplicit` seed the initial view from
+  // the route params (defaulting to 'appearance') so deep-links still land on the
+  // right section. In-app switches never navigate: they update local state and sync
+  // the URL bar silently via `history.replaceState`, avoiding SvelteKit navigation
+  // scroll-to-top / reload flashes (notably the mobile drill-down jumping to top).
+  const dispatchSection = createEventDispatcher<{ sectionChange: { section: string } }>();
+
+  let selectedReaderSection: string = activeReaderSection;
+  let mobileDetailOpen: boolean = activeReaderSectionExplicit && activeReaderSection !== 'all';
+  let lastListScrollY = 0;
+  let lastPropSection: string = activeReaderSection;
+  let lastPropExplicit: boolean = activeReaderSectionExplicit;
+
+  // Real route changes (direct deep-link entry, tab switches, browser back/forward
+  // across routes) reseed local state. Silent `replaceState` URL syncs below do not
+  // touch these props, so local taps are never clobbered.
+  $: if (
+    activeReaderSection !== lastPropSection ||
+    activeReaderSectionExplicit !== lastPropExplicit
+  ) {
+    lastPropSection = activeReaderSection;
+    lastPropExplicit = activeReaderSectionExplicit;
+    selectedReaderSection = activeReaderSection;
+    mobileDetailOpen = activeReaderSectionExplicit && activeReaderSection !== 'all';
+  }
+
+  $: mobileSelectedSection = mobileDetailOpen ? selectedReaderSection : null;
+  $: currentActiveSection = selectedReaderSection;
+
+  function isMobileViewport(): boolean {
+    return (
+      browser &&
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia !== 'undefined' &&
+      window.matchMedia('(max-width: 767px)').matches
+    );
+  }
+
+  function syncSectionUrl(section: string | null) {
+    if (!browser || typeof window === 'undefined') return;
+    try {
+      window.history.replaceState(window.history.state, '', settingsUrl('Reader', section));
+    } catch {
+      // no-op: URL bar sync is best-effort, section state already updated
+    }
+  }
+
+  function selectSection(sectionId: string) {
+    const mobile = isMobileViewport();
+    if (mobile && !mobileDetailOpen && sectionId !== 'all' && typeof window !== 'undefined') {
+      lastListScrollY = window.scrollY;
+    }
+    const openingMobileDetail = mobile && !mobileDetailOpen && sectionId !== 'all';
+    selectedReaderSection = sectionId;
+    if (mobile) {
+      mobileDetailOpen = sectionId !== 'all';
+    }
+    syncSectionUrl(sectionId);
+    dispatchSection('sectionChange', { section: sectionId });
+    if (openingMobileDetail && typeof window !== 'undefined') {
+      window.scrollTo({ top: 0 });
+    }
+  }
+
+  function closeMobileDetail() {
+    mobileDetailOpen = false;
+    selectedReaderSection = 'appearance';
+    syncSectionUrl(null);
+    dispatchSection('sectionChange', { section: 'appearance' });
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: lastListScrollY });
+    }
+  }
+
+  function handlePopState() {
+    if (!browser || typeof window === 'undefined') return;
+    const match = window.location.pathname.match(/\/settings\/reader(?:\/([^/]+))?\/?$/i);
+    if (!match) return;
+    const section = match[1]?.toLowerCase();
+    if (section && section !== selectedReaderSection) {
+      selectedReaderSection = section;
+      mobileDetailOpen = section !== 'all';
+      dispatchSection('sectionChange', { section });
+    } else if (!section && mobileDetailOpen) {
+      mobileDetailOpen = false;
+      selectedReaderSection = 'appearance';
+      dispatchSection('sectionChange', { section: 'appearance' });
+    }
+  }
+
+  onMount(() => {
+    if (!browser || typeof window === 'undefined') return;
+    window.addEventListener('popstate', handlePopState);
+  });
+
+  onDestroy(() => {
+    if (browser && typeof window !== 'undefined') {
+      window.removeEventListener('popstate', handlePopState);
+    }
+    dialogManager.dialogs$.next([]);
+  });
 
   function handleProfileChange(e: CustomEvent<{ settings: any }>) {
     const s = e.detail?.settings;
@@ -794,7 +885,8 @@
               headline={section.headline}
               description={section.description}
               selected={selectedReaderSection === section.id}
-              href={settingsUrl('Reader', section.id)}
+              clickable
+              on:click={() => selectSection(section.id)}
             >
               <svelte:fragment slot="prefix">
                 <div class="w-5 text-center text-zinc-500 dark:text-zinc-400">
@@ -821,7 +913,7 @@
         <div
           class="md:hidden flex items-center justify-between pb-3 border-b border-[var(--astryx-color-border-subtle,#f4f4f5)]"
         >
-          <Button variant="ghost" size="sm" on:click={() => goto(settingsUrl('Reader'))}>
+          <Button variant="ghost" size="sm" on:click={closeMobileDetail}>
             <Fa icon={faChevronLeft} class="mr-1.5" /> All Settings
           </Button>
           <span

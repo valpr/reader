@@ -27,6 +27,8 @@ test.describe('Mobile: settings', () => {
     await sidebar.locator('.astryx-list-item', { hasText: 'Theme & Appearance' }).tap();
     await expect(contentPanel).toBeVisible();
     await expect(contentPanel.getByRole('heading', { name: 'Appearance & Themes' })).toBeVisible();
+    // Section tap syncs the URL silently without a navigation reload.
+    await expect(page).toHaveURL(/\/settings\/reader\/appearance\/?$/);
 
     await expectNoHorizontalOverflow(page);
   });
