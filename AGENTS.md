@@ -68,3 +68,33 @@ Dialog content must contain its text at 360–412px widths without spilling past
 - Never use fixed-width children (`w-64`, `max-w-xs`) inside dialog content; use `w-full max-w-full`. Flex/grid children need `min-w-0` (flex items default to `min-width: auto` and won't shrink).
 - The shell (`dialog-template.svelte` content wrapper) already applies `min-w-0` + `overflow-wrap: anywhere` as a backstop — per-dialog classes above are still required so truncation/tooltips behave correctly.
 - Mobile specs for dialogs must seed a long unbroken string (e.g. 40+ char title) and assert no descendant overflows the dialog.
+
+---
+
+## 5. Reader Profile Defaults
+
+There are **four distinct built-in device profiles** in [`profile-types.ts`](apps/web/src/lib/data/profiles/profile-types.ts). They are intentionally separate because display physics, viewing distance, and input ergonomics differ fundamentally across device classes.
+
+| Profile          | ID                | Font | Line Height | Columns  | Key differences                                                                                      |
+| ---------------- | ----------------- | ---- | ----------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| PC / Desktop     | `default-desktop` | 20px | 1.65        | 0 (auto) | Mouse/keyboard, no tap-edge, wake lock off                                                           |
+| Mobile / Phone   | `default-mobile`  | 17px | 1.55        | 1        | Closest viewing distance → smaller font, swipe threshold 15px, wake lock on                          |
+| Tablet           | `default-tablet`  | 22px | 1.70        | 1        | High-DPI LCD, wide bezel → 24px margin, swipe threshold 15px, wake lock on                           |
+| E-Reader / E-Ink | `default-ereader` | 20px | 1.60        | 1        | E-Ink physics → fontWeight 500 (stroke boost), 10px margin, swipe threshold 20px, forced light theme |
+
+**Rationale for key values:**
+
+- **Font size hierarchy (Mobile 17 < Desktop 20 = E-Reader 20 < Tablet 22):** Calibrated to visual angle at each device's typical viewing distance. Phones are held at ~25 cm; tablets at ~45 cm; E-Ink often propped further.
+- **fontWeight 500 on E-Reader:** E-Ink Carta panels are reflective, ~15:1 contrast vs. LCD ~1000:1. Medium weight makes kanji stroke density legible without front-light blooming.
+- **enableVerticalFontKerning: true (all profiles):** Noto Serif/Sans JP ship full `vkrn` OpenType tables; modern Blink/WebKit apply them at near-zero cost and tighten Japanese punctuation spacing in vertical text.
+- **Wake lock on Mobile & Tablet:** Reading a Japanese page (300–500 chars + lookups) routinely exceeds the OS 30-second idle timer. Desktop monitors have longer native timeouts.
+- **swipeThreshold 20px on E-Reader:** Low-refresh E-Ink (~10 Hz) shows ghost streaks on drag; a higher threshold forces deliberate taps rather than accidental swipes.
+- **firstDimensionMargin 24px on Tablet, 10px on E-Reader:** Slim-bezel tablets need digital breathing room for thumb grip; E-Ink devices have wide physical plastic borders that already provide clearance.
+- **secondDimensionMaxValue 900px on Tablet:** Prevents column height from exceeding ~42 characters on large-screen tablets, matching traditional bunkobon paperback line lengths.
+
+**Adding or changing a default profile value:**
+
+1. Edit the relevant `default*Settings` constant in `profile-types.ts`.
+2. If removing or renaming a profile, bump `PROFILES_SCHEMA_VERSION` in `profile-manager.ts` and add a migration branch inside `ensureDefaultProfiles()` — existing users' localStorage will be updated on next load.
+3. Update the profile description string and E2E assertions in `reader-profiles.spec.ts` (font size visibility checks, profile name locators).
+4. If adding a new `ProfileIconType`, also update: `getIcon()` in `settings-reader-profiles.svelte`, the icon/template `Select` options in both Create and Rename modals, and the emoji ternary chains in `lookback-dashboard.svelte` and `lookback-story-player.svelte`.
