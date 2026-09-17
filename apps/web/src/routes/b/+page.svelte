@@ -745,6 +745,15 @@
 
   onMount(() => document.addEventListener('ttu-action', handleAction, false));
 
+  onDestroy(() => {
+    if (browser) {
+      autoScroller?.off();
+      wasTrackerPaused = true;
+      isTrackerPaused$.next(true);
+      document.removeEventListener('ttu-action', handleAction, false);
+    }
+  });
+
   function handleAction({ detail }: any) {
     if (!detail.type) {
       return;

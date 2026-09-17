@@ -137,7 +137,9 @@ export async function triggerCloudSync(
       targetHandler,
       false,
       contexts,
-      dataTypes
+      dataTypes,
+      undefined,
+      true
     );
     if (error) return error;
 
@@ -150,7 +152,9 @@ export async function triggerCloudSync(
         localStorageHandler,
         false,
         contexts,
-        dataTypes
+        dataTypes,
+        undefined,
+        true
       );
       if (downError) return downError;
     }
