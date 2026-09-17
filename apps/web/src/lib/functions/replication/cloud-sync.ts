@@ -124,11 +124,13 @@ export async function triggerCloudSync(
 
     const db = await database.db;
     const books = await db.getAll('data');
-    const contexts = books.map((b) => ({
-      id: b.id,
-      title: b.title,
-      imagePath: b.coverImage || ''
-    }));
+    const contexts = books
+      .filter((b) => b && typeof b.title === 'string' && b.title.trim().length > 0)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        imagePath: b.coverImage || ''
+      }));
 
     const error = await replicateData(
       localStorageHandler,

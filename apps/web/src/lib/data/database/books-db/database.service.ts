@@ -155,6 +155,9 @@ export class DatabaseService {
   }
 
   async getLastModifiedForType(title: string, dataType: string) {
+    if (!title || !dataType) {
+      return 0;
+    }
     const db = await this.db;
     const result = await db.get('lastModified', [title, dataType]);
 
@@ -162,7 +165,7 @@ export class DatabaseService {
   }
 
   async getData(dataId: number) {
-    if (!Number.isNaN(dataId)) {
+    if (typeof dataId === 'number' && !Number.isNaN(dataId)) {
       const db = await this.db;
       return db.get('data', dataId);
     }
@@ -183,6 +186,9 @@ export class DatabaseService {
     startDaysHoursForTracker: number,
     existingStatistic?: BooksDbStatistic
   ) {
+    if (!bookTitle) {
+      return ['', false];
+    }
     const db = await this.db;
 
     let firstStatistic = existingStatistic;
@@ -297,31 +303,33 @@ export class DatabaseService {
 
     replicationProgress$.next({ progressBase: 1, maxProgress: dataIds.length });
 
-    dataIds.forEach((id) =>
-      tasks.push(
-        limiter(async () => {
-          try {
-            throwIfAborted(cancelSignal);
+    dataIds
+      .filter((id) => typeof id === 'number' && !Number.isNaN(id))
+      .forEach((id) =>
+        tasks.push(
+          limiter(async () => {
+            try {
+              throwIfAborted(cancelSignal);
 
-            deleted.push(
-              await this.deleteSingleData(
-                db,
-                id,
-                idsToTitles.get(id),
-                { lastItem, bookmarkIds },
-                !keepLocalStatistics
-              )
-            );
-          } catch (error) {
-            errorMessage = handleErrorDuringReplication(
-              error,
-              `Error deleting Book with id ${id}: `,
-              [limiter]
-            );
-          }
-        })
-      )
-    );
+              deleted.push(
+                await this.deleteSingleData(
+                  db,
+                  id,
+                  idsToTitles.get(id),
+                  { lastItem, bookmarkIds },
+                  !keepLocalStatistics
+                )
+              );
+            } catch (error) {
+              errorMessage = handleErrorDuringReplication(
+                error,
+                `Error deleting Book with id ${id}: `,
+                [limiter]
+              );
+            }
+          })
+        )
+      );
 
     await Promise.all(tasks).catch(() => {});
 
@@ -329,6 +337,9 @@ export class DatabaseService {
   }
 
   async getBookmark(dataId: number) {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
+      return undefined;
+    }
     const db = await this.db;
     return db.get('bookmark', dataId);
   }
@@ -340,6 +351,9 @@ export class DatabaseService {
    * Callers must refresh the handler card cache (see manage page).
    */
   async updateBookTags(dataId: number, tags: string[]) {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
+      throw new Error('Invalid book ID');
+    }
     const db = await this.db;
     const book = await db.get('data', dataId);
 
@@ -382,18 +396,31 @@ export class DatabaseService {
   }
 
   async putBookmark(bookmarkData: BooksDbBookmarkData) {
+    if (
+      !bookmarkData ||
+      typeof bookmarkData.dataId !== 'number' ||
+      Number.isNaN(bookmarkData.dataId)
+    ) {
+      return;
+    }
     const db = await this.db;
 
     return db.put('bookmark', bookmarkData);
   }
 
   async getUserBookmarks(dataId: number): Promise<BooksDbUserBookmarkData[]> {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
+      return [];
+    }
     const db = await this.db;
     const all = await db.getAllFromIndex('userBookmark', 'dataId', dataId);
     return all.sort((a, b) => a.exploredCharCount - b.exploredCharCount);
   }
 
   async putUserBookmark(data: BooksDbUserBookmarkData): Promise<number> {
+    if (!data || typeof data.dataId !== 'number' || Number.isNaN(data.dataId)) {
+      throw new Error('Invalid user bookmark data');
+    }
     const db = await this.db;
     let dataToStore = data;
     if (dataToStore.id === undefined) {
@@ -416,6 +443,9 @@ export class DatabaseService {
   }
 
   async putAutosaveBookmark(data: BooksDbUserBookmarkData, maxKeep: number = 10): Promise<void> {
+    if (!data || typeof data.dataId !== 'number' || Number.isNaN(data.dataId)) {
+      return;
+    }
     const db = await this.db;
     const tx = db.transaction('userBookmark', 'readwrite');
     const store = tx.objectStore('userBookmark');
@@ -455,6 +485,9 @@ export class DatabaseService {
   }
 
   async clearAutosaveBookmarks(dataId: number): Promise<void> {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
+      return;
+    }
     const db = await this.db;
     const tx = db.transaction('userBookmark', 'readwrite');
     const store = tx.objectStore('userBookmark');
@@ -477,6 +510,7 @@ export class DatabaseService {
     color?: BookmarkColor,
     note?: string
   ): Promise<void> {
+    if (typeof id !== 'number' || Number.isNaN(id)) return;
     const db = await this.db;
     const bookmark = await db.get('userBookmark', id);
     if (!bookmark) return;
@@ -505,7 +539,7 @@ export class DatabaseService {
   }
 
   async deleteUserBookmark(id: number): Promise<void> {
-    if (id === undefined || Number.isNaN(id)) return;
+    if (typeof id !== 'number' || Number.isNaN(id)) return;
     const db = await this.db;
     const bookmark = await db.get('userBookmark', id);
     await db.delete('userBookmark', id);
@@ -528,6 +562,7 @@ export class DatabaseService {
     saveBehavior: ReplicationSaveBehavior,
     lastModified?: number
   ): Promise<void> {
+    if (!title) return;
     const book = await this.getDataByTitle(title);
     if (!book || !book.id) return;
 
@@ -612,18 +647,21 @@ export class DatabaseService {
   }
 
   async putAudioBook(audioBook: BooksDbAudioBook) {
+    if (!audioBook?.title) return;
     const db = await this.db;
 
     return db.put('audioBook', audioBook);
   }
 
   async putSubtitleData(subtitleData: BooksDbSubtitleData) {
+    if (!subtitleData?.title) return;
     const db = await this.db;
 
     return db.put('subtitle', subtitleData);
   }
 
   async putLastItem(dataId: number) {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) return;
     const db = await this.db;
     const result = await db.put('lastItem', { dataId }, LAST_ITEM_KEY);
     this.lastItemChanged$.next();
@@ -756,6 +794,9 @@ export class DatabaseService {
     isSyncTarget: boolean,
     isStorageSourceDefault: boolean
   ) {
+    if (!storageSource?.name) {
+      throw new Error('Storage source name is required');
+    }
     const db = await this.db;
     const tx = db.transaction(['storageSource'], 'readwrite');
 
@@ -802,6 +843,7 @@ export class DatabaseService {
     wasSyncTarget: boolean,
     wasStorageSourceDefault: boolean
   ) {
+    if (!toDelete?.name) return;
     const db = await this.db;
 
     await db.delete('storageSource', toDelete.name);
@@ -816,24 +858,36 @@ export class DatabaseService {
   }
 
   async getStatisticsForBook(bookTitle: string) {
+    if (!bookTitle) {
+      return [];
+    }
     const db = await this.db;
 
     return db.getAll('statistic', IDBKeyRange.bound([bookTitle], [bookTitle, []]));
   }
 
   async getStatisticForCompletedBook(bookTitle: string) {
+    if (!bookTitle) {
+      return undefined;
+    }
     const db = await this.db;
 
     return db.getFromIndex('statistic', 'completedBook', [1, bookTitle]);
   }
 
   async getStatisticsForTimeWindow(startDate: string, endDate: string) {
+    if (!startDate || !endDate) {
+      return [];
+    }
     const db = await this.db;
 
     return db.getAllFromIndex('statistic', 'dateKey', IDBKeyRange.bound(startDate, endDate));
   }
 
   async getStatisticsUntilDate(bookTitle: string, maxDate: string) {
+    if (!bookTitle || !maxDate) {
+      return [];
+    }
     const db = await this.db;
 
     const results = await db.getAllFromIndex(
@@ -945,6 +999,9 @@ export class DatabaseService {
   }
 
   async updateStatistic(newStatistic: BookStatistic) {
+    if (!newStatistic?.title || !newStatistic?.dateKey) {
+      throw new Error('Invalid statistic data');
+    }
     const db = await this.db;
 
     let existingStatistic = await db.get('statistic', [newStatistic.title, newStatistic.dateKey]);
@@ -1030,8 +1087,10 @@ export class DatabaseService {
         tasks.push(
           limiter(async () => {
             try {
-              titlesToDelete.add(statistic.title);
-              await statisticsStore.delete([statistic.title, statistic.dateKey]);
+              if (statistic?.title && statistic?.dateKey) {
+                titlesToDelete.add(statistic.title);
+                await statisticsStore.delete([statistic.title, statistic.dateKey]);
+              }
             } catch (error: any) {
               limiter.clearQueue();
 
@@ -1045,7 +1104,9 @@ export class DatabaseService {
         tasks.push(
           limiter(async () => {
             try {
-              await lastModifiedStore.delete([titleToDelete, StorageDataType.STATISTICS]);
+              if (titleToDelete) {
+                await lastModifiedStore.delete([titleToDelete, StorageDataType.STATISTICS]);
+              }
             } catch (error: any) {
               limiter.clearQueue();
 
@@ -1075,7 +1136,8 @@ export class DatabaseService {
     startDateString = '',
     endDateString = ''
   ) {
-    if (!bookTitles.length || (startDateString && !endDateString)) {
+    const validTitles = bookTitles.filter((t) => typeof t === 'string' && t.trim().length > 0);
+    if (!validTitles.length || (startDateString && !endDateString)) {
       throw new Error('Received invalid Arguments for deleteStatisticEntries');
     }
 
@@ -1101,21 +1163,23 @@ export class DatabaseService {
         }
       }
 
-      bookTitles.forEach((bookTitle) => {
+      validTitles.forEach((bookTitle) => {
         if (dates.length) {
-          dates.forEach((dateKey) => {
-            tasks.push(
-              limiter(async () => {
-                try {
-                  await statisticsStore.delete([bookTitle, dateKey]);
-                } catch (error: any) {
-                  limiter.clearQueue();
+          dates
+            .filter((dateKey) => typeof dateKey === 'string' && dateKey.length > 0)
+            .forEach((dateKey) => {
+              tasks.push(
+                limiter(async () => {
+                  try {
+                    await statisticsStore.delete([bookTitle, dateKey]);
+                  } catch (error: any) {
+                    limiter.clearQueue();
 
-                  throw error;
-                }
-              })
-            );
-          });
+                    throw error;
+                  }
+                })
+              );
+            });
         } else {
           tasks.push(
             limiter(async () => {
@@ -1184,6 +1248,9 @@ export class DatabaseService {
   }
 
   async getCurrentClosedReadingGoal(referenceDate: string) {
+    if (!referenceDate) {
+      return undefined;
+    }
     const db = await this.db;
     const readingGoals = await db.getAll('readingGoal', IDBKeyRange.upperBound(referenceDate));
 
@@ -1218,7 +1285,17 @@ export class DatabaseService {
     readingGoalsToDelete: string[],
     readingGoalsToInsert: BooksDbReadingGoal[]
   ) {
-    if (!readingGoalsToDelete.length && !readingGoalsToInsert.length) {
+    const validDeletions = readingGoalsToDelete.filter(
+      (readingGoal) => typeof readingGoal === 'string' && readingGoal.length > 0
+    );
+    const validInsertions = readingGoalsToInsert.filter(
+      (readingGoal) =>
+        readingGoal &&
+        typeof readingGoal.goalStartDate === 'string' &&
+        readingGoal.goalStartDate.length > 0
+    );
+
+    if (!validDeletions.length && !validInsertions.length) {
       return;
     }
 
@@ -1230,7 +1307,7 @@ export class DatabaseService {
       const limiter = pLimit(1);
       const tasks: Promise<void>[] = [];
 
-      readingGoalsToDelete.forEach((readingGoal) =>
+      validDeletions.forEach((readingGoal) =>
         tasks.push(
           limiter(async () => {
             try {
@@ -1244,7 +1321,7 @@ export class DatabaseService {
         )
       );
 
-      readingGoalsToInsert.forEach((readingGoal) =>
+      validInsertions.forEach((readingGoal) =>
         tasks.push(
           limiter(async () => {
             try {
@@ -1361,9 +1438,9 @@ export class DatabaseService {
   async deleteReadingGoal(dateKey?: string) {
     const db = await this.db;
 
-    if (dateKey) {
+    if (typeof dateKey === 'string' && dateKey.length > 0) {
       await db.delete('readingGoal', dateKey);
-    } else {
+    } else if (dateKey === undefined) {
       await db.clear('readingGoal');
     }
 
@@ -1371,12 +1448,14 @@ export class DatabaseService {
   }
 
   async getAudioBook(title: string) {
+    if (!title) return undefined;
     const db = await this.db;
 
     return db.get('audioBook', title);
   }
 
   async getSubtitleData(title: string) {
+    if (!title) return undefined;
     const db = await this.db;
 
     return db.get('subtitle', title);
