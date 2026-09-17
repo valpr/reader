@@ -508,7 +508,7 @@
   description="Select your primary cloud sync target. Automatic sync runs only against this target — reading progress, statistics, goals, and bookmarks stay on one provider so two clouds can never conflict. Your library shows local books plus books on this target; the other cloud is only touched when you open one of its books, and you will be asked to reconnect first if its session expired."
 >
   <ListItem layout="stacked">
-    <div class="flex flex-col gap-4 w-full">
+    <div class="flex flex-col gap-4 w-full min-w-0">
       <!-- Dropdown Selector -->
       <div class="w-full">
         {#key selectKey}
@@ -532,11 +532,15 @@
       <!-- Active Provider Card -->
       {#if !listLoading}
         {#if activeSource}
-          <Card variant="surface" padding="md" class="border border-zinc-200 dark:border-zinc-800">
-            <div class="flex flex-col gap-3">
+          <Card
+            variant="surface"
+            padding="md"
+            class="w-full max-w-full min-w-0 border border-zinc-200 dark:border-zinc-800"
+          >
+            <div class="flex flex-col gap-3 w-full min-w-0">
               <!-- Header Row -->
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
+              <div class="flex items-center justify-between gap-3 min-w-0">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
                   <div
                     class="w-10 h-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0 text-zinc-700 dark:text-zinc-300"
                   >
@@ -544,13 +548,21 @@
                       <path d={activeIcon.d} />
                     </svg>
                   </div>
-                  <div>
+                  <div class="min-w-0 flex-1">
                     <h4
-                      class="text-base font-semibold text-zinc-900 dark:text-zinc-100 leading-tight"
+                      class="text-base font-semibold text-zinc-900 dark:text-zinc-100 leading-tight truncate"
+                      title={getProviderDisplayName(activeSource)}
                     >
                       {getProviderDisplayName(activeSource)}
                     </h4>
-                    <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    <div
+                      class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate"
+                      title={isCloudSource &&
+                      activeConnectionState === StorageConnectionState.CONNECTED &&
+                      activeEmail
+                        ? `Connected as ${activeEmail}`
+                        : undefined}
+                    >
                       {#if isCloudSource}
                         {#if activeConnectionState === StorageConnectionState.CONNECTED}
                           {activeEmail ? `Connected as ${activeEmail}` : 'Connected'}
@@ -571,7 +583,7 @@
                 </div>
 
                 <!-- Status Badge -->
-                <div>
+                <div class="shrink-0">
                   {#if isCloudSource}
                     {#if activeConnectionState === StorageConnectionState.CONNECTED}
                       <span
@@ -619,15 +631,19 @@
 
               <!-- Sync Status Row -->
               <div
-                class="flex flex-wrap items-center justify-between gap-2 py-2.5 px-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800"
+                class="flex flex-wrap items-center justify-between gap-2 py-2.5 px-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 min-w-0"
               >
-                <div class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                <div
+                  class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300 min-w-0"
+                >
                   {#if isSyncing}
-                    <Fa icon={faSpinner} spin class="text-sky-500" />
-                    <span class="font-medium">Syncing data with cloud...</span>
+                    <Fa icon={faSpinner} spin class="text-sky-500 shrink-0" />
+                    <span class="font-medium break-words [overflow-wrap:anywhere]"
+                      >Syncing data with cloud...</span
+                    >
                   {:else}
-                    <Fa icon={faCloud} class="text-zinc-400 dark:text-zinc-500" />
-                    <span
+                    <Fa icon={faCloud} class="text-zinc-400 dark:text-zinc-500 shrink-0" />
+                    <span class="break-words [overflow-wrap:anywhere]"
                       >Sync status: <strong class="font-medium text-zinc-900 dark:text-zinc-100"
                         >{relativeSyncTime}</strong
                       ></span
@@ -639,6 +655,7 @@
                   <Button
                     size="sm"
                     variant="secondary"
+                    class="shrink-0"
                     disabled={isSyncing}
                     on:click={() => triggerManualSync(activeSource?.name || '')}
                   >
@@ -655,33 +672,39 @@
               <!-- Disconnected State: Opt-In Switch & Connect Button -->
               {#if isCloudSource && activeConnectionState !== StorageConnectionState.CONNECTED && activeConnectionState !== StorageConnectionState.NEEDS_RECONNECT}
                 <div
-                  class="flex items-center justify-between p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60 mt-1"
+                  class="flex items-center justify-between gap-3 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60 mt-1 min-w-0"
                 >
-                  <div>
-                    <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  <div class="min-w-0 flex-1">
+                    <div
+                      class="text-sm font-medium text-zinc-900 dark:text-zinc-100 break-words [overflow-wrap:anywhere]"
+                    >
                       Enable automatic background sync across devices (Recommended)
                     </div>
-                    <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    <div
+                      class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 break-words [overflow-wrap:anywhere]"
+                    >
                       Automatically keeps your reading progress, bookmarks, and statistics in sync
                       as you read.
                     </div>
                   </div>
-                  <Switch bind:checked={enableAutoSyncOnConnect} />
+                  <div class="shrink-0">
+                    <Switch bind:checked={enableAutoSyncOnConnect} />
+                  </div>
                 </div>
 
                 {#if isCloudSource && !isSourceConfigured}
                   <div
-                    class="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 mt-1 flex flex-col gap-1.5"
+                    class="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 mt-1 flex flex-col gap-1.5 min-w-0"
                   >
                     <div class="font-semibold flex items-center gap-1.5">
-                      <Fa icon={faTriangleExclamation} />
-                      OAuth Setup Required
+                      <Fa icon={faTriangleExclamation} class="shrink-0" />
+                      <span>OAuth Setup Required</span>
                     </div>
-                    <div>
-                      {getProviderDisplayName(activeSource)} requires an OAuth Client ID to connect.
-                      You can provide
+                    <div class="break-words [overflow-wrap:anywhere]">
+                      {getProviderDisplayName(activeSource)} requires an OAuth Client ID to connect. You
+                      can provide
                       <code
-                        class="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 font-mono text-[11px]"
+                        class="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 font-mono text-[11px] break-all"
                       >
                         {activeSource.name === StorageSourceDefault.GDRIVE_DEFAULT
                           ? 'VITE_GDRIVE_CLIENT_ID'
@@ -693,7 +716,7 @@
                   </div>
                 {/if}
 
-                <div class="flex justify-end mt-2">
+                <div class="flex justify-end mt-2 min-w-0">
                   <Button
                     variant="primary"
                     disabled={!!actionLoading[activeSource.name]}
@@ -710,40 +733,46 @@
               <!-- Connected State: Inline Auto-Sync & Session Actions -->
               {#if isCloudSource && (activeConnectionState === StorageConnectionState.CONNECTED || activeConnectionState === StorageConnectionState.NEEDS_RECONNECT)}
                 <div
-                  class="flex items-center justify-between py-2 border-t border-zinc-100 dark:border-zinc-800 mt-1"
+                  class="flex items-center justify-between gap-3 py-2 border-t border-zinc-100 dark:border-zinc-800 mt-1 min-w-0"
                 >
-                  <div>
-                    <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  <div class="min-w-0 flex-1">
+                    <div
+                      class="text-sm font-medium text-zinc-900 dark:text-zinc-100 break-words [overflow-wrap:anywhere]"
+                    >
                       Automatic Background Sync
                     </div>
-                    <div class="text-xs text-zinc-500 dark:text-zinc-400">
+                    <div
+                      class="text-xs text-zinc-500 dark:text-zinc-400 break-words [overflow-wrap:anywhere]"
+                    >
                       {$autoReplication$ !== AutoReplicationType.Off
                         ? 'Enabled (two-way background sync active while reading)'
                         : 'Disabled (manual sync only via Sync Now)'}
                     </div>
                   </div>
-                  <Switch
-                    checked={$autoReplication$ !== AutoReplicationType.Off}
-                    on:change={(e) => {
-                      $autoReplication$ = e.detail
-                        ? AutoReplicationType.All
-                        : AutoReplicationType.Off;
-                    }}
-                  />
+                  <div class="shrink-0">
+                    <Switch
+                      checked={$autoReplication$ !== AutoReplicationType.Off}
+                      on:change={(e) => {
+                        $autoReplication$ = e.detail
+                          ? AutoReplicationType.All
+                          : AutoReplicationType.Off;
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <!-- Action buttons -->
                 <div
-                  class="flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800 pt-3 mt-1"
+                  class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-zinc-100 dark:border-zinc-800 pt-3 mt-1 min-w-0"
                 >
-                  <div class="text-xs text-zinc-500 dark:text-zinc-400">
-                    {#if activeConnectionState === StorageConnectionState.NEEDS_RECONNECT}
-                      <span class="text-amber-500 dark:text-amber-400 font-medium"
-                        >Session has expired. Please reconnect to resume syncing.</span
-                      >
-                    {/if}
-                  </div>
-                  <div class="flex items-center gap-2">
+                  {#if activeConnectionState === StorageConnectionState.NEEDS_RECONNECT}
+                    <div
+                      class="text-xs text-amber-500 dark:text-amber-400 font-medium min-w-0 break-words [overflow-wrap:anywhere]"
+                    >
+                      Session has expired. Please reconnect to resume syncing.
+                    </div>
+                  {/if}
+                  <div class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:ml-auto">
                     <Button
                       size="sm"
                       variant={activeConnectionState === StorageConnectionState.NEEDS_RECONNECT
@@ -781,8 +810,12 @@
           </Card>
         {:else}
           <!-- No Storage Source Selected (Local Only) -->
-          <Card variant="surface" padding="md" class="border border-zinc-200 dark:border-zinc-800">
-            <div class="flex items-start gap-3">
+          <Card
+            variant="surface"
+            padding="md"
+            class="w-full max-w-full min-w-0 border border-zinc-200 dark:border-zinc-800"
+          >
+            <div class="flex items-start gap-3 min-w-0">
               <div
                 class="w-10 h-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0 text-zinc-600 dark:text-zinc-400"
               >
@@ -793,11 +826,13 @@
                   <path d={getStorageIconData(StorageKey.BROWSER).d} />
                 </svg>
               </div>
-              <div>
+              <div class="min-w-0 flex-1">
                 <h4 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">
                   Local Storage Only
                 </h4>
-                <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                <p
+                  class="text-sm text-zinc-500 dark:text-zinc-400 mt-1 break-words [overflow-wrap:anywhere]"
+                >
                   Your reading progress, statistics, and bookmarks are saved strictly on this
                   device. To enable automatic backups and cross-device sync, select <strong
                     >Google Drive</strong
@@ -831,13 +866,20 @@
         </button>
 
         {#if showAdvanced}
-          <div class="mt-3 flex flex-col gap-3">
-            <div class="flex items-center justify-between">
-              <p class="text-xs text-zinc-500 dark:text-zinc-400">
+          <div class="mt-3 flex flex-col gap-3 min-w-0">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+              <p
+                class="text-xs text-zinc-500 dark:text-zinc-400 min-w-0 break-words [overflow-wrap:anywhere]"
+              >
                 Configure your own OAuth Client IDs, master password encryption, or local folder
                 directory handles.
               </p>
-              <Button size="sm" variant="secondary" on:click={() => modifyStorageSource()}>
+              <Button
+                size="sm"
+                variant="secondary"
+                class="shrink-0 self-start sm:self-auto"
+                on:click={() => modifyStorageSource()}
+              >
                 <Fa icon={faPlus} class="mr-1.5" />
                 <span>Add Custom Source</span>
               </Button>
