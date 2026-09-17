@@ -85,7 +85,7 @@
   import { map } from 'rxjs';
   import Fa from 'svelte-fa';
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
-  import { settingsUrl } from '$lib/components/settings/settings-tabs';
+  import { DEFAULT_READER_SECTION, settingsUrl } from '$lib/components/settings/settings-tabs';
 
   export let appThemeMode: AppThemeMode = 'system';
 
@@ -181,7 +181,7 @@
 
   export let activeSettings: string;
 
-  export let activeReaderSection = 'appearance';
+  export let activeReaderSection: string = DEFAULT_READER_SECTION;
 
   export let activeReaderSectionExplicit = false;
 
@@ -544,7 +544,7 @@
 
   // Reader sections are local state (see routes/settings/[tab]/[[section]]).
   // `activeReaderSection` / `activeReaderSectionExplicit` seed the initial view from
-  // the route params (defaulting to 'appearance') so deep-links still land on the
+  // the route params (defaulting to 'profiles') so deep-links still land on the
   // right section. In-app switches never navigate: they update local state and sync
   // the URL bar silently via `history.replaceState`, avoiding SvelteKit navigation
   // scroll-to-top / reload flashes (notably the mobile drill-down jumping to top).
@@ -609,9 +609,9 @@
 
   function closeMobileDetail() {
     mobileDetailOpen = false;
-    selectedReaderSection = 'appearance';
+    selectedReaderSection = DEFAULT_READER_SECTION;
     syncSectionUrl(null);
-    dispatchSection('sectionChange', { section: 'appearance' });
+    dispatchSection('sectionChange', { section: DEFAULT_READER_SECTION });
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: lastListScrollY });
     }
@@ -628,8 +628,8 @@
       dispatchSection('sectionChange', { section });
     } else if (!section && mobileDetailOpen) {
       mobileDetailOpen = false;
-      selectedReaderSection = 'appearance';
-      dispatchSection('sectionChange', { section: 'appearance' });
+      selectedReaderSection = DEFAULT_READER_SECTION;
+      dispatchSection('sectionChange', { section: DEFAULT_READER_SECTION });
     }
   }
 
