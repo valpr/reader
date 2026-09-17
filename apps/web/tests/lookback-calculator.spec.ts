@@ -35,8 +35,15 @@ test.describe('Reading Lookback Calculator', () => {
     },
     {
       id: 'default-tablet',
-      name: 'Tablet / E-Reader',
+      name: 'Tablet',
       icon: 'tablet',
+      updatedAt: 1,
+      settings: {} as any
+    },
+    {
+      id: 'default-ereader',
+      name: 'E-Reader / E-Ink',
+      icon: 'ereader',
       updatedAt: 1,
       settings: {} as any
     }
@@ -190,7 +197,7 @@ test.describe('Reading Lookback Calculator', () => {
     expect(breakdown[0].percentage).toBe(60);
     expect(breakdown[1].profileName).toBe('PC / Desktop');
     expect(breakdown[1].percentage).toBe(30);
-    expect(breakdown[2].profileName).toBe('Tablet / E-Reader');
+    expect(breakdown[2].profileName).toBe('Tablet');
     expect(breakdown[2].percentage).toBe(10);
   });
 

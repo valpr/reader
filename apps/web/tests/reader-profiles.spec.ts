@@ -19,7 +19,8 @@ test.describe('Reader Profiles System', () => {
   test('displays default reader profiles and active indicator', async ({ page }) => {
     await expect(page.locator('text=PC / Desktop')).toBeVisible();
     await expect(page.locator('text=Mobile / Phone')).toBeVisible();
-    await expect(page.locator('text=Tablet / E-Reader')).toBeVisible();
+    await expect(page.locator('text=Tablet')).toBeVisible();
+    await expect(page.locator('text=E-Reader / E-Ink')).toBeVisible();
 
     // Default profile should show Active badge
     const activeBadge = page.locator('text=Active').first();
@@ -40,9 +41,14 @@ test.describe('Reader Profiles System', () => {
     // No unsaved-changes banner exists anymore (settings auto-save)
     await expect(page.getByTestId('unsaved-changes-banner')).toHaveCount(0);
 
-    // Switch to Tablet / E-Reader
-    await page.locator('[role="button"]:has-text("Tablet / E-Reader")').click();
+    // Switch to Tablet
+    await page.locator('[role="button"]:has-text("Tablet")').click();
     await expect(page.locator('text=22px').first()).toBeVisible();
+    await expect(page.getByTestId('unsaved-changes-banner')).toHaveCount(0);
+
+    // Switch to E-Reader / E-Ink
+    await page.locator('[role="button"]:has-text("E-Reader / E-Ink")').click();
+    await expect(page.locator('text=20px').first()).toBeVisible();
     await expect(page.getByTestId('unsaved-changes-banner')).toHaveCount(0);
 
     // Switch back to PC / Desktop

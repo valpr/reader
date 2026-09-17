@@ -76,7 +76,7 @@ export interface ReaderProfileSettings {
   showFooterChapterPercentage: boolean;
 }
 
-export type ProfileIconType = 'desktop' | 'mobile' | 'tablet' | 'custom';
+export type ProfileIconType = 'desktop' | 'mobile' | 'tablet' | 'ereader' | 'custom';
 
 export interface ReaderProfile {
   id: string;
@@ -146,7 +146,7 @@ export const defaultDesktopSettings: ReaderProfileSettings = {
   prioritizeReaderStyles: false,
   enableTextJustification: false,
   enableTextWrapPretty: false,
-  enableVerticalFontKerning: false,
+  enableVerticalFontKerning: true,
   enableFontVPAL: false,
   verticalTextOrientation: 'mixed',
   hideFurigana: false,
@@ -176,7 +176,8 @@ export const defaultMobileSettings: ReaderProfileSettings = {
   lineHeight: 1.55,
   pageColumns: 1,
   swipeThreshold: 15,
-  enableTapEdgeToFlip: true
+  enableTapEdgeToFlip: true,
+  enableReaderWakeLock: true
 };
 
 export const defaultTabletSettings: ReaderProfileSettings = {
@@ -184,9 +185,26 @@ export const defaultTabletSettings: ReaderProfileSettings = {
   fontSize: 22,
   lineHeight: 1.7,
   pageColumns: 1,
-  firstDimensionMargin: 20,
+  firstDimensionMargin: 24,
   secondDimensionMaxValue: 900,
-  enableTapEdgeToFlip: true
+  swipeThreshold: 15,
+  enableTapEdgeToFlip: true,
+  enableReaderWakeLock: true
+};
+
+export const defaultEReaderSettings: ReaderProfileSettings = {
+  ...defaultDesktopSettings,
+  fontSize: 20,
+  lineHeight: 1.6,
+  fontWeight: 500,
+  pageColumns: 1,
+  firstDimensionMargin: 10,
+  secondDimensionMaxValue: 0,
+  swipeThreshold: 20,
+  enableTapEdgeToFlip: true,
+  enableReaderWakeLock: true,
+  appThemeMode: 'light',
+  theme: 'light-theme'
 };
 
 export const defaultReaderProfiles: ReaderProfile[] = [
@@ -210,11 +228,20 @@ export const defaultReaderProfiles: ReaderProfile[] = [
   },
   {
     id: 'default-tablet',
-    name: 'Tablet / E-Reader',
+    name: 'Tablet',
     icon: 'tablet',
-    description: 'Balanced margins for tablets and handheld reading (22px font)',
+    description: 'Spacious touch layout with generous margins for tablets (22px font)',
     updatedAt: 1,
     isDefault: true,
     settings: defaultTabletSettings
+  },
+  {
+    id: 'default-ereader',
+    name: 'E-Reader / E-Ink',
+    icon: 'ereader',
+    description: 'High contrast & medium font weight for E-Ink devices (20px font, 500 weight)',
+    updatedAt: 1,
+    isDefault: true,
+    settings: defaultEReaderSettings
   }
 ];

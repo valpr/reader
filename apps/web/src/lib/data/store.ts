@@ -106,7 +106,7 @@ export const writingMode$ = writableStringLocalStorageSubject<WritingMode>()(
 );
 export const enableVerticalFontKerning$ = writableBooleanLocalStorageSubject()(
   'enableVerticalFontKerning',
-  false
+  true
 );
 export const enableFontVPAL$ = writableBooleanLocalStorageSubject()('enableFontVPAL', false);
 export const verticalTextOrientation$ =
