@@ -95,6 +95,9 @@ test.describe('Settings tab URLs', () => {
     test('sidebar clicks update the section URL', async ({ page }) => {
       await page.goto('/settings/reader');
       await expect(page.locator('text=Reader Profiles').first()).toBeVisible();
+      // Section switches are local-state buttons (no navigation), so wait for
+      // hydration before clicking; bare anchors would navigate natively instead.
+      await page.waitForLoadState('networkidle');
 
       const sidebar = page.getByTestId('reader-settings-sidebar');
       await sidebar.locator('.astryx-list-item', { hasText: 'Typography & Fonts' }).click();

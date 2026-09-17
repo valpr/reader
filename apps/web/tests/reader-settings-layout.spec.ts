@@ -103,7 +103,7 @@ test.describe('Reader Settings Astryx List Layout', () => {
       await expect(sidebar).toBeVisible();
       await expect(contentPanel).toBeHidden();
 
-      // Tap "Theme & Appearance" in the list
+      // Tap "Theme & Appearance" in the list (local state, no navigation reload)
       const appearanceItem = sidebar.locator('.astryx-list-item', {
         hasText: 'Theme & Appearance'
       });
@@ -112,6 +112,8 @@ test.describe('Reader Settings Astryx List Layout', () => {
       // Now: sidebar is hidden, content panel is visible with section details
       await expect(sidebar).toBeHidden();
       await expect(contentPanel).toBeVisible();
+      // URL bar still syncs silently so the section stays shareable
+      await expect(page).toHaveURL(/\/settings\/reader\/appearance\/?$/);
 
       // Appearance controls are visible
       await expect(
@@ -126,6 +128,7 @@ test.describe('Reader Settings Astryx List Layout', () => {
       // Returns to list overview
       await expect(sidebar).toBeVisible();
       await expect(contentPanel).toBeHidden();
+      await expect(page).toHaveURL(/\/settings\/reader\/?$/);
     });
 
     test('thin mobile window: list item headlines and descriptions render horizontally and do not stack vertically', async ({

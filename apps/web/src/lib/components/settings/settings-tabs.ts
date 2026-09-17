@@ -43,6 +43,9 @@ export function isReaderSection(value: string | undefined | null): value is Read
  * Builds the canonical URL for a settings tab, optionally with a Reader section.
  * The bare `/settings/reader` URL defaults to the appearance section (see +page.ts).
  * Every explicit section (including `all`) maps to `/settings/reader/<section>`.
+ * Section URLs are entry/share targets only: in-app section switches use local
+ * state plus silent `history.replaceState` sync (no navigation) to avoid
+ * scroll-to-top / reload flashes on mobile.
  */
 export function settingsUrl(tab: string, section?: string | null): string {
   const slug = settingsTabToSlug(tab);
