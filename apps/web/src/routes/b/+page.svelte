@@ -385,9 +385,13 @@
         );
       }
 
+      if (bookData?.id) {
+        bookmarkData = resolveResumeBookmark(bookData.id);
+      }
+
       return bookData;
     }),
-    share()
+    shareReplay({ refCount: true, bufferSize: 1 })
   );
 
   const leaveIfBookMissing$ = rawBookData$.pipe(
@@ -401,11 +405,23 @@
 
   const initBookmarkData$ = rawBookData$.pipe(
     tap((rawBookData) => {
-      if (!rawBookData) return;
+      if (!rawBookData?.id) return;
       bookmarkData = resolveResumeBookmark(rawBookData.id);
     }),
     reduceToEmptyString()
   );
+
+  function mapUserBookmarkToBookmark(
+    dataId: number,
+    bookmark: BooksDbUserBookmarkData
+  ): BooksDbBookmarkData {
+    return {
+      dataId,
+      exploredCharCount: bookmark.exploredCharCount,
+      progress: bookmark.progress,
+      lastBookmarkModified: Math.max(bookmark.lastModified || 0, bookmark.createdAt || 0)
+    };
+  }
 
   function mapAutosaveToBookmark(
     dataId: number,
@@ -456,18 +472,28 @@
       database.getBookmark(dataId),
       database.getUserBookmarks(dataId).catch(() => [] as BooksDbUserBookmarkData[])
     ]);
+
+    // Find the newest checkpoint across all user bookmarks (manual bookmarks or rolling autosaves)
+    const latestUserBookmark = all
+      .slice()
+      .sort(
+        (a, b) =>
+          Math.max(b.lastModified || 0, b.createdAt || 0) -
+          Math.max(a.lastModified || 0, a.createdAt || 0)
+      )[0];
+
     const latestAutosave = all
       .filter((b) => b.isAutosave)
       .sort((a, b) => b.createdAt - a.createdAt)[0];
 
     if (!stored) {
-      if (!latestAutosave) return undefined;
-      const mapped = mapAutosaveToBookmark(dataId, latestAutosave);
+      if (!latestUserBookmark) return undefined;
+      const mapped = mapUserBookmarkToBookmark(dataId, latestUserBookmark);
       await database.putBookmark(mapped);
       return mapped;
     }
 
-    if (!latestAutosave) {
+    if (!latestUserBookmark) {
       // Forward-fill history from the legacy position so future resumes converge.
       if ($autosaveHistoryEnabled$ && (stored.exploredCharCount || 0) > 0) {
         void seedLegacyBookmarkAsAutosave(dataId, stored).catch(() => undefined);
@@ -475,11 +501,31 @@
       return stored;
     }
 
-    if ((latestAutosave.createdAt || 0) >= (stored.lastBookmarkModified || 0)) {
-      const mapped = mapAutosaveToBookmark(dataId, latestAutosave);
+    const userBookmarkTime = Math.max(
+      latestUserBookmark.lastModified || 0,
+      latestUserBookmark.createdAt || 0
+    );
+    const storedTime = stored.lastBookmarkModified || 0;
+
+    // Prefer user bookmark/autosave if stored has 0 characters but user bookmark has reading progress,
+    // or if the user bookmark was modified more recently than the stored bookmark.
+    const preferUserBookmark =
+      ((stored.exploredCharCount || 0) === 0 && (latestUserBookmark.exploredCharCount || 0) > 0) ||
+      userBookmarkTime >= storedTime;
+
+    if (preferUserBookmark) {
+      const mapped = mapUserBookmarkToBookmark(dataId, latestUserBookmark);
+      if (stored && stored.exploredCharCount === latestUserBookmark.exploredCharCount) {
+        if (stored.scrollX !== undefined) mapped.scrollX = stored.scrollX;
+        if (stored.scrollY !== undefined) mapped.scrollY = stored.scrollY;
+      }
       // Keep the single-slot progress converged without extra sync churn on open.
       void database.putBookmark(mapped).catch(() => undefined);
       return mapped;
+    }
+
+    if ($autosaveHistoryEnabled$ && !latestAutosave && (stored.exploredCharCount || 0) > 0) {
+      void seedLegacyBookmarkAsAutosave(dataId, stored).catch(() => undefined);
     }
 
     return stored;
@@ -2211,6 +2257,8 @@
 
 {$collectReaderImageGallerySpoilerToggles$ ?? ''}
 {$handleUpdateImageGalleryPictureSpoilers$ ?? ''}
+{$initBookmarkData$ ?? ''}
+{$initUserBookmarks$ ?? ''}
 <button
   aria-label="Show reader header"
   class="fixed inset-x-0 top-0 z-10 h-8 w-full"
@@ -2387,8 +2435,6 @@
     bind:showCustomReadingPoint
     on:trackerPause={() => pauseTracker(true)}
   />
-  {$initBookmarkData$ ?? ''}
-  {$initUserBookmarks$ ?? ''}
   {$setBackgroundColor$ ?? ''}
   {$setWritingMode$ ?? ''}
   {$textSelector$ ?? ''}

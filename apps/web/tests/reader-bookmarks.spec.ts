@@ -44,6 +44,51 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     expect(bookmarkRecord.dataId).toBe(1);
   });
 
+  test('reopening a previously read book resumes at latest bookmark/autosave position', async ({
+    page
+  }) => {
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+
+    // Advance 2 pages
+    await page.keyboard.press('PageDown');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('PageDown');
+    await page.waitForTimeout(300);
+
+    // Save fast bookmark
+    await page.keyboard.press('b');
+    await page.waitForTimeout(300);
+
+    const bookmarkRecord = await page.evaluate(async (version) => {
+      return new Promise<any>((resolve, reject) => {
+        const req = indexedDB.open('books', version);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('bookmark', 'readonly');
+          const getReq = tx.objectStore('bookmark').get(1);
+          getReq.onsuccess = () => resolve(getReq.result);
+          getReq.onerror = () => reject(getReq.error);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    }, currentDbVersion);
+
+    expect(bookmarkRecord.exploredCharCount).toBeGreaterThan(0);
+
+    // Navigate to /manage and reopen the book
+    await page.goto('/manage');
+    await page.waitForTimeout(500);
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    await page.waitForTimeout(1000);
+
+    const footerText = await page
+      .locator('.writing-horizontal-tb.fixed.bottom-2.right-2')
+      .textContent();
+    expect(footerText).toContain(String(bookmarkRecord.exploredCharCount));
+  });
+
   test('named bookmark creation (Shift+B) and drawer inspection (Shift+R)', async ({ page }) => {
     await page.goto('/b?id=1');
     await expect(page.locator('.book-content')).toBeVisible();

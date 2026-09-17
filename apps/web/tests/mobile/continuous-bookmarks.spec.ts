@@ -177,4 +177,42 @@ test.describe('Continuous mobile bookmarking', () => {
     await page.getByRole('button', { name: 'Save' }).click();
     await page.waitForTimeout(300);
   });
+
+  test('continuous vertical-rl resumes at latest bookmark/autosave when reopened', async ({
+    page
+  }) => {
+    await seedReaderBook(page, BOOK_WITH_PICTURES, {
+      viewMode: 'continuous',
+      writingMode: 'vertical-rl'
+    });
+
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+
+    // Scroll to Prologue P1 and scroll into it
+    await page.evaluate(() => {
+      const p1 = document.getElementById('p-prologue-1')!;
+      p1.scrollIntoView();
+      window.scrollBy(-20, 0);
+    });
+    await page.waitForTimeout(500);
+
+    // Set fast bookmark
+    await page.keyboard.press('b');
+    await page.waitForTimeout(500);
+
+    const initialScrollX = await page.evaluate(() => window.scrollX);
+    expect(initialScrollX).toBeLessThan(0);
+
+    // Navigate away to /manage and reopen the book
+    await page.goto('/manage');
+    await page.waitForTimeout(500);
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    await page.waitForTimeout(1000);
+
+    const resumedScrollX = await page.evaluate(() => window.scrollX);
+    expect(resumedScrollX).toBeLessThan(0);
+    expect(Math.abs(resumedScrollX - initialScrollX)).toBeLessThanOrEqual(50);
+  });
 });
