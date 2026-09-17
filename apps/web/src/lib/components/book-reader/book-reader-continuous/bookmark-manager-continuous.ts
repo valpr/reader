@@ -20,16 +20,18 @@ export class BookmarkManagerContinuous implements BookmarkManager {
   ) {}
 
   scrollToBookmark(bookmarkData: BooksDbBookmarkData, customReadingPointScrollOffset = 0) {
-    const targetScroll = this.getBookmarkPosition(bookmarkData);
+    const targetScroll = this.getBookmarkPosition(bookmarkData, customReadingPointScrollOffset);
     if (!targetScroll) return;
 
     const { scrollToData } = resolveTargetScroll(targetScroll, this.firstDimensionMargin);
     const scrollProperty = this.calculator.verticalMode ? 'left' : 'top';
 
-    if (scrollToData.left !== undefined && scrollProperty === 'left') {
-      scrollToData.left += customReadingPointScrollOffset;
-    } else if (scrollToData.top !== undefined && scrollProperty === 'top') {
-      scrollToData.top -= customReadingPointScrollOffset;
+    if (!('isExact' in targetScroll)) {
+      if (scrollToData.left !== undefined && scrollProperty === 'left') {
+        scrollToData.left += customReadingPointScrollOffset;
+      } else if (scrollToData.top !== undefined && scrollProperty === 'top') {
+        scrollToData.top -= customReadingPointScrollOffset;
+      }
     }
 
     this.window.scrollTo(scrollToData);
@@ -69,7 +71,7 @@ export class BookmarkManagerContinuous implements BookmarkManager {
       .map((b) => {
         const pos = this.getBookmarkBarPosition({
           dataId: b.dataId,
-          exploredCharCount: Math.max(1, b.exploredCharCount),
+          exploredCharCount: b.exploredCharCount ?? 0,
           lastBookmarkModified: b.lastModified,
           progress: b.progress
         });
@@ -78,37 +80,57 @@ export class BookmarkManagerContinuous implements BookmarkManager {
       .filter((x): x is { bookmark: BooksDbUserBookmarkData; pos: BookmarkPosData } => !!x);
   }
 
-  private getBookmarkPosition(bookmark: BooksDbBookmarkData): TargetScroll | undefined {
-    if (!bookmark.exploredCharCount) return undefined;
-
+  private getBookmarkPosition(
+    bookmark: BooksDbBookmarkData,
+    customReadingPointScrollOffset = 0
+  ): (TargetScroll & { isExact?: boolean }) | undefined {
     const { verticalMode } = this.calculator;
 
-    const targetScrollByScrollPos = this.getBookmarkTargetPosByScrollValue(bookmark);
+    const targetScrollByScrollPos = this.getBookmarkTargetPosByScrollValue(
+      bookmark,
+      customReadingPointScrollOffset
+    );
     if (targetScrollByScrollPos) return targetScrollByScrollPos;
 
-    const scrollPos = this.calculator.getScrollPosByCharCount(bookmark.exploredCharCount);
-    if (verticalMode) {
+    if (typeof bookmark.exploredCharCount === 'number') {
+      const scrollPos = this.calculator.getScrollPosByCharCount(bookmark.exploredCharCount);
+      if (verticalMode) {
+        return {
+          scrollX: scrollPos
+        };
+      }
       return {
-        scrollX: scrollPos
+        scrollY: scrollPos
       };
     }
-    return {
-      scrollY: scrollPos
-    };
+    return undefined;
   }
 
-  private getBookmarkTargetPosByScrollValue(bookmarkData: BooksDbBookmarkData) {
+  private getBookmarkTargetPosByScrollValue(
+    bookmarkData: BooksDbBookmarkData,
+    customReadingPointScrollOffset = 0
+  ) {
     const { exploredCharCount } = bookmarkData;
 
     const getTargetPos = (scrollAxis: 'scrollX' | 'scrollY') => {
       const scrollPos = bookmarkData[scrollAxis];
-      if (!scrollPos) return undefined;
+      if (typeof scrollPos !== 'number') return undefined;
 
       const formattedScrollPos = formatPos(scrollPos, this.calculator.direction);
-      if (this.calculator.getCharCountByScrollPos(formattedScrollPos) === exploredCharCount) {
+      const effectivePos =
+        formattedScrollPos +
+        (this.calculator.verticalMode
+          ? -customReadingPointScrollOffset
+          : customReadingPointScrollOffset);
+
+      if (
+        exploredCharCount === undefined ||
+        this.calculator.getCharCountByScrollPos(effectivePos) === exploredCharCount
+      ) {
         return {
-          [scrollAxis]: scrollPos
-        } as TargetScroll;
+          [scrollAxis]: scrollPos,
+          isExact: true
+        } as TargetScroll & { isExact: boolean };
       }
       return undefined;
     };

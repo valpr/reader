@@ -33,7 +33,8 @@ export class CharacterStatsCalculator {
     private readonly axis: 'horizontal' | 'vertical',
     public readonly direction: 'ltr' | 'rtl',
     private readonly scrollEl: HTMLElement,
-    private readonly document: Document
+    private readonly document: Document,
+    private readonly options: { useParagraphStart?: boolean } = {}
   ) {
     this.paragraphs = getParagraphNodes(containerEl);
 
@@ -85,10 +86,14 @@ export class CharacterStatsCalculator {
         if (paragraphSize <= 0) {
           return this.paragraphPos[i - 1] || 0;
         }
-        const nodeLeft = formatPos(
-          this.verticalMode ? nodeRect.left : nodeRect.bottom,
-          this.direction
-        );
+        const nodeEdge = this.options.useParagraphStart
+          ? this.verticalMode
+            ? nodeRect.right
+            : nodeRect.top
+          : this.verticalMode
+            ? nodeRect.left
+            : nodeRect.bottom;
+        const nodeLeft = formatPos(nodeEdge, this.direction);
 
         return nodeLeft - scrollElRight - dimensionAdjustment + scrollPos;
       };
@@ -108,11 +113,30 @@ export class CharacterStatsCalculator {
     );
   }
 
+  private ensureParagraphPos() {
+    if (this.paragraphs.length > 0 && typeof this.paragraphPos[0] !== 'number') {
+      this.updateParagraphPos();
+    }
+  }
+
   calcExploredCharCount(customReadingPointScrollOffset = 0) {
+    this.ensureParagraphPos();
+    if (this.options.useParagraphStart && this.isScrolledToBottom()) {
+      return this.charCount;
+    }
     return this.getCharCountByScrollPos(this.scrollPos + customReadingPointScrollOffset);
   }
 
+  private isScrolledToBottom() {
+    if (this.verticalMode) {
+      const scrollLeft = Math.abs(this.scrollEl.scrollLeft);
+      return scrollLeft + this.scrollEl.clientWidth >= this.scrollEl.scrollWidth - 5;
+    }
+    return this.scrollEl.scrollTop + this.scrollEl.clientHeight >= this.scrollEl.scrollHeight - 5;
+  }
+
   getCharCountByScrollPos(scrollPos: number) {
+    this.ensureParagraphPos();
     const index = binarySearchNoNegative(this.paragraphPos, scrollPos);
     return this.paragraphPosToAccCharCount.get(this.paragraphPos[index]) || 0;
   }
@@ -142,8 +166,21 @@ export class CharacterStatsCalculator {
   }
 
   getScrollPosByCharCount(charCount: number) {
+    this.ensureParagraphPos();
+    if (charCount <= 0) return 0;
     const index = binarySearchNoNegative(this.accumulatedCharCount, charCount);
-    return formatPos(this.paragraphPos[index], this.direction) || 0;
+    let targetIndex = index;
+    if (this.options.useParagraphStart) {
+      if (index === -1) {
+        targetIndex = 0;
+      } else if (
+        this.accumulatedCharCount[index] < charCount &&
+        index + 1 < this.paragraphPos.length
+      ) {
+        targetIndex = index + 1;
+      }
+    }
+    return formatPos(this.paragraphPos[targetIndex], this.direction) || 0;
   }
 
   getCharCountToPoint(customReadingPoint: Range) {

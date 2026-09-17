@@ -7,8 +7,13 @@
     load: void;
   }>();
 
+  let prevHtml: string | undefined;
+
   afterUpdate(() => {
-    dispatch('load');
+    if (html !== prevHtml) {
+      prevHtml = html;
+      dispatch('load');
+    }
   });
 </script>
 
