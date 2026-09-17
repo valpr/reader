@@ -129,6 +129,7 @@ export class BrowserStorageHandler extends BaseStorageHandler {
   }
 
   async updateLastRead(book: BooksDbBookData) {
+    if (!book || typeof book.id !== 'number') return;
     const filename = BaseStorageHandler.getBookFileName(book);
     const { characters, lastBookModified, lastBookOpen } =
       BaseStorageHandler.getBookMetadata(filename);
