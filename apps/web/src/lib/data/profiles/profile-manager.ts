@@ -619,7 +619,7 @@ export function ensureDefaultProfiles(): void {
   const storedVersion = Number(localStorage.getItem('readerProfilesVersion') || 0);
   if (storedVersion >= PROFILES_SCHEMA_VERSION) return;
 
-  const currentProfiles = readerProfiles$.getValue() || [];
+  const currentProfiles = readerProfiles$?.getValue?.() || [];
   let modified = false;
   const updated = [...currentProfiles];
 
@@ -650,5 +650,7 @@ export function ensureDefaultProfiles(): void {
 }
 
 if (browser) {
-  ensureDefaultProfiles();
+  queueMicrotask(() => {
+    ensureDefaultProfiles();
+  });
 }
