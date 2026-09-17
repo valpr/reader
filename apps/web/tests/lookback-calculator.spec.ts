@@ -13,6 +13,7 @@ import {
   calculateProfileBreakdown,
   computeLongestStreak,
   computeTotalDaysInPeriod,
+  DROP_OFF_INACTIVITY_THRESHOLD_MS,
   extractAvailableYears,
   extractEarliestDate
 } from '$lib/components/statistics/statistics-lookback/lookback-calculator';
@@ -631,5 +632,180 @@ test.describe('Reading Lookback Calculator', () => {
     expect(completedBook?.completed).toBe(true);
     expect(completedBook?.maxProgress).toBe(0.98);
     expect(metrics.booksCompleted).toBe(1);
+  });
+
+  test('calculateDropOffAnalysis only counts books inactive for over 2 weeks as dropped', () => {
+    const referenceDate = new Date('2026-09-17T12:00:00Z');
+    expect(DROP_OFF_INACTIVITY_THRESHOLD_MS).toBe(14 * 24 * 60 * 60 * 1000);
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const books = [
+      // Actively read 2 days ago (< 14 days) -> NOT abandoned
+      {
+        title: 'Active Book 1',
+        readingTimeSeconds: 5000,
+        charactersRead: 20000,
+        lookupCount: 15,
+        maxProgress: 0.35,
+        completed: false,
+        rank: 1,
+        lastReadTime: referenceDate.getTime() - 2 * dayMs
+      },
+      // Actively read 13 days ago (< 14 days) -> NOT abandoned
+      {
+        title: 'Active Book 2',
+        readingTimeSeconds: 4000,
+        charactersRead: 18000,
+        lookupCount: 10,
+        maxProgress: 0.5,
+        completed: false,
+        rank: 2,
+        lastReadTime: referenceDate.getTime() - 13 * dayMs
+      },
+      // Abandoned 16 days ago (> 14 days) -> Abandoned at 25%
+      {
+        title: 'Abandoned Book A',
+        readingTimeSeconds: 3000,
+        charactersRead: 12000,
+        lookupCount: 5,
+        maxProgress: 0.25,
+        completed: false,
+        rank: 3,
+        lastReadTime: referenceDate.getTime() - 16 * dayMs
+      },
+      // Abandoned 30 days ago (> 14 days) -> Abandoned at 28%
+      {
+        title: 'Abandoned Book B',
+        readingTimeSeconds: 3500,
+        charactersRead: 14000,
+        lookupCount: 8,
+        maxProgress: 0.28,
+        completed: false,
+        rank: 4,
+        lastReadTime: referenceDate.getTime() - 30 * dayMs
+      },
+      // Abandoned 60 days ago (> 14 days) -> Abandoned at 22%
+      {
+        title: 'Abandoned Book C',
+        readingTimeSeconds: 2000,
+        charactersRead: 8000,
+        lookupCount: 3,
+        maxProgress: 0.22,
+        completed: false,
+        rank: 5,
+        lastReadTime: referenceDate.getTime() - 60 * dayMs
+      }
+    ];
+
+    const result = calculateDropOffAnalysis(books, { referenceDate });
+    // Out of 5 unfinished books, only the 3 books inactive for > 14 days are counted
+    expect(result.abandonedBooksCount).toBe(3);
+    expect(result.hasDropOffData).toBe(true);
+    // Modal bracket for 25%, 28%, 22% is 20-30%
+    expect(result.modalDropOffBracket).toBe('20–30%');
+    // Median of [22, 25, 28] is 25%
+    expect(result.medianDropOffPercentage).toBe(25);
+    expect(result.summaryMessage).toContain('around 25%');
+  });
+
+  test('calculateDropOffAnalysis reports no reading drop-offs when all unfinished books are actively read', () => {
+    const referenceDate = new Date('2026-09-17T12:00:00Z');
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const books = [
+      {
+        title: 'Active Book 1',
+        readingTimeSeconds: 5000,
+        charactersRead: 20000,
+        lookupCount: 15,
+        maxProgress: 0.35,
+        completed: false,
+        rank: 1,
+        lastReadTime: referenceDate.getTime() - 1 * dayMs
+      },
+      {
+        title: 'Active Book 2',
+        readingTimeSeconds: 4000,
+        charactersRead: 18000,
+        lookupCount: 10,
+        maxProgress: 0.5,
+        completed: false,
+        rank: 2,
+        lastReadTime: referenceDate.getTime() - 5 * dayMs
+      },
+      {
+        title: 'Active Book 3',
+        readingTimeSeconds: 3000,
+        charactersRead: 12000,
+        lookupCount: 5,
+        maxProgress: 0.7,
+        completed: false,
+        rank: 3,
+        lastReadTime: referenceDate.getTime() - 10 * dayMs
+      }
+    ];
+
+    const result = calculateDropOffAnalysis(books, { referenceDate });
+    expect(result.abandonedBooksCount).toBe(0);
+    expect(result.hasDropOffData).toBe(false);
+    expect(result.summaryMessage).toBe('No reading drop-offs recorded.');
+  });
+
+  test('calculateLookbackMetrics derives lastReadTime from dateKey and ignores recent reads for drop-off cliff', () => {
+    const referenceDate = new Date('2026-09-17T12:00:00Z');
+
+    const stats: Partial<BooksDbStatistic>[] = [
+      // Completed book
+      {
+        title: 'Finished Novel',
+        dateKey: '2026-08-01',
+        readingTime: 10000,
+        charactersRead: 50000,
+        lookupCount: 10,
+        completedBook: 1,
+        maxProgress: 1.0
+      },
+      // Actively read 3 days ago: 2026-09-14
+      {
+        title: 'Active Read',
+        dateKey: '2026-09-14',
+        readingTime: 3000,
+        charactersRead: 15000,
+        lookupCount: 5,
+        maxProgress: 0.4
+      },
+      // Abandoned in June: 2026-06-01 (> 2 weeks ago)
+      {
+        title: 'Abandoned A',
+        dateKey: '2026-06-01',
+        readingTime: 2000,
+        charactersRead: 8000,
+        lookupCount: 4,
+        maxProgress: 0.2
+      },
+      // Abandoned in July: 2026-07-01 (> 2 weeks ago)
+      {
+        title: 'Abandoned B',
+        dateKey: '2026-07-01',
+        readingTime: 2500,
+        charactersRead: 10000,
+        lookupCount: 3,
+        maxProgress: 0.25
+      }
+    ];
+
+    const metrics = calculateLookbackMetrics(stats as BooksDbStatistic[], 2026, {
+      referenceDate
+    });
+
+    // 4 books started, 1 completed, 3 unfinished
+    expect(metrics.booksStarted).toBe(4);
+    expect(metrics.booksCompleted).toBe(1);
+
+    // Only 2 unfinished books are abandoned (> 2 weeks). 'Active Read' was read 3 days ago.
+    expect(metrics.dropOffAnalysis.abandonedBooksCount).toBe(2);
+    // Since only 2 books are abandoned (need > 2 for cliff), cliff is not shown
+    expect(metrics.dropOffAnalysis.hasDropOffData).toBe(false);
+    expect(metrics.dropOffAnalysis.summaryMessage).toContain('currently 2 / 3');
   });
 });

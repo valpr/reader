@@ -29,6 +29,7 @@ export interface TopBookSummary {
   completed: boolean;
   rank: number;
   coverImage?: string | Blob;
+  lastReadTime?: number;
 }
 
 export interface ProfileReadingShare {
