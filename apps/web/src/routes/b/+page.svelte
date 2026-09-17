@@ -1485,6 +1485,7 @@
       createdAt: Date.now(),
       lastModified: Date.now()
     });
+    await refreshUserBookmarks();
     scheduleReplication(StorageDataType.USER_BOOKMARKS);
   }
 

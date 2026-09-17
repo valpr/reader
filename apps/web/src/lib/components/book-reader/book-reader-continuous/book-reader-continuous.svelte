@@ -45,7 +45,7 @@
     takeUntil,
     timer
   } from 'rxjs';
-  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
   import Fa from 'svelte-fa';
   import type { AutoScroller, BookmarkManager, PageManager } from '../types';
   import { AutoScrollerContinuous } from './auto-scroller-continuous';
@@ -595,7 +595,8 @@
     });
   }
 
-  function onHtmlLoad() {
+  async function onHtmlLoad() {
+    await tick();
     if (!contentEl) return;
 
     calculator = new CharacterStatsCalculator(
@@ -603,7 +604,8 @@
       verticalMode ? 'vertical' : 'horizontal',
       verticalMode ? 'rtl' : 'ltr',
       document.documentElement,
-      document
+      document,
+      { useParagraphStart: true }
     );
     exploredCharCount = 0;
     prevIntendedCharCount = exploredCharCount;
