@@ -1,9 +1,18 @@
+<script context="module" lang="ts">
+  // Unique SVG mask id per loader instance (two loaders can share a page).
+  let bookLoaderMaskCount = 0;
+</script>
+
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
 
   /** Display mode: rotating flavor lines, or real stage + progress. */
   export let mode: 'flavor' | 'debug' = 'flavor';
-  /** Kanji drawn by the brush animation (stroke-order paths cover 本). */
+  /**
+   * Kanji traced by the brush animation. The ink layer renders this same
+   * glyph through a stroke-order mask, so the animation always overlaps the
+   * translucent image beneath it (mask regions cover 本).
+   */
   export let kanji = '本';
   /** Current loading stage, e.g. 'Syncing cloud bookmarks…'. */
   export let stage = '';
@@ -22,6 +31,8 @@
 
   let flavorIndex = 0;
   let flavorTimer: ReturnType<typeof setInterval> | undefined;
+
+  const maskId = `astryx-bookloader-mask-${(bookLoaderMaskCount += 1)}`;
 
   $: currentFlavorLine = flavorLines.length
     ? (flavorLines[flavorIndex % flavorLines.length] ?? '')
@@ -52,12 +63,100 @@
 >
   <div class="astryx-bookloader-mark" aria-hidden="true">
     <span class="astryx-bookloader-ghost">{kanji}</span>
-    <svg class="astryx-bookloader-brush" viewBox="0 0 100 100" fill="none">
-      <path class="astryx-stroke s1" pathLength="100" d="M20 20 H80" />
-      <path class="astryx-stroke s2" pathLength="100" d="M29 39 H71" />
-      <path class="astryx-stroke s3" pathLength="100" d="M50 10 V90" />
-      <path class="astryx-stroke s4" pathLength="100" d="M50 48 C42 62 33 74 24 86" />
-      <path class="astryx-stroke s5" pathLength="100" d="M50 48 C58 62 67 74 76 86" />
+    <span
+      class="astryx-bookloader-ink"
+      style="mask-image: url(#{maskId}); -webkit-mask-image: url(#{maskId});">{kanji}</span
+    >
+    <svg class="astryx-bookloader-maskdef" aria-hidden="true" focusable="false">
+      <defs>
+        <mask
+          id={maskId}
+          maskUnits="objectBoundingBox"
+          maskContentUnits="objectBoundingBox"
+          x="-0.2"
+          y="-0.2"
+          width="1.4"
+          height="1.4"
+        >
+          <!-- Regions calibrated against Klee One's rendered metrics
+            (objectBoundingBox fractions of the mark). Each stroke paints in
+            full, crossings included, exactly like classic stroke-order
+            animation: later strokes overpaint earlier ones invisibly, so no
+            notches or splits. Order: top bar, vertical, left-falling,
+            right-falling, bottom bar last. -->
+          <!-- b1 keeps its edge pad: Klee One's bar top edge is uneven and
+            needs the coverage; the pad's transient stub reads as brush
+            pressure during the 0.35s wipe, while a gap would never leave. -->
+          <rect
+            class="bm b1"
+            x="0.17"
+            y="0.33"
+            width="0.70"
+            height="0.04"
+            rx="0.03"
+            fill="#fff"
+            stroke="#fff"
+            stroke-width="0.02"
+          />
+          <rect
+            class="bm b2"
+            x="0.27"
+            y="0.64"
+            width="0.48"
+            height="0.075"
+            fill="#fff"
+            stroke="#fff"
+            stroke-width="0.02"
+          />
+          <rect
+            class="bm b3"
+            x="0.48"
+            y="0.02"
+            width="0.03"
+            height="0.94"
+            rx="0.035"
+            fill="#fff"
+            stroke="#fff"
+            stroke-width="0.02"
+          />
+          <g transform="translate(0.50,0.40) rotate(133.4)">
+            <rect
+              class="bm b4"
+              x="0"
+              y="-0.035"
+              width="0.50"
+              height="0.07"
+              rx="0.035"
+              fill="#fff"
+              stroke="#fff"
+              stroke-width="0.02"
+            />
+          </g>
+          <g transform="translate(0.52,0.40) rotate(42.4)">
+            <rect
+              class="bm b5"
+              x="0"
+              y="-0.035"
+              width="0.47"
+              height="0.07"
+              rx="0.035"
+              fill="#fff"
+              stroke="#fff"
+              stroke-width="0.02"
+            />
+          </g>
+          <rect
+            class="bm b5foot"
+            x="0.76"
+            y="0.62"
+            width="0.20"
+            height="0.14"
+            fill="#fff"
+            stroke="#fff"
+            stroke-width="0.02"
+          />
+        </mask>
+      </defs>
     </svg>
   </div>
   {#if mode === 'debug'}
@@ -127,92 +226,147 @@
     opacity: 0.14;
   }
 
-  .astryx-bookloader-brush {
+  /* Full-color copy of the same glyph, revealed through the stroke-order
+     mask below so the ink always sits exactly on the translucent image. */
+  .astryx-bookloader-ink {
     position: absolute;
     inset: 0;
-    width: 100%;
-    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Klee One', 'Noto Serif JP', serif;
+    font-weight: 600;
+    font-size: 5.5rem;
+    line-height: 1;
   }
 
-  .astryx-stroke {
-    stroke: currentColor;
-    stroke-width: 9;
-    stroke-linecap: round;
-    stroke-dasharray: 100;
-    stroke-dashoffset: 100;
+  /* Zero-size only: display:none would break the mask reference. */
+  .astryx-bookloader-maskdef {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+  }
+
+  .bm {
+    opacity: 1;
     animation-duration: 3.4s;
     animation-timing-function: linear;
     animation-iteration-count: infinite;
   }
 
-  /* 本 stroke order: two horizontals, vertical, left-falling, right-falling.
-     Each stroke draws in its own window, holds, then the mark fades out
-     (see astryx-ink-settle) so the dash snap stays invisible. */
-  .s1 {
-    animation-name: astryx-draw-s1;
+  /* 本 stroke order: top horizontal, vertical, left-falling, right-falling,
+     bottom horizontal last. Each stroke paints in full, crossings included,
+     growing along its brush direction (scale transforms with fill-box
+     origins); later strokes overpaint earlier ones invisibly. The snap-back
+     hides inside the mark fade (see astryx-ink-settle). */
+  .b1,
+  .b2,
+  .b4,
+  .b5 {
+    transform-box: fill-box;
+    transform-origin: left center;
   }
-  .s2 {
-    animation-name: astryx-draw-s2;
+  .b3 {
+    transform-box: fill-box;
+    transform-origin: center top;
   }
-  .s3 {
-    animation-name: astryx-draw-s3;
+  .b1 {
+    animation-name: astryx-wipe-b1;
   }
-  .s4 {
-    animation-name: astryx-draw-s4;
+  .b2 {
+    animation-name: astryx-wipe-b2;
   }
-  .s5 {
-    animation-name: astryx-draw-s5;
+  .b3 {
+    animation-name: astryx-drop-b3;
+  }
+  .b4 {
+    animation-name: astryx-wipe-b4;
+  }
+  .b5 {
+    animation-name: astryx-wipe-b5;
+  }
+  .b5foot {
+    animation-name: astryx-fade-b5foot;
   }
 
-  @keyframes astryx-draw-s1 {
+  @keyframes astryx-wipe-b1 {
     0%,
     4% {
-      stroke-dashoffset: 100;
+      transform: scaleX(0);
     }
-    16%,
+    14%,
+    96% {
+      transform: scaleX(1);
+    }
     100% {
-      stroke-dashoffset: 0;
+      transform: scaleX(0);
     }
   }
-  @keyframes astryx-draw-s2 {
+  @keyframes astryx-drop-b3 {
     0%,
-    18% {
-      stroke-dashoffset: 100;
+    16% {
+      transform: scaleY(0);
     }
     28%,
+    96% {
+      transform: scaleY(1);
+    }
     100% {
-      stroke-dashoffset: 0;
+      transform: scaleY(0);
     }
   }
-  @keyframes astryx-draw-s3 {
+  @keyframes astryx-wipe-b4 {
     0%,
     30% {
-      stroke-dashoffset: 100;
+      transform: scaleX(0);
     }
-    44%,
+    39%,
+    96% {
+      transform: scaleX(1);
+    }
     100% {
-      stroke-dashoffset: 0;
-    }
-  }
-  @keyframes astryx-draw-s4 {
-    0%,
-    46% {
-      stroke-dashoffset: 100;
-    }
-    58%,
-    100% {
-      stroke-dashoffset: 0;
+      transform: scaleX(0);
     }
   }
   /* Final harai flicks out faster than the pressed strokes above. */
-  @keyframes astryx-draw-s5 {
+  @keyframes astryx-wipe-b5 {
     0%,
-    60% {
-      stroke-dashoffset: 100;
+    44% {
+      transform: scaleX(0);
     }
-    68%,
+    56%,
+    96% {
+      transform: scaleX(1);
+    }
     100% {
-      stroke-dashoffset: 0;
+      transform: scaleX(0);
+    }
+  }
+  @keyframes astryx-fade-b5foot {
+    0%,
+    50% {
+      opacity: 0;
+    }
+    60%,
+    96% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes astryx-wipe-b2 {
+    0%,
+    58% {
+      transform: scaleX(0);
+    }
+    70%,
+    96% {
+      transform: scaleX(1);
+    }
+    100% {
+      transform: scaleX(0);
     }
   }
 
@@ -266,14 +420,14 @@
 
   @media (prefers-reduced-motion: reduce) {
     .astryx-bookloader-mark,
-    .astryx-stroke {
+    .bm {
       animation: none;
     }
     .astryx-bookloader-mark {
       opacity: 1;
     }
-    .astryx-stroke {
-      stroke-dashoffset: 0;
+    .bm {
+      opacity: 1;
     }
   }
 </style>
