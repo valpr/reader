@@ -14,6 +14,7 @@ import {
   computeLongestStreak,
   computeTotalDaysInPeriod,
   DROP_OFF_INACTIVITY_THRESHOLD_MS,
+  DROP_OFF_MIN_READING_TIME_SECONDS,
   extractAvailableYears,
   extractEarliestDate
 } from '$lib/components/statistics/statistics-lookback/lookback-calculator';
@@ -461,7 +462,7 @@ test.describe('Reading Lookback Calculator', () => {
     const unfinishedZeroProgress = [
       {
         title: 'Book 1',
-        readingTimeSeconds: 1200,
+        readingTimeSeconds: 2000,
         charactersRead: 3000,
         lookupCount: 0,
         maxProgress: 0,
@@ -470,7 +471,7 @@ test.describe('Reading Lookback Calculator', () => {
       },
       {
         title: 'Book 2',
-        readingTimeSeconds: 1500,
+        readingTimeSeconds: 2400,
         charactersRead: 4000,
         lookupCount: 1,
         maxProgress: 0,
@@ -479,7 +480,7 @@ test.describe('Reading Lookback Calculator', () => {
       },
       {
         title: 'Book 3',
-        readingTimeSeconds: 800,
+        readingTimeSeconds: 2200,
         charactersRead: 2000,
         lookupCount: 0,
         maxProgress: 0,
@@ -500,7 +501,7 @@ test.describe('Reading Lookback Calculator', () => {
     const singleZeroProgress = [
       {
         title: 'Book 1',
-        readingTimeSeconds: 1200,
+        readingTimeSeconds: 2000,
         charactersRead: 3000,
         lookupCount: 0,
         maxProgress: 0,
@@ -807,5 +808,76 @@ test.describe('Reading Lookback Calculator', () => {
     // Since only 2 books are abandoned (need > 2 for cliff), cliff is not shown
     expect(metrics.dropOffAnalysis.hasDropOffData).toBe(false);
     expect(metrics.dropOffAnalysis.summaryMessage).toContain('currently 2 / 3');
+  });
+
+  test('calculateDropOffAnalysis excludes books read for 30 minutes or less from drop-off count', () => {
+    const referenceDate = new Date('2026-09-17T12:00:00Z');
+    const dayMs = 24 * 60 * 60 * 1000;
+    expect(DROP_OFF_MIN_READING_TIME_SECONDS).toBe(1800);
+
+    const books = [
+      // Only read for 5 minutes (300s) -> preview/sampling, NOT counted as dropped
+      {
+        title: 'Previewed Book',
+        readingTimeSeconds: 300,
+        charactersRead: 1000,
+        lookupCount: 0,
+        maxProgress: 0.05,
+        completed: false,
+        rank: 1,
+        lastReadTime: referenceDate.getTime() - 30 * dayMs
+      },
+      // Read for 20 minutes (1200s < 1800s) -> under 30 mins, NOT counted as dropped
+      {
+        title: 'Briefly Read Book',
+        readingTimeSeconds: 1200,
+        charactersRead: 5000,
+        lookupCount: 2,
+        maxProgress: 0.12,
+        completed: false,
+        rank: 2,
+        lastReadTime: referenceDate.getTime() - 40 * dayMs
+      },
+      // Read for 35 minutes (2100s > 1800s) and inactive for 30 days -> COUNTED
+      {
+        title: 'Abandoned Long Book 1',
+        readingTimeSeconds: 2100,
+        charactersRead: 10000,
+        lookupCount: 5,
+        maxProgress: 0.22,
+        completed: false,
+        rank: 3,
+        lastReadTime: referenceDate.getTime() - 30 * dayMs
+      },
+      // Read for 50 minutes (3000s > 1800s) and inactive for 45 days -> COUNTED
+      {
+        title: 'Abandoned Long Book 2',
+        readingTimeSeconds: 3000,
+        charactersRead: 14000,
+        lookupCount: 8,
+        maxProgress: 0.25,
+        completed: false,
+        rank: 4,
+        lastReadTime: referenceDate.getTime() - 45 * dayMs
+      },
+      // Read for 40 minutes (2400s > 1800s) and inactive for 60 days -> COUNTED
+      {
+        title: 'Abandoned Long Book 3',
+        readingTimeSeconds: 2400,
+        charactersRead: 11000,
+        lookupCount: 4,
+        maxProgress: 0.28,
+        completed: false,
+        rank: 5,
+        lastReadTime: referenceDate.getTime() - 60 * dayMs
+      }
+    ];
+
+    const result = calculateDropOffAnalysis(books, { referenceDate });
+    // Previewed Book and Briefly Read Book are excluded; only the 3 books with >= 30m reading time are counted
+    expect(result.abandonedBooksCount).toBe(3);
+    expect(result.hasDropOffData).toBe(true);
+    expect(result.modalDropOffBracket).toBe('20–30%');
+    expect(result.medianDropOffPercentage).toBe(25);
   });
 });

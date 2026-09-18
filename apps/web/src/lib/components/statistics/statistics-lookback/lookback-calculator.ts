@@ -139,6 +139,7 @@ export interface LookbackCalculatorOptions {
   completedTitles?: Set<string>;
   referenceDate?: Date | number;
   inactivityThresholdMs?: number;
+  minReadingTimeSeconds?: number;
 }
 
 export function extractEarliestDate(statistics: BooksDbStatistic[]): string | undefined {
@@ -397,7 +398,8 @@ export function calculateLookbackMetrics(
   // Drop-off cliff analysis
   const dropOffAnalysis = calculateDropOffAnalysis(topBooks, {
     referenceDate: options.referenceDate,
-    inactivityThresholdMs: options.inactivityThresholdMs
+    inactivityThresholdMs: options.inactivityThresholdMs,
+    minReadingTimeSeconds: options.minReadingTimeSeconds
   });
 
   // Profile breakdown
@@ -558,9 +560,12 @@ export function computeTotalDaysInPeriod(
 
 export const DROP_OFF_INACTIVITY_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000; // 14 days (2 weeks)
 
+export const DROP_OFF_MIN_READING_TIME_SECONDS = 30 * 60; // 30 minutes (1800 seconds)
+
 export interface DropOffAnalysisOptions {
   referenceDate?: Date | number;
   inactivityThresholdMs?: number;
+  minReadingTimeSeconds?: number;
 }
 
 export function calculateDropOffAnalysis(
@@ -571,9 +576,14 @@ export function calculateDropOffAnalysis(
     ? new Date(options.referenceDate).getTime()
     : Date.now();
   const thresholdMs = options.inactivityThresholdMs ?? DROP_OFF_INACTIVITY_THRESHOLD_MS;
+  const minReadingTime = options.minReadingTimeSeconds ?? DROP_OFF_MIN_READING_TIME_SECONDS;
 
   const isAbandoned = (b: TopBookSummary) => {
     if (b.completed) return false;
+    // Must have been read for at least 30 minutes (1800s) to be counted as dropped
+    if (b.readingTimeSeconds !== undefined && b.readingTimeSeconds < minReadingTime) {
+      return false;
+    }
     // Default to true (abandoned) if lastReadTime is not provided (e.g. synthetic test fixtures)
     if (b.lastReadTime === undefined) return true;
     return referenceTime - b.lastReadTime > thresholdMs;
