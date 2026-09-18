@@ -12,7 +12,13 @@
   let selectedYear: number | 'all' = new Date().getFullYear();
   let bookMetadataMap = new Map<
     string,
-    { coverImage?: string | Blob; characters?: number; progress?: number }
+    {
+      coverImage?: string | Blob;
+      characters?: number;
+      progress?: number;
+      lastBookOpen?: number;
+      lastReadTime?: number;
+    }
   >();
   let completedTitles = new Set<string>();
 
@@ -28,7 +34,13 @@
 
       const metaMap = new Map<
         string,
-        { coverImage?: string | Blob; characters?: number; progress?: number }
+        {
+          coverImage?: string | Blob;
+          characters?: number;
+          progress?: number;
+          lastBookOpen?: number;
+          lastReadTime?: number;
+        }
       >();
       const completed = new Set<string>();
 
@@ -41,10 +53,14 @@
             ? (Number(rawProgress.slice(0, -1)) || 0) / 100
             : Number(rawProgress) || 0;
 
+        const lastReadTime = Math.max(book.lastBookOpen || 0, bm?.lastBookmarkModified || 0);
+
         metaMap.set(book.title, {
           coverImage: book.coverImage,
           characters: book.characters,
-          progress
+          progress,
+          lastBookOpen: book.lastBookOpen,
+          lastReadTime: lastReadTime > 0 ? lastReadTime : undefined
         });
 
         if (progress >= 0.95) {
