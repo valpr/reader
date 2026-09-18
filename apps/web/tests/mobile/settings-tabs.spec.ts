@@ -86,6 +86,7 @@ test.describe('Mobile: settings', () => {
 
     // Transition connection state to CONNECTED
     await page.evaluate(async () => {
+      // @ts-expect-error - dynamic browser import in playwright evaluate
       const mod = await import('/src/lib/data/storage/storage-oauth-manager.ts');
       mod.setConnectionState('test-mobile-gdrive', mod.StorageConnectionState.CONNECTED);
     });
