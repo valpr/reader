@@ -128,9 +128,18 @@ export interface LookbackCalculatorOptions {
   profiles?: ReaderProfile[];
   bookMetadataMap?: Map<
     string,
-    { coverImage?: string | Blob; characters?: number; progress?: number }
+    {
+      coverImage?: string | Blob;
+      characters?: number;
+      progress?: number;
+      lastBookOpen?: number;
+      lastReadTime?: number;
+    }
   >;
   completedTitles?: Set<string>;
+  referenceDate?: Date | number;
+  inactivityThresholdMs?: number;
+  minReadingTimeSeconds?: number;
 }
 
 export function extractEarliestDate(statistics: BooksDbStatistic[]): string | undefined {
@@ -320,6 +329,39 @@ export function calculateLookbackMetrics(
     peakTimeCategory = 'Evening';
   }
 
+  // Compute latest read time across all statistics for each book
+  const allTimeLastReadMap = new Map<string, number>();
+  for (let i = 0; i < allStatistics.length; i += 1) {
+    const s = allStatistics[i];
+    if (!s.title) continue;
+
+    let time = 0;
+    if (s.dateKey) {
+      const parts = s.dateKey.split('-').map(Number);
+      if (parts.length === 3 && !parts.some(Number.isNaN)) {
+        time = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999).getTime();
+      }
+    }
+    if (time > 0) {
+      const prev = allTimeLastReadMap.get(s.title) || 0;
+      if (time > prev) {
+        allTimeLastReadMap.set(s.title, time);
+      }
+    }
+  }
+
+  if (options.bookMetadataMap) {
+    for (const [title, meta] of options.bookMetadataMap.entries()) {
+      const metaTime = meta.lastReadTime || meta.lastBookOpen || 0;
+      if (metaTime > 0) {
+        const prev = allTimeLastReadMap.get(title) || 0;
+        if (metaTime > prev) {
+          allTimeLastReadMap.set(title, metaTime);
+        }
+      }
+    }
+  }
+
   // Book rankings and completion
   const completedTitles = options.completedTitles || new Set<string>();
   const bookMetadataMap = options.bookMetadataMap || new Map();
@@ -332,6 +374,7 @@ export function calculateLookbackMetrics(
     .map((b, idx) => {
       const isCompleted = b.completed || completedTitles.has(b.title) || b.maxProgress >= 0.95;
       const meta = bookMetadataMap.get(b.title);
+      const lastReadTime = allTimeLastReadMap.get(b.title);
       return {
         title: b.title,
         readingTimeSeconds: b.readingTime,
@@ -340,7 +383,8 @@ export function calculateLookbackMetrics(
         maxProgress: b.maxProgress,
         completed: isCompleted,
         rank: idx + 1,
-        coverImage: meta?.coverImage
+        coverImage: meta?.coverImage,
+        lastReadTime
       };
     });
 
@@ -352,7 +396,11 @@ export function calculateLookbackMetrics(
   const hasSufficientData = booksCompleted >= 3 && activeReadingDays > 2;
 
   // Drop-off cliff analysis
-  const dropOffAnalysis = calculateDropOffAnalysis(topBooks);
+  const dropOffAnalysis = calculateDropOffAnalysis(topBooks, {
+    referenceDate: options.referenceDate,
+    inactivityThresholdMs: options.inactivityThresholdMs,
+    minReadingTimeSeconds: options.minReadingTimeSeconds
+  });
 
   // Profile breakdown
   const profileBreakdown = calculateProfileBreakdown(profileSecondsMap, options.profiles);
@@ -510,8 +558,38 @@ export function computeTotalDaysInPeriod(
   return Math.max(1, Math.round((endTime - startTime) / (1000 * 60 * 60 * 24)) + 1);
 }
 
-export function calculateDropOffAnalysis(books: TopBookSummary[]): DropOffAnalysis {
-  const unfinished = books.filter((b) => !b.completed);
+export const DROP_OFF_INACTIVITY_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000; // 14 days (2 weeks)
+
+export const DROP_OFF_MIN_READING_TIME_SECONDS = 30 * 60; // 30 minutes (1800 seconds)
+
+export interface DropOffAnalysisOptions {
+  referenceDate?: Date | number;
+  inactivityThresholdMs?: number;
+  minReadingTimeSeconds?: number;
+}
+
+export function calculateDropOffAnalysis(
+  books: TopBookSummary[],
+  options: DropOffAnalysisOptions = {}
+): DropOffAnalysis {
+  const referenceTime = options.referenceDate
+    ? new Date(options.referenceDate).getTime()
+    : Date.now();
+  const thresholdMs = options.inactivityThresholdMs ?? DROP_OFF_INACTIVITY_THRESHOLD_MS;
+  const minReadingTime = options.minReadingTimeSeconds ?? DROP_OFF_MIN_READING_TIME_SECONDS;
+
+  const isAbandoned = (b: TopBookSummary) => {
+    if (b.completed) return false;
+    // Must have been read for at least 30 minutes (1800s) to be counted as dropped
+    if (b.readingTimeSeconds !== undefined && b.readingTimeSeconds < minReadingTime) {
+      return false;
+    }
+    // Default to true (abandoned) if lastReadTime is not provided (e.g. synthetic test fixtures)
+    if (b.lastReadTime === undefined) return true;
+    return referenceTime - b.lastReadTime > thresholdMs;
+  };
+
+  const unfinished = books.filter(isAbandoned);
   const allFinished = books.length > 0 && books.every((b) => b.completed);
 
   const bracketLabels = [
