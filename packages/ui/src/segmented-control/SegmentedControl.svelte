@@ -7,6 +7,12 @@
   export let size: 'sm' | 'md' | 'lg' = 'md';
   export let fullWidth: boolean = false;
   export let disabled: boolean = false;
+  /**
+   * Collapse to a wrapped (2-column) layout on narrow viewports so long
+   * labels (e.g. 'In Progress', 'Completed') can't overflow a fixed-width
+   * container such as a mobile dropdown. Single row is kept on desktop.
+   */
+  export let wrapOnNarrow: boolean = false;
   let customClass: string = '';
   export { customClass as class };
 
@@ -27,6 +33,7 @@
   role="radiogroup"
   class="astryx-segmented-control {customClass}"
   class:full-width={fullWidth}
+  class:wrap-narrow={wrapOnNarrow}
   data-size={size}
   {...$$restProps}
 >
@@ -92,8 +99,26 @@
     height: 40px;
   }
 
+  /* Narrow viewports: wrap into a 2-column grid with full-size touch
+     targets instead of squeezing (or overflowing) a single row. */
+  @media (max-width: 639px) {
+    .astryx-segmented-control.wrap-narrow {
+      flex-wrap: wrap;
+      height: auto;
+    }
+
+    .astryx-segmented-control.wrap-narrow .astryx-segment-item {
+      flex: 1 1 calc(50% - var(--astryx-space-0-5, 2px));
+      min-height: 44px;
+      height: auto;
+      padding-top: var(--astryx-space-2, 8px);
+      padding-bottom: var(--astryx-space-2, 8px);
+    }
+  }
+
   .astryx-segment-item {
     flex: 1;
+    min-width: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;

@@ -48,6 +48,40 @@ export function normalizeProgress(progress: number | undefined | null): number {
   return p > 1 ? Math.min(p / 100, 1) : Math.min(p, 1);
 }
 
+/**
+ * Parse a raw bookmark progress value into a 0-1 fraction.
+ * Modern bookmarks store a 0-1 number; legacy ones stored percent strings
+ * ('42%'). Plain numeric strings without a '%' ('0.5') are treated as
+ * fractions. Anything unparseable maps to 0 (unread).
+ */
+export function parseBookmarkProgress(raw: unknown): number {
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    const numeric = Number(trimmed.endsWith('%') ? trimmed.slice(0, -1) : trimmed) || 0;
+    if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+    return numeric > 1 ? Math.min(numeric / 100, 1) : Math.min(numeric, 1);
+  }
+  // Numeric path is intentionally unclamped: legacy >1 values are rescaled
+  // by `normalizeProgress` at filter time.
+  return Number(raw) || 0;
+}
+
+/**
+ * Resolve a card's progress from the merged multi-source value and the local
+ * bookmark value. The merged value carries cloud progress for titles whose
+ * local bookmark row is missing or stale, so the bookmark overlay must take
+ * the max — never overwrite — or started books vanish from the In Progress
+ * filter. (Downstream `normalizeProgress` still rescales legacy >1 values.)
+ */
+export function resolveCardProgress(
+  mergedProgress: number | undefined | null,
+  bookmarkProgress: number | undefined | null
+): number {
+  const merged = Number(mergedProgress) || 0;
+  const bookmarked = Number(bookmarkProgress) || 0;
+  return Math.max(merged, bookmarked);
+}
+
 export function matchesProgressFilter(
   progress: number | undefined | null,
   filter: ProgressFilter
