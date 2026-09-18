@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { faSpinner } from '@fortawesome/free-solid-svg-icons';
+  import { BookLoader } from '@custom-ereader/ui';
   import DialogTemplate from '$lib/components/dialog-template.svelte';
   import Ripple from '$lib/components/ripple.svelte';
   import { buttonClasses } from '$lib/css-classes';
@@ -11,7 +11,7 @@
     type ReadingGoalArchivalOption,
     type ReadingGoalSaveResult
   } from '$lib/data/reading-goal';
-  import { database, readingGoal$, startDayHoursForTracker$ } from '$lib/data/store';
+  import { database, loaderMode$, readingGoal$, startDayHoursForTracker$ } from '$lib/data/store';
   import {
     advanceDateDays,
     getDate,
@@ -21,7 +21,6 @@
   } from '$lib/functions/statistic-util';
   import { pluralize } from '$lib/functions/utils';
   import { createEventDispatcher, onMount, tick } from 'svelte';
-  import Fa from 'svelte-fa';
 
   export let newReadingGoal: ReadingGoal;
   export let resolver: (arg0: ReadingGoalSaveResult) => void;
@@ -267,8 +266,8 @@
 
 {#if showSpinner}
   <div class="tap-highlight-transparent absolute inset-0 bg-black/[.2]"></div>
-  <div class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl">
-    <Fa icon={faSpinner} spin />
+  <div class="fixed inset-0 flex h-full w-full items-center justify-center">
+    <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Saving reading goal…" />
   </div>
 {/if}
 <DialogTemplate>

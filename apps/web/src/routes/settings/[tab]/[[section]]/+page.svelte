@@ -42,6 +42,7 @@
     importHTMLFixMode$,
     lastProfilesModified$,
     lineHeight$,
+    loaderMode$,
     manualBookmark$,
     keepLocalStatisticsOnDeletion$,
     openTrackerOnCompletion$,
@@ -293,6 +294,7 @@
       bind:statisticsMergeMode={$statisticsMergeMode$}
       bind:readingGoalsMergeMode={$readingGoalsMergeMode$}
       bind:statisticsEnabled={$statisticsEnabled$}
+      bind:loaderMode={$loaderMode$}
       bind:trackerAutoPause={$trackerAutoPause$}
       bind:openTrackerOnCompletion={$openTrackerOnCompletion$}
       bind:addCharactersOnCompletion={$addCharactersOnCompletion$}
