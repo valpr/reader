@@ -5,13 +5,19 @@
  */
 
 import { getStorageHandler } from '$lib/data/storage/storage-handler-factory';
-import { StorageDataType, StorageKey, StorageSourceDefault } from '$lib/data/storage/storage-types';
+import {
+  StorageDataType,
+  StorageKey,
+  StorageSourceDefault,
+  getFriendlyStorageSourceName
+} from '$lib/data/storage/storage-types';
 import {
   autoReplication$,
   cacheStorageData$,
   clearPendingCloudSync,
   database,
   markLastSync,
+  pushTransientNotice,
   readingGoalsMergeMode$,
   replicationSaveBehavior$,
   statisticsMergeMode$
@@ -161,6 +167,12 @@ export async function triggerCloudSync(
 
     markLastSync(sourceName);
     clearPendingCloudSync(sourceName);
+
+    // Explicit user action only: triggerCloudSync is called from the
+    // reconnect flow and the manual Sync button, never from background
+    // autosave sync. Announce completion directly from the promise so
+    // silent background check-ins can never toast.
+    pushTransientNotice(`Sync complete (${getFriendlyStorageSourceName(sourceName)})`);
 
     // Lightweight presence refresh: re-list cloud folders (metadata only,
     // no book blob download) so remote-only / remotely-deleted books appear
