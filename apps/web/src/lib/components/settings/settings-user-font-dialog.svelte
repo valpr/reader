@@ -4,9 +4,10 @@
   import { dialogManager } from '$lib/data/dialog-manager';
   import { userFontsCacheName } from '$lib/data/fonts';
   import { logger } from '$lib/data/logger';
-  import { userFonts$ } from '$lib/data/store';
+  import { userFonts$, loaderMode$ } from '$lib/data/store';
   import { dummyFn } from '$lib/functions/utils';
-  import { faSpinner, faTrashCan } from '@fortawesome/free-solid-svg-icons';
+  import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
+  import { BookLoader } from '@custom-ereader/ui';
   import type { BehaviorSubject } from 'rxjs';
   import { onMount } from 'svelte';
   import Fa from 'svelte-fa';
@@ -151,8 +152,8 @@
       </div>
     {/if}
     {#if !cacheLoaded || isLoading}
-      <div class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl">
-        <Fa icon={faSpinner} spin />
+      <div class="fixed inset-0 flex h-full w-full items-center justify-center">
+        <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Loading fonts…" />
       </div>
     {/if}
   </div>

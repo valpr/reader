@@ -3,6 +3,7 @@
  * Astryx-inspired UI component library for custom-ereader
  */
 
+export { default as BookLoader } from './loader/BookLoader.svelte';
 export { default as Button } from './button/Button.svelte';
 export { default as IconButton } from './button/IconButton.svelte';
 export { default as ButtonGroup } from './button/ButtonGroup.svelte';

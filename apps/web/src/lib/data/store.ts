@@ -324,6 +324,10 @@ export const startDayHoursForTracker$ = writableNumberLocalStorageSubject()(
 
 export const statisticsEnabled$ = writableBooleanLocalStorageSubject()('statisticsEnabled', false);
 
+export type LoaderMode = 'flavor' | 'debug';
+
+export const loaderMode$ = writableStringLocalStorageSubject<LoaderMode>()('loaderMode', 'flavor');
+
 export const statisticsMergeMode$ = writableStringLocalStorageSubject<MergeMode>()(
   'statisticsMergeMode',
   MergeMode.MERGE

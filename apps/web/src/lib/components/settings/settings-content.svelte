@@ -13,8 +13,7 @@
     faListUl,
     faPalette,
     faPlus,
-    faSliders,
-    faSpinner
+    faSliders
   } from '@fortawesome/free-solid-svg-icons';
   import {
     TrackerAutoPause,
@@ -33,6 +32,7 @@
   import SettingsUserFontDialog from '$lib/components/settings/settings-user-font-dialog.svelte';
   import {
     Button,
+    BookLoader,
     IconButton,
     Input,
     List,
@@ -64,6 +64,7 @@
     fontFamilyGroupOne$,
     fontFamilyGroupTwo$,
     horizontalCustomReadingPosition$,
+    loaderMode$,
     readerProfiles$,
     textMarginMode$,
     textMarginValue$,
@@ -206,6 +207,8 @@
   export let readingGoalsMergeMode: string;
 
   export let statisticsEnabled: boolean;
+
+  export let loaderMode: string;
 
   export let trackerAutoPause: string;
 
@@ -439,6 +442,11 @@
     { value: 'system', label: 'Auto (System)' },
     { value: 'light', label: 'Light theme' },
     { value: 'dark', label: 'Dark theme' }
+  ];
+
+  const segmentsForLoaderMode = [
+    { value: 'flavor', label: 'Flavor' },
+    { value: 'debug', label: 'Debug' }
   ];
 
   const segmentsForWritingMode = optionsForWritingMode.map((o) => ({ value: o.id, label: o.text }));
@@ -1018,6 +1026,19 @@
                 />
               </ListItem>
             {/if}
+
+            <ListItem
+              layout="stacked"
+              headline="Loading Animation"
+              description="Flavor shows a calligraphy brush with playful lines, Debug shows what is actually loading"
+            >
+              <SegmentedControl
+                fullWidth
+                size="sm"
+                options={segmentsForLoaderMode}
+                bind:value={loaderMode}
+              />
+            </ListItem>
           </ListSection>
         {/if}
 
@@ -2038,7 +2059,7 @@
 {/if}
 {#if showSpinner}
   <div class="tap-highlight-transparent fixed inset-0 bg-black/[.2]"></div>
-  <div class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl">
-    <Fa icon={faSpinner} spin />
+  <div class="fixed inset-0 flex h-full w-full items-center justify-center">
+    <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Applying settings…" />
   </div>
 {/if}

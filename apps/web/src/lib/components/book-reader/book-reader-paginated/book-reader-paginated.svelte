@@ -14,6 +14,7 @@
   import {
     disableWheelNavigation$,
     firstDimensionMargin$,
+    loaderMode$,
     selectionToBookmarkEnabled$,
     skipKeyDownListener$,
     swipeThreshold$,
@@ -23,7 +24,7 @@
   import { clearRange, createRange, pulseElement } from '$lib/functions/range-util';
   import { iffBrowser } from '$lib/functions/rxjs/iff-browser';
   import { getExternalTargetElement, isMobile$ } from '$lib/functions/utils';
-  import { faBookmark, faSpinner } from '@fortawesome/free-solid-svg-icons';
+  import { faBookmark } from '@fortawesome/free-solid-svg-icons';
   import {
     BehaviorSubject,
     combineLatest,
@@ -40,6 +41,7 @@
     throttleTime
   } from 'rxjs';
   import Fa from 'svelte-fa';
+  import { BookLoader } from '@custom-ereader/ui';
   import { swipe, type SwipePointerEventDetail } from 'svelte-gestures';
   import type { BookmarkManager, PageManager } from '../types';
   import { BookmarkManagerPaginated } from './bookmark-manager-paginated';
@@ -847,11 +849,15 @@
 
 {#if !allowDisplay}
   <div
-    class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl"
+    class="fixed inset-0 flex h-full w-full items-center justify-center"
     style:color={fontColor}
     style:background-color={backgroundColor}
   >
-    <Fa icon={faSpinner} spin />
+    <BookLoader
+      mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'}
+      stage="Typesetting pages…"
+      foreground={fontColor}
+    />
   </div>
 {/if}
 

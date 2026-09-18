@@ -2,6 +2,7 @@
   import { dev } from '$app/environment';
   import {
     Button,
+    BookLoader,
     IconButton,
     ButtonGroup,
     ToggleButton,
@@ -778,6 +779,24 @@
               />
             </ListItem>
           </ListSection>
+        </div>
+      </Card>
+
+      <!-- 10. Loaders -->
+      <Card padding="lg" radius="lg">
+        <h2 class="section-title">10. Loaders</h2>
+        <p class="section-desc">
+          Calligraphy brush loader: flavor mode rotates playful lines, debug mode shows the real
+          stage and determinate progress.
+        </p>
+
+        <div class="demo-grid-2">
+          <div data-testid="showcase-loader-flavor">
+            <BookLoader mode="flavor" />
+          </div>
+          <div data-testid="showcase-loader-debug">
+            <BookLoader mode="debug" stage="Syncing cloud library…" progress={0.42} />
+          </div>
         </div>
       </Card>
     </main>

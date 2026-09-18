@@ -24,7 +24,8 @@
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { faCloudBolt, faPause, faPlay, faSpinner } from '@fortawesome/free-solid-svg-icons';
+  import { faCloudBolt, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
+  import { BookLoader } from '@custom-ereader/ui';
   import BookReader from '$lib/components/book-reader/book-reader.svelte';
   import type {
     AutoScroller,
@@ -69,6 +70,7 @@
     viewMode$,
     selectionToBookmarkEnabled$,
     lineHeight$,
+    loaderMode$,
     syncTarget$,
     pendingCloudSync$,
     pushTransientNotice,
@@ -200,6 +202,7 @@
   } from '$lib/functions/range-util';
 
   let showSpinner = true;
+  let loaderStage = 'Opening local book…';
   let showHeader = false;
   let isBookmarkScreen = false;
   let showFooter = true;
@@ -322,6 +325,7 @@
             // no-op
           }
         } else {
+          loaderStage = 'Syncing cloud library…';
           await syncDownData(externalStorageHandler, currentContext);
         }
 
@@ -336,6 +340,7 @@
         }
 
         if (!justDownloaded) {
+          loaderStage = 'Saving reading position…';
           bookData = await saveExternalLastRead(externalStorageHandler, bookData);
         }
 
@@ -386,6 +391,7 @@
       }
 
       if (bookData?.id) {
+        loaderStage = 'Restoring reading position…';
         bookmarkData = resolveResumeBookmark(bookData.id);
       }
 
@@ -2539,8 +2545,8 @@
 {/if}
 
 {#if showSpinner}
-  <div class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl">
-    <Fa icon={faSpinner} spin />
+  <div class="fixed inset-0 flex h-full w-full items-center justify-center">
+    <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage={loaderStage} />
   </div>
 {/if}
 

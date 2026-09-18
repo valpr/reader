@@ -19,6 +19,7 @@
   import {
     customReadingPointEnabled$,
     disableWheelNavigation$,
+    loaderMode$,
     skipKeyDownListener$,
     userFonts$
   } from '$lib/data/store';
@@ -26,7 +27,7 @@
   import { prependValue } from '$lib/functions/file-loaders/epub/generate-epub-html';
   import { getReferencePoints } from '$lib/functions/range-util';
   import { getExternalTargetElement } from '$lib/functions/utils';
-  import { faBookmark, faSpinner } from '@fortawesome/free-solid-svg-icons';
+  import { faBookmark } from '@fortawesome/free-solid-svg-icons';
   import {
     animationFrameScheduler,
     combineLatest,
@@ -47,6 +48,7 @@
   } from 'rxjs';
   import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
   import Fa from 'svelte-fa';
+  import { BookLoader } from '@custom-ereader/ui';
   import type { AutoScroller, BookmarkManager, PageManager } from '../types';
   import { AutoScrollerContinuous } from './auto-scroller-continuous';
   import { BookmarkManagerContinuous } from './bookmark-manager-continuous';
@@ -816,11 +818,15 @@
 
 {#if !allowDisplay}
   <div
-    class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl"
+    class="fixed inset-0 flex h-full w-full items-center justify-center"
     style:color={fontColor}
     style:background-color={backgroundColor}
   >
-    <Fa icon={faSpinner} spin />
+    <BookLoader
+      mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'}
+      stage="Typesetting pages…"
+      foreground={fontColor}
+    />
   </div>
 {/if}
 

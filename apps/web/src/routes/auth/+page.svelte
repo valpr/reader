@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { faSpinner, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
+  import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
+  import { BookLoader } from '@custom-ereader/ui';
   import { convertAuthErrorResponse } from '$lib/functions/replication/error-handler';
   import Fa from 'svelte-fa';
 
@@ -220,7 +221,7 @@
     </button>
   </div>
 {:else}
-  <div class="fixed inset-0 flex h-full w-full items-center justify-center text-7xl">
-    <Fa icon={faSpinner} spin />
+  <div class="fixed inset-0 flex h-full w-full items-center justify-center">
+    <BookLoader stage="Completing sign-in…" mode="debug" />
   </div>
 {/if}
