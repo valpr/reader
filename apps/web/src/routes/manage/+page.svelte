@@ -69,7 +69,9 @@
   import {
     DEFAULT_LIBRARY_FILTERS,
     filterBookCards,
-    isLibraryFilterActive
+    isLibraryFilterActive,
+    parseBookmarkProgress,
+    resolveCardProgress
   } from '$lib/data/library-filters';
   import { cloneMutateSet } from '$lib/functions/clone-mutate-set';
   import { getDropEventFiles } from '$lib/functions/file-dom/get-drop-event-files';
@@ -252,12 +254,23 @@
         filtered
           .filter((d) => $showExternalPlaceholder$ || !d.isPlaceholder)
           .filter((d) => !unavailableBookTitles.has(normalizeTitle(d.title)))
-          .map((d) => ({
-            ...d,
-            ...((d.sources || []).includes(StorageKey.BROWSER)
-              ? bookmarkToProgress(bookmarkMap.get(d.id))
-              : { progress: d.progress || 0 })
-          })),
+          .map((d) => {
+            if (!(d.sources || []).includes(StorageKey.BROWSER)) {
+              return { ...d, progress: d.progress || 0 };
+            }
+            // The merged card may carry cloud progress newer than the local
+            // bookmark row (missing/stale after cross-device reads). Take the
+            // max so started books are never demoted to unread by the overlay.
+            const bookmarked = bookmarkToProgress(bookmarkMap.get(d.id));
+            return {
+              ...d,
+              progress: resolveCardProgress(d.progress, bookmarked.progress),
+              lastBookmarkModified: Math.max(
+                d.lastBookmarkModified || 0,
+                bookmarked.lastBookmarkModified || 0
+              )
+            };
+          }),
         tagsDict
       );
 
@@ -335,9 +348,7 @@
     // Modern bookmarks store a 0-1 fraction; legacy ones stored percent
     // strings ('42%'). Normalize to 0-1 so the progress bar, sort, and
     // filters share one unit.
-    const raw = b?.progress;
-    const progress =
-      typeof raw === 'string' ? (Number(raw.slice(0, -1)) || 0) / 100 : Number(raw) || 0;
+    const progress = parseBookmarkProgress(b?.progress);
     return b
       ? { progress, lastBookmarkModified: b.lastBookmarkModified || 0 }
       : { progress: 0, lastBookmarkModified: 0 };
