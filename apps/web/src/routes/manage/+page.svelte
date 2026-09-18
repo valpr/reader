@@ -10,6 +10,7 @@
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import DeleteBooksDialog from '$lib/components/delete-books-dialog.svelte';
   import ExternalReadDialog from '$lib/components/external-read-dialog.svelte';
+  import BookLoadingOverlay from '$lib/components/book-loading-overlay.svelte';
   import LogReportDialog from '$lib/components/log-report-dialog.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import MessageDialog from '$lib/components/message-dialog.svelte';
@@ -69,7 +70,9 @@
   import {
     DEFAULT_LIBRARY_FILTERS,
     filterBookCards,
-    isLibraryFilterActive
+    isLibraryFilterActive,
+    parseBookmarkProgress,
+    resolveCardProgress
   } from '$lib/data/library-filters';
   import { cloneMutateSet } from '$lib/functions/clone-mutate-set';
   import { getDropEventFiles } from '$lib/functions/file-dom/get-drop-event-files';
@@ -252,12 +255,23 @@
         filtered
           .filter((d) => $showExternalPlaceholder$ || !d.isPlaceholder)
           .filter((d) => !unavailableBookTitles.has(normalizeTitle(d.title)))
-          .map((d) => ({
-            ...d,
-            ...((d.sources || []).includes(StorageKey.BROWSER)
-              ? bookmarkToProgress(bookmarkMap.get(d.id))
-              : { progress: d.progress || 0 })
-          })),
+          .map((d) => {
+            if (!(d.sources || []).includes(StorageKey.BROWSER)) {
+              return { ...d, progress: d.progress || 0 };
+            }
+            // The merged card may carry cloud progress newer than the local
+            // bookmark row (missing/stale after cross-device reads). Take the
+            // max so started books are never demoted to unread by the overlay.
+            const bookmarked = bookmarkToProgress(bookmarkMap.get(d.id));
+            return {
+              ...d,
+              progress: resolveCardProgress(d.progress, bookmarked.progress),
+              lastBookmarkModified: Math.max(
+                d.lastBookmarkModified || 0,
+                bookmarked.lastBookmarkModified || 0
+              )
+            };
+          }),
         tagsDict
       );
 
@@ -324,7 +338,10 @@
     // the manager as a black filter. Real modals (MessageDialog, etc.) are kept.
     const current = dialogManager.dialogs$.getValue();
 
-    if (current.length > 0 && current.every((d) => typeof d.component === 'string')) {
+    if (
+      current.length > 0 &&
+      current.every((d) => typeof d.component === 'string' || d.component === BookLoadingOverlay)
+    ) {
       dialogManager.dialogs$.next([]);
     }
   });
@@ -335,9 +352,7 @@
     // Modern bookmarks store a 0-1 fraction; legacy ones stored percent
     // strings ('42%'). Normalize to 0-1 so the progress bar, sort, and
     // filters share one unit.
-    const raw = b?.progress;
-    const progress =
-      typeof raw === 'string' ? (Number(raw.slice(0, -1)) || 0) / 100 : Number(raw) || 0;
+    const progress = parseBookmarkProgress(b?.progress);
     return b
       ? { progress, lastBookmarkModified: b.lastBookmarkModified || 0 }
       : { progress: 0, lastBookmarkModified: 0 };
@@ -460,7 +475,7 @@
     if (!selectMode) {
       dialogManager.dialogs$.next([
         {
-          component: '<div/>',
+          component: BookLoadingOverlay,
           disableCloseOnClick: true
         }
       ]);
@@ -563,6 +578,12 @@
             }
 
             if (nextAction === 'download') {
+              dialogManager.dialogs$.next([
+                {
+                  component: BookLoadingOverlay,
+                  disableCloseOnClick: true
+                }
+              ]);
               idToOpen = await downloadCloudBookToBrowser(
                 handler,
                 bookItem.title,

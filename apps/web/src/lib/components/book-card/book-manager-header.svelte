@@ -704,6 +704,7 @@
               <SegmentedControl
                 size="sm"
                 fullWidth
+                wrapOnNarrow
                 options={PROGRESS_FILTER_OPTIONS}
                 value={$libraryFilters$?.progress ?? 'all'}
                 on:change={(e) => setProgressFilter(e.detail.value)}

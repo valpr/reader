@@ -58,4 +58,48 @@ test.describe('Reader Loading & Initialization', () => {
     await expect(content).toBeVisible();
     await expect(content).toContainText('これはテスト本の本文です');
   });
+
+  test('displays loading spinner overlay when clicking a book card to open', async ({ page }) => {
+    await seedReaderBook(page);
+    await page.goto('/manage');
+
+    const bookCard = page.locator('.aspect-w-2:has-text("吾輩は猫である")').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    // Click book card to initiate opening
+    await bookCard.click();
+
+    // The reader opens successfully
+    await expect(page).toHaveURL(/\/b\?id=/);
+    const content = page.locator('.book-content');
+    await expect(content).toBeVisible();
+  });
+
+  test('BookLoadingOverlay renders accessible spinner icon', async ({ page }) => {
+    await page.goto('/manage');
+
+    // Push the overlay into dialogs
+    await page.evaluate(async () => {
+      // @ts-expect-error - dynamic browser import in playwright evaluate
+      const { dialogManager } = await import('/src/lib/data/dialog-manager.ts');
+      // @ts-expect-error - dynamic browser import in playwright evaluate
+      const { default: BookLoadingOverlay } =
+        await import('/src/lib/components/book-loading-overlay.svelte');
+      dialogManager.dialogs$.next([
+        {
+          component: BookLoadingOverlay,
+          disableCloseOnClick: true
+        }
+      ]);
+    });
+
+    const overlay = page.locator('[data-testid="book-loading-overlay"]');
+    await expect(overlay).toBeVisible();
+    await expect(overlay).toHaveAttribute('role', 'status');
+    await expect(overlay).toHaveAttribute('aria-label', 'Loading book');
+
+    const spinnerSvg = overlay.locator('svg');
+    await expect(spinnerSvg).toBeVisible();
+    await expect(spinnerSvg).toHaveClass(/\bspin\b/);
+  });
 });

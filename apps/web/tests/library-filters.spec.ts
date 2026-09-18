@@ -7,6 +7,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedReaderBook } from './fixtures/book-fixture';
 import { currentDbVersion } from '../src/lib/data/database/books-db/versions/books-db';
+import {
+  matchesProgressFilter,
+  parseBookmarkProgress,
+  resolveCardProgress
+} from '../src/lib/data/library-filters';
 
 const BOOK_ONE = 'Filter Alpha (Playwright Test Book)';
 const BOOK_TWO = 'Filter Beta (Playwright Test Book)';
@@ -17,7 +22,22 @@ async function seedLibrary(page: Page) {
 }
 
 /** Overwrite bookmark progress directly in IndexedDB (read fresh on next load). */
-async function setBookmarkProgress(page: Page, entries: { dataId: number; progress: number }[]) {
+async function setBookmarkProgress(
+  page: Page,
+  entries: { dataId: number; progress: number | string }[]
+) {
+  // Derived counts are computed in Node scope: page.evaluate callbacks run
+  // in the browser and can't see Node-side imports.
+  const rows = entries.map((item) => {
+    const numericProgress =
+      typeof item.progress === 'number' ? item.progress : parseBookmarkProgress(item.progress);
+    return {
+      dataId: item.dataId,
+      exploredCharCount: Math.round(numericProgress * 1000),
+      progress: item.progress,
+      lastBookmarkModified: Date.now()
+    };
+  });
   await page.evaluate(
     async ({ items, version }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -31,17 +51,12 @@ async function setBookmarkProgress(page: Page, entries: { dataId: number; progre
         tx.onerror = () => reject(tx.error);
         const store = tx.objectStore('bookmark');
         for (const item of items) {
-          store.put({
-            dataId: item.dataId,
-            exploredCharCount: Math.round(item.progress * 1000),
-            progress: item.progress,
-            lastBookmarkModified: Date.now()
-          });
+          store.put(item);
         }
       });
       db.close();
     },
-    { items: entries, version: currentDbVersion }
+    { items: rows, version: currentDbVersion }
   );
 }
 
@@ -131,6 +146,43 @@ test.describe('Library search and filters', () => {
     await expect(page.getByTestId('library-no-results')).toBeVisible();
     await expect(page.getByText(BOOK_ONE)).toBeHidden();
     await expect(page.getByText(BOOK_TWO)).toBeHidden();
+  });
+
+  test('legacy string bookmark progress still counts as in-progress', async ({ page }) => {
+    await seedLibrary(page);
+    await setBookmarkProgress(page, [
+      { dataId: 1, progress: '50%' },
+      { dataId: 2, progress: 1 }
+    ]);
+    await page.goto('/manage');
+    await expect(page.locator('.aspect-w-2').first()).toBeVisible({ timeout: 10000 });
+
+    await openSearchFilters(page);
+
+    await page.getByRole('radio', { name: 'In Progress' }).click();
+    await expect(page.getByText(BOOK_ONE)).toBeVisible();
+    await expect(page.getByText(BOOK_TWO)).toBeHidden();
+  });
+
+  test('progress helpers keep cloud-merged progress and parse legacy values', async () => {
+    // Pure unit coverage (no page needed): the bookmark overlay must take the
+    // max so a missing/stale local bookmark can't demote a started book.
+    expect(resolveCardProgress(0.5, 0)).toBe(0.5);
+    expect(resolveCardProgress(0, 0.5)).toBe(0.5);
+    expect(resolveCardProgress(0.2, 0.7)).toBe(0.7);
+    expect(resolveCardProgress(undefined, undefined)).toBe(0);
+
+    expect(parseBookmarkProgress(0.5)).toBe(0.5);
+    expect(parseBookmarkProgress('50%')).toBe(0.5);
+    expect(parseBookmarkProgress('0.5')).toBe(0.5);
+    expect(parseBookmarkProgress(undefined)).toBe(0);
+    expect(parseBookmarkProgress('nonsense')).toBe(0);
+
+    // Boundary classification used by the In Progress segment.
+    expect(matchesProgressFilter(0.5, 'in-progress')).toBe(true);
+    expect(matchesProgressFilter(0, 'in-progress')).toBe(false);
+    expect(matchesProgressFilter(1, 'in-progress')).toBe(false);
+    expect(matchesProgressFilter('50%' as unknown as number, 'in-progress')).toBe(false);
   });
 
   test('empty result offers a clear action and filters persist across reload', async ({ page }) => {
