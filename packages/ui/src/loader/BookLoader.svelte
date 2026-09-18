@@ -100,9 +100,9 @@
           />
           <rect
             class="bm b2"
-            x="0.27"
+            x="0.31"
             y="0.64"
-            width="0.48"
+            width="0.40"
             height="0.075"
             fill="#fff"
             stroke="#fff"
