@@ -10,6 +10,7 @@
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import DeleteBooksDialog from '$lib/components/delete-books-dialog.svelte';
   import ExternalReadDialog from '$lib/components/external-read-dialog.svelte';
+  import BookLoadingOverlay from '$lib/components/book-loading-overlay.svelte';
   import LogReportDialog from '$lib/components/log-report-dialog.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import MessageDialog from '$lib/components/message-dialog.svelte';
@@ -324,7 +325,10 @@
     // the manager as a black filter. Real modals (MessageDialog, etc.) are kept.
     const current = dialogManager.dialogs$.getValue();
 
-    if (current.length > 0 && current.every((d) => typeof d.component === 'string')) {
+    if (
+      current.length > 0 &&
+      current.every((d) => typeof d.component === 'string' || d.component === BookLoadingOverlay)
+    ) {
       dialogManager.dialogs$.next([]);
     }
   });
@@ -460,7 +464,7 @@
     if (!selectMode) {
       dialogManager.dialogs$.next([
         {
-          component: '<div/>',
+          component: BookLoadingOverlay,
           disableCloseOnClick: true
         }
       ]);
@@ -563,6 +567,12 @@
             }
 
             if (nextAction === 'download') {
+              dialogManager.dialogs$.next([
+                {
+                  component: BookLoadingOverlay,
+                  disableCloseOnClick: true
+                }
+              ]);
               idToOpen = await downloadCloudBookToBrowser(
                 handler,
                 bookItem.title,
