@@ -80,6 +80,15 @@
     class="mt-12 flex flex-wrap items-center justify-center gap-4 text-xs text-[var(--astryx-color-fg-muted,#71717a)]"
   >
     <a
+      href="{pagePath}/docs/"
+      target="_blank"
+      rel="noreferrer external"
+      class="underline hover:text-[var(--astryx-color-fg-primary,#18181b)] transition-colors"
+    >
+      Documentation
+    </a>
+    <span>&bull;</span>
+    <a
       href="{pagePath}/privacy"
       class="underline hover:text-[var(--astryx-color-fg-primary,#18181b)] transition-colors"
     >

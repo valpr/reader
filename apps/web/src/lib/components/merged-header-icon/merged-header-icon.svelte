@@ -35,7 +35,7 @@
   function preloadActionItem(target: string) {
     if (!disableRouteNavigation) {
       const action = actionItems.find((item) => item.label === target);
-      if (action?.routeId) {
+      if (action?.routeId && !(action as any).external) {
         preloadCode(`${pagePath}${action.routeId}`);
       }
     }
@@ -44,9 +44,9 @@
   function handleActionMenuItem(target: string) {
     dispatch('action', target);
 
-    if (
-      !(target === mergeEntries.FILE_IMPORT.label || target === mergeEntries.FOLDER_IMPORT.label)
-    ) {
+    if (!(
+      target === mergeEntries.FILE_IMPORT.label || target === mergeEntries.FOLDER_IMPORT.label
+    )) {
       menuElm?.toggleOpen();
     }
 
@@ -54,7 +54,11 @@
       const action = actionItems.find((item) => item.label === target);
 
       if (action?.routeId) {
-        goto(`${pagePath}${action.routeId}`);
+        if ((action as any).external) {
+          window.open(`${pagePath}${action.routeId}`, '_blank');
+        } else {
+          goto(`${pagePath}${action.routeId}`);
+        }
       }
     }
   }

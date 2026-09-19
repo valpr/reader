@@ -110,7 +110,7 @@
       (actualHeaderWidth >= 768 ? 52 : 36)
   );
 
-  type SecondaryActionId = 'complete' | 'customPoint' | 'stats' | 'jump' | 'gallery';
+  type SecondaryActionId = 'complete' | 'customPoint' | 'stats' | 'jump' | 'gallery' | 'docs';
 
   interface SecondaryActionItem {
     id: SecondaryActionId;
@@ -123,7 +123,8 @@
       : []),
     { id: 'stats' as const },
     ...(hasText ? [{ id: 'jump' as const }] : []),
-    ...($readerImageGalleryPictures$.length ? [{ id: 'gallery' as const }] : [])
+    ...($readerImageGalleryPictures$.length ? [{ id: 'gallery' as const }] : []),
+    { id: 'docs' as const }
   ];
 
   $: isOldUrl = browser && isOnOldUrl(window);
@@ -380,6 +381,19 @@
               </IconButton>
             </Tooltip>
           {/if}
+        {:else if item.id === 'docs'}
+          <Tooltip text={mergeEntries.DOCUMENTATION.title}>
+            <IconButton
+              nativeTooltip={false}
+              label={mergeEntries.DOCUMENTATION.title}
+              size="md"
+              variant="ghost"
+              on:click={() =>
+                window.open(`${pagePath}${mergeEntries.DOCUMENTATION.routeId}`, '_blank')}
+            >
+              <Fa icon={mergeEntries.DOCUMENTATION.icon} class="text-base" />
+            </IconButton>
+          </Tooltip>
         {/if}
 
         <!-- Overflow Popover (rendered when any secondary items overflow) -->
@@ -506,6 +520,21 @@
                     >
                       <Fa icon={faImages} class="w-4 text-center opacity-70" />
                       <span>Image Gallery</span>
+                    </button>
+                  {:else if oItem.id === 'docs'}
+                    <button
+                      type="button"
+                      class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
+                      on:click={() => {
+                        window.open(`${pagePath}${mergeEntries.DOCUMENTATION.routeId}`, '_blank');
+                        overflowMenuElm?.toggleOpen();
+                      }}
+                    >
+                      <Fa
+                        icon={mergeEntries.DOCUMENTATION.icon}
+                        class="w-4 text-center opacity-70"
+                      />
+                      <span>{mergeEntries.DOCUMENTATION.label}</span>
                     </button>
                   {/if}
                 {/each}
