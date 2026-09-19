@@ -28,7 +28,7 @@ features:
     details: Track active reading time, speed (cpm), hourly habits, and Yomitan/JPDB lookup density with rich Lookback recaps.
   - icon: 📖
     title: Simplified Catalog
-    details: See all your books in one view instead of having to switch between various sources
+    details: See all your books in one view instead of needing to switch between various sources
   - icon: 🛡️
     title: Rolling Checkpoints/Multiple Bookmarks
     details: Non-destructive autosaves and rolling position checkpoints to safeguard previous reading place during rapid scrolling. You can customize and name bookmarks in your books.
