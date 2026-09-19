@@ -9,6 +9,7 @@
   import StatisticsSummary from '$lib/components/statistics/statistics-summary/statistics-summary.svelte';
   import StatisticsLookback from '$lib/components/statistics/statistics-lookback/statistics-lookback.svelte';
   import type {
+    StatisticsAddRequest,
     StatisticsDeleteRequest,
     StatisticsEditRequest
   } from '$lib/components/statistics/statistics-summary/statistics-summary';
@@ -570,6 +571,96 @@
     }
   }
 
+  async function handleAddStatisticRequest({
+    detail: { dateKey, title, readingTime, charactersRead }
+  }: CustomEvent<StatisticsAddRequest>) {
+    $statisticsActionInProgress$ = true;
+
+    try {
+      await database.upsertStatistic({
+        title,
+        dateKey,
+        readingTime,
+        charactersRead,
+        lastReadingSpeed: readingTime ? Math.ceil((3600 * charactersRead) / readingTime) : 0,
+        minReadingSpeed: readingTime ? Math.ceil((3600 * charactersRead) / readingTime) : 0,
+        altMinReadingSpeed: readingTime ? Math.ceil((3600 * charactersRead) / readingTime) : 0,
+        maxReadingSpeed: readingTime ? Math.ceil((3600 * charactersRead) / readingTime) : 0,
+        lastStatisticModified: Date.now()
+      });
+
+      const existingIndex = statisticsData.findIndex(
+        (s) => s.title === title && s.dateKey === dateKey
+      );
+
+      if (existingIndex > -1) {
+        const existing = statisticsData[existingIndex];
+        const updatedReadingTime = (existing.readingTime || 0) + readingTime;
+        const updatedCharacters = (existing.charactersRead || 0) + charactersRead;
+        const speed = updatedReadingTime
+          ? Math.ceil((3600 * updatedCharacters) / updatedReadingTime)
+          : 0;
+
+        statisticsData[existingIndex] = {
+          ...existing,
+          readingTime: updatedReadingTime,
+          averageReadingTime: updatedReadingTime,
+          averageWeightedReadingTime: updatedReadingTime,
+          charactersRead: updatedCharacters,
+          averageCharactersRead: updatedCharacters,
+          averageWeightedCharactersRead: updatedCharacters,
+          lastReadingSpeed: speed,
+          averageReadingSpeed: speed,
+          averageWeightedReadingSpeed: speed,
+          maxReadingSpeed: Math.max(existing.maxReadingSpeed || 0, speed),
+          minReadingSpeed: existing.minReadingSpeed
+            ? Math.min(existing.minReadingSpeed, speed)
+            : speed,
+          altMinReadingSpeed: existing.altMinReadingSpeed
+            ? Math.min(existing.altMinReadingSpeed, speed)
+            : speed,
+          lastStatisticModified: Date.now()
+        };
+      } else {
+        const speed = readingTime ? Math.ceil((3600 * charactersRead) / readingTime) : 0;
+        statisticsData.push({
+          id: `${title}_${dateKey}`,
+          title,
+          dateKey,
+          readingTime,
+          averageReadingTime: readingTime,
+          averageWeightedReadingTime: readingTime,
+          charactersRead,
+          averageCharactersRead: charactersRead,
+          averageWeightedCharactersRead: charactersRead,
+          lastReadingSpeed: speed,
+          averageReadingSpeed: speed,
+          averageWeightedReadingSpeed: speed,
+          minReadingSpeed: speed,
+          altMinReadingSpeed: speed,
+          maxReadingSpeed: speed,
+          lastStatisticModified: Date.now()
+        });
+      }
+
+      statisticsTitleFilters.set(title, true);
+      titlesInStatisticsDateRange.add(title);
+      updateStatisticsData();
+    } catch ({ message }: any) {
+      dialogManager.dialogs$.next([
+        {
+          component: MessageDialog,
+          props: {
+            title: 'Error',
+            message: `Failed to add activity: ${message}`
+          }
+        }
+      ]);
+    } finally {
+      $statisticsActionInProgress$ = false;
+    }
+  }
+
   function updateTitleFilter({
     detail: newStatisticsTitleFilters
   }: CustomEvent<StatisticsTitleFilterItem[]>) {
@@ -932,6 +1023,7 @@
       {statisticsDateRangeLabel}
       on:delete={handleDeleteRequest}
       on:edit={handleEditRequest}
+      on:add={handleAddStatisticRequest}
     />
   {/if}
   {#if $lastStatisticsTab$ === StatisticsTab.LOOKBACK}

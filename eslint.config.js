@@ -26,7 +26,8 @@ module.exports = (async () => {
         '**/vite.config.js',
         '**/eslint.config.js',
         '**/tailwind.config.cjs',
-        'packages/**'
+        'packages/**',
+        'apps/docs/**'
       ]
     },
     {

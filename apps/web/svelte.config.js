@@ -12,7 +12,15 @@ const config = {
     },
     adapter: adapter({
       fallback: '404.html'
-    })
+    }),
+    prerender: {
+      handleHttpError: ({ path, message }) => {
+        if (path.includes('/docs')) {
+          return;
+        }
+        throw new Error(message);
+      }
+    }
   }
 };
 

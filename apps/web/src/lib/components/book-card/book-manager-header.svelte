@@ -840,6 +840,7 @@
                 mergeEntries.MANAGE,
                 mergeEntries.DOMAIN_HINT,
                 mergeEntries.SETTINGS,
+                mergeEntries.DOCUMENTATION,
                 mergeEntries.BUG_REPORT,
                 ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
               ]
@@ -847,6 +848,7 @@
                 mergeEntries.MANAGE,
                 mergeEntries.STATISTICS,
                 mergeEntries.SETTINGS,
+                mergeEntries.DOCUMENTATION,
                 mergeEntries.BUG_REPORT,
                 ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
               ]}
