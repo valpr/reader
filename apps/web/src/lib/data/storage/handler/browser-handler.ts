@@ -5,6 +5,7 @@
  */
 
 import { BaseStorageHandler, FilePrefix } from '$lib/data/storage/handler/base-handler';
+import type { ReplicationContext } from '$lib/functions/replication/replication-progress';
 import { normalizeTagList, normalizeTagTitle, type BookTagsDict } from '$lib/data/book-tags';
 import type {
   BooksDbAudioBook,
@@ -140,25 +141,26 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     this.addBookCard(this.currentContext.title, { characters, lastBookModified, lastBookOpen });
   }
 
-  async getFilenameForRecentCheck(fileIdentifier: string) {
+  async getFilenameForRecentCheck(fileIdentifier: string, context?: ReplicationContext) {
     if (this.saveBehavior === ReplicationSaveBehavior.Overwrite) {
       BaseStorageHandler.reportProgress();
       return undefined;
     }
 
+    const ctx = this.resolveContext(context);
     let fileName: string | undefined;
 
     if (fileIdentifier === 'bookdata_') {
-      const book = await database.getDataByTitle(this.currentContext.title);
+      const book = await database.getDataByTitle(ctx.title);
 
       fileName = book ? BaseStorageHandler.getBookFileName(book) : undefined;
     } else if (fileIdentifier === 'progress_') {
-      const progress = await this.getProgress();
+      const progress = await this.getProgress(ctx);
 
       fileName = progress ? BaseStorageHandler.getProgressFileName(progress) : undefined;
     } else if (fileIdentifier === 'statistics_') {
       const lastStatisticModifed = await database.getLastModifiedForType(
-        this.currentContext.title,
+        ctx.title,
         StorageDataType.STATISTICS
       );
 
@@ -178,11 +180,11 @@ export class BrowserStorageHandler extends BaseStorageHandler {
         ? BaseStorageHandler.getBookTagsFileName(lastTagsModified)
         : undefined;
     } else if (fileIdentifier === FilePrefix.AUDIO_BOOK) {
-      const audioBook = await this.getAudioBook();
+      const audioBook = await this.getAudioBook(ctx);
 
       fileName = audioBook ? BaseStorageHandler.getAudioBookFileName(audioBook) : undefined;
     } else if (fileIdentifier === FilePrefix.SUBTITLE) {
-      const subtitleData = await this.getSubtitleData();
+      const subtitleData = await this.getSubtitleData(ctx);
 
       fileName = subtitleData
         ? BaseStorageHandler.getSubtitleDataFileName(subtitleData)
@@ -195,13 +197,17 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     return fileName;
   }
 
-  async isBookPresentAndUpToDate(referenceFilename: string | undefined) {
+  async isBookPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
       return false;
     }
 
-    const book = await database.getDataByTitle(this.currentContext.title);
+    const ctx = this.resolveContext(context);
+    const book = await database.getDataByTitle(ctx.title);
 
     BrowserStorageHandler.reportProgress(0.5);
 
@@ -226,13 +232,16 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     return isPresentAndUpToDate;
   }
 
-  async isProgressPresentAndUpToDate(referenceFilename: string | undefined) {
+  async isProgressPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
       return false;
     }
 
-    const progress = await this.getProgress();
+    const progress = await this.getProgress(context);
     const fileName = progress ? BaseStorageHandler.getProgressFileName(progress) : undefined;
 
     return BaseStorageHandler.checkIsPresentAndUpToDate(
@@ -243,14 +252,18 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async areStatisticsPresentAndUpToDate(referenceFilename: string | undefined) {
+  async areStatisticsPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
       return false;
     }
 
+    const ctx = this.resolveContext(context);
     const existingLastModified = await database.getLastModifiedForType(
-      this.currentContext.title,
+      ctx.title,
       StorageDataType.STATISTICS
     );
     const fileName = existingLastModified
@@ -267,14 +280,17 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async isAudioBookPresentAndUpToDate(referenceFilename: string | undefined) {
+  async isAudioBookPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
 
       return false;
     }
 
-    const audioBook = await this.getAudioBook();
+    const audioBook = await this.getAudioBook(context);
     const fileName = audioBook ? BaseStorageHandler.getAudioBookFileName(audioBook) : undefined;
 
     return BaseStorageHandler.checkIsPresentAndUpToDate<BooksDbAudioBook>(
@@ -285,14 +301,17 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async isSubtitleDataPresentAndUpToDate(referenceFilename: string | undefined) {
+  async isSubtitleDataPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
 
       return false;
     }
 
-    const subtitleData = await this.getSubtitleData();
+    const subtitleData = await this.getSubtitleData(context);
     const fileName = subtitleData
       ? BaseStorageHandler.getSubtitleDataFileName(subtitleData)
       : undefined;
@@ -305,16 +324,20 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async isUserBookmarksPresentAndUpToDate(referenceFilename: string | undefined) {
+  async isUserBookmarksPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
 
       return false;
     }
 
-    const bookmarks = await this.getUserBookmarks();
+    const ctx = this.resolveContext(context);
+    const bookmarks = await this.getUserBookmarks(context);
     const existingLastModified = await database.getLastModifiedForType(
-      this.currentContext.title,
+      ctx.title,
       StorageDataType.USER_BOOKMARKS
     );
     const fileName =
@@ -330,19 +353,18 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async getBook() {
-    const book = this.currentContext.id
-      ? await database.getData(this.currentContext.id)
-      : await database.getDataByTitle(this.currentContext.title);
+  async getBook(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const book = ctx.id ? await database.getData(ctx.id) : await database.getDataByTitle(ctx.title);
 
     BaseStorageHandler.reportProgress();
 
     return book;
   }
 
-  async getProgress() {
-    const dataId =
-      this.currentContext.id || (await database.getDataByTitle(this.currentContext.title))?.id;
+  async getProgress(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const dataId = ctx.id || (await database.getDataByTitle(ctx.title))?.id;
 
     BaseStorageHandler.reportProgress(0.5);
 
@@ -351,9 +373,9 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     return progress;
   }
 
-  async getUserBookmarks() {
-    const dataId =
-      this.currentContext.id || (await database.getDataByTitle(this.currentContext.title))?.id;
+  async getUserBookmarks(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const dataId = ctx.id || (await database.getDataByTitle(ctx.title))?.id;
 
     BaseStorageHandler.reportProgress(0.5);
 
@@ -362,13 +384,14 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     return bookmarks.filter((b) => !b.isAutosave);
   }
 
-  async getStatistics() {
-    const statistics = await database.getStatisticsForBook(this.currentContext.title);
+  async getStatistics(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const statistics = await database.getStatisticsForBook(ctx.title);
 
     BaseStorageHandler.reportProgress(0.5);
 
     const lastStatisticModified = await database.getLastModifiedForType(
-      this.currentContext.title,
+      ctx.title,
       StorageDataType.STATISTICS
     );
 
@@ -379,25 +402,27 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     return { statistics, lastStatisticModified };
   }
 
-  async getCover() {
-    const cover =
-      this.currentContext.imagePath instanceof Blob ? this.currentContext.imagePath : undefined;
+  async getCover(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const cover = ctx.imagePath instanceof Blob ? ctx.imagePath : undefined;
 
     BaseStorageHandler.reportProgress();
 
     return cover;
   }
 
-  async getAudioBook() {
-    const audioBook = await database.getAudioBook(this.currentContext.title);
+  async getAudioBook(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const audioBook = await database.getAudioBook(ctx.title);
 
     BaseStorageHandler.reportProgress();
 
     return audioBook;
   }
 
-  async getSubtitleData() {
-    const subtitleData = await database.getSubtitleData(this.currentContext.title);
+  async getSubtitleData(context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    const subtitleData = await database.getSubtitleData(ctx.title);
 
     BaseStorageHandler.reportProgress();
 
@@ -407,7 +432,8 @@ export class BrowserStorageHandler extends BaseStorageHandler {
   async saveBook(
     data: Omit<BooksDbBookData, 'id'> | File,
     skipTimestampFallback = true,
-    removeStorageContext = true
+    removeStorageContext = true,
+    _context?: ReplicationContext
   ) {
     let idToReturn = 0;
 
@@ -438,15 +464,15 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     return idToReturn;
   }
 
-  async saveProgress(data: BooksDbBookmarkData | File) {
+  async saveProgress(data: BooksDbBookmarkData | File, context?: ReplicationContext) {
     if (data instanceof File) {
       BaseStorageHandler.reportProgress();
 
       return;
     }
 
-    const dataId =
-      this.currentContext.id || (await database.getDataByTitle(this.currentContext.title))?.id;
+    const ctx = this.resolveContext(context);
+    const dataId = ctx.id || (await database.getDataByTitle(ctx.title))?.id;
 
     BaseStorageHandler.reportProgress(0.5);
 
@@ -459,7 +485,7 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     }
   }
 
-  async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File) {
+  async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File, context?: ReplicationContext) {
     if (data instanceof File) {
       BaseStorageHandler.reportProgress();
 
@@ -468,12 +494,18 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
     BaseStorageHandler.reportProgress(0.5);
 
-    await database.storeUserBookmarks(this.currentContext.title, data, this.saveBehavior);
+    const ctx = this.resolveContext(context);
+    await database.storeUserBookmarks(ctx.title, data, this.saveBehavior);
   }
 
-  async saveStatistics(data: BooksDbStatistic[], lastStatisticModified: number) {
+  async saveStatistics(
+    data: BooksDbStatistic[],
+    lastStatisticModified: number,
+    context?: ReplicationContext
+  ) {
+    const ctx = this.resolveContext(context);
     await database.storeStatistics(
-      this.currentContext.title,
+      ctx.title,
       data,
       this.saveBehavior,
       this.statisticsMergeMode,
@@ -539,9 +571,10 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     BaseStorageHandler.reportProgress();
   }
 
-  saveCover(data: Blob | undefined) {
-    if (data instanceof Blob && this.titleToBookCard.has(this.currentContext.title)) {
-      this.addBookCard(this.currentContext.title, { imagePath: data });
+  saveCover(data: Blob | undefined, context?: ReplicationContext) {
+    const ctx = this.resolveContext(context);
+    if (data instanceof Blob && this.titleToBookCard.has(ctx.title)) {
+      this.addBookCard(ctx.title, { imagePath: data });
     }
 
     BaseStorageHandler.reportProgress();
@@ -778,5 +811,26 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     }
 
     return { error, deleted };
+  }
+
+  async deleteBookProgressAndStats(title: string): Promise<void> {
+    const book = await database.getDataByTitle(title);
+    if (book?.id) {
+      await database.deleteBookmark(book.id);
+      await database.clearAutosaveBookmarks(book.id);
+    }
+
+    const statistics = await database.getStatisticsForBook(title);
+    if (statistics.length) {
+      await database.deleteStatistics(statistics, [title]);
+    } else {
+      const db = await database.db;
+      await db.delete('lastModified', [title, StorageDataType.STATISTICS]);
+    }
+
+    if (this.titleToBookCard.has(title)) {
+      this.addBookCard(title, { progress: 0, lastBookmarkModified: 0 });
+    }
+    database.dataListChanged$.next(this);
   }
 }

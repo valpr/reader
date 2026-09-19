@@ -23,6 +23,8 @@ import pLimit from 'p-limit';
 
 export const exporterVersion = 1;
 
+const globalReplicationQueue = pLimit(1);
+
 export async function importData(
   document: Document,
   targetHandler: BaseStorageHandler,
@@ -30,111 +32,117 @@ export async function importData(
   cancelSignal: AbortSignal,
   fileCountData?: Record<string, number>
 ) {
-  const dataIds: number[] = [];
-  const tasks: Promise<void>[] = [];
-  const lastBookModified = new Date().getTime();
-  const progressBase = 3; // load -> save -> cover;
-  const maxProgress = progressBase * files.length;
-  const limiter = pLimit(1);
+  return globalReplicationQueue(async () => {
+    const dataIds: number[] = [];
+    const tasks: Promise<void>[] = [];
+    const lastBookModified = new Date().getTime();
+    const progressBase = 3; // load -> save -> cover;
+    const maxProgress = progressBase * files.length;
+    const limiter = pLimit(1);
 
-  let errorMessage = '';
+    let errorMessage = '';
 
-  replicationProgress$.next({ progressBase, maxProgress });
+    replicationProgress$.next({ progressBase, maxProgress });
 
-  await persistStorage(targetHandler.storageType);
+    await persistStorage(targetHandler.storageType);
 
-  if (targetHandler.isCacheDisabled()) {
-    targetHandler.clearData(false);
-  }
+    if (targetHandler.isCacheDisabled()) {
+      targetHandler.clearData(false);
+    }
 
-  let newFileData = 0;
+    let newFileData = 0;
 
-  files.forEach((file) =>
-    tasks.push(
-      limiter(async () => {
-        let currentTitle = file.name;
+    files.forEach((file) =>
+      tasks.push(
+        limiter(async () => {
+          let currentTitle = file.name;
 
-        if (fileCountData && Object.prototype.hasOwnProperty.call(fileCountData, currentTitle)) {
-          checkCancelAndProgress(cancelSignal, true, true);
-          checkCancelAndProgress(cancelSignal, true, true);
-          checkCancelAndProgress(cancelSignal, true, true);
-
-          return;
-        }
-
-        try {
-          throwIfAborted(cancelSignal);
-
-          let bookContent: LoadData;
-
-          if (file.name.endsWith('.epub')) {
-            bookContent = await loadEpub(file, document, lastBookModified);
-          } else if (file.name.endsWith('.txt')) {
-            bookContent = await loadTxt(file, lastBookModified);
-          } else {
-            bookContent = await loadHtmlz(file, document, lastBookModified);
-          }
-
-          if (fileCountData) {
-            fileCountData[currentTitle] = bookContent.characters;
+          if (fileCountData && Object.prototype.hasOwnProperty.call(fileCountData, currentTitle)) {
             checkCancelAndProgress(cancelSignal, true, true);
             checkCancelAndProgress(cancelSignal, true, true);
             checkCancelAndProgress(cancelSignal, true, true);
-
-            newFileData += 1;
 
             return;
           }
 
-          checkCancelAndProgress(cancelSignal, true, true);
+          try {
+            throwIfAborted(cancelSignal);
 
-          currentTitle = bookContent.title;
+            let bookContent: LoadData;
 
-          targetHandler.startContext(
-            { title: bookContent.title, imagePath: bookContent.coverImage || '' },
-            cancelSignal
-          );
+            if (file.name.endsWith('.epub')) {
+              bookContent = await loadEpub(file, document, lastBookModified);
+            } else if (file.name.endsWith('.txt')) {
+              bookContent = await loadTxt(file, lastBookModified);
+            } else {
+              bookContent = await loadHtmlz(file, document, lastBookModified);
+            }
 
-          dataIds.push(await targetHandler.saveBook(bookContent, false));
+            if (fileCountData) {
+              fileCountData[currentTitle] = bookContent.characters;
+              checkCancelAndProgress(cancelSignal, true, true);
+              checkCancelAndProgress(cancelSignal, true, true);
+              checkCancelAndProgress(cancelSignal, true, true);
 
-          checkCancelAndProgress(cancelSignal, false);
+              newFileData += 1;
 
-          if (bookContent.coverImage) {
-            await targetHandler.saveCover(bookContent.coverImage);
+              return;
+            }
+
+            checkCancelAndProgress(cancelSignal, true, true);
+
+            currentTitle = bookContent.title;
+
+            const context: ReplicationContext = {
+              title: bookContent.title,
+              imagePath: bookContent.coverImage || ''
+            };
+
+            targetHandler.startContext(context, cancelSignal);
+
+            dataIds.push(await targetHandler.saveBook(bookContent, false, undefined, context));
+
+            checkCancelAndProgress(cancelSignal, false);
+
+            if (bookContent.coverImage) {
+              await targetHandler.saveCover(bookContent.coverImage, context);
+            }
+
+            database.dataListChanged$.next(targetHandler);
+
+            checkCancelAndProgress(cancelSignal, true, !bookContent.coverImage);
+          } catch (error: any) {
+            errorMessage = handleErrorDuringReplication(
+              error,
+              `Error importing ${currentTitle}: `,
+              [limiter]
+            );
           }
-
-          database.dataListChanged$.next(targetHandler);
-
-          checkCancelAndProgress(cancelSignal, true, !bookContent.coverImage);
-        } catch (error: any) {
-          errorMessage = handleErrorDuringReplication(error, `Error importing ${currentTitle}: `, [
-            limiter
-          ]);
-        }
-      })
-    )
-  );
-
-  await Promise.all(tasks).catch(() => {});
-
-  if (fileCountData && newFileData) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(
-      new Blob([JSON.stringify(fileCountData)], { type: 'application/json' })
+        })
+      )
     );
-    a.rel = 'noopener';
-    a.download = 'characters';
 
-    setTimeout(() => {
-      URL.revokeObjectURL(a.href);
-    }, 1e4);
+    await Promise.all(tasks).catch(() => {});
 
-    setTimeout(() => {
-      a.click();
-    });
-  }
+    if (fileCountData && newFileData) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(
+        new Blob([JSON.stringify(fileCountData)], { type: 'application/json' })
+      );
+      a.rel = 'noopener';
+      a.download = 'characters';
 
-  return errorMessage;
+      setTimeout(() => {
+        URL.revokeObjectURL(a.href);
+      }, 1e4);
+
+      setTimeout(() => {
+        a.click();
+      });
+    }
+
+    return errorMessage;
+  });
 }
 
 export async function importBackup(
@@ -172,378 +180,387 @@ export async function replicateData(
   cancelSignal?: AbortSignal,
   skipTimestamp = false
 ) {
-  const nonBookOperations = [
-    StorageDataType.READING_GOALS,
-    StorageDataType.PROFILES,
-    StorageDataType.BOOK_TAGS
-  ];
-  const bookOperationsLength = dataToReplicate.filter(
-    (entry) => !nonBookOperations.includes(entry)
-  ).length;
-  const otherOperationsLength = dataToReplicate.length - bookOperationsLength;
-  // recent check -> source retrieval -> target storage per data type + retrieve and store cover
-  const progressBaseForBookOperations = bookOperationsLength ? bookOperationsLength * 4 + 2 : 0;
-  const progressBaseForOtherOperations = otherOperationsLength * 4;
-  const maxProgress =
-    progressBaseForBookOperations * contexts.length + progressBaseForOtherOperations;
-  const processBookData = dataToReplicate.includes(StorageDataType.DATA);
-  const processProgressData = dataToReplicate.includes(StorageDataType.PROGRESS);
-  const processStatistics = dataToReplicate.includes(StorageDataType.STATISTICS);
-  const processReadingGoals = dataToReplicate.includes(StorageDataType.READING_GOALS);
-  const processProfiles = dataToReplicate.includes(StorageDataType.PROFILES);
-  const processBookTags = dataToReplicate.includes(StorageDataType.BOOK_TAGS);
-  const processAudioBook = dataToReplicate.includes(StorageDataType.AUDIOBOOK);
-  const processSubtitleData = dataToReplicate.includes(StorageDataType.SUBTITLE);
-  const processUserBookmarks = dataToReplicate.includes(StorageDataType.USER_BOOKMARKS);
-  const replicationLimiter = pLimit(1);
-  const replicationTasks: Promise<void>[] = [];
+  return globalReplicationQueue(async () => {
+    const nonBookOperations = [
+      StorageDataType.READING_GOALS,
+      StorageDataType.PROFILES,
+      StorageDataType.BOOK_TAGS
+    ];
+    const bookOperationsLength = dataToReplicate.filter(
+      (entry) => !nonBookOperations.includes(entry)
+    ).length;
+    const otherOperationsLength = dataToReplicate.length - bookOperationsLength;
+    // recent check -> source retrieval -> target storage per data type + retrieve and store cover
+    const progressBaseForBookOperations = bookOperationsLength ? bookOperationsLength * 4 + 2 : 0;
+    const progressBaseForOtherOperations = otherOperationsLength * 4;
+    const maxProgress =
+      progressBaseForBookOperations * contexts.length + progressBaseForOtherOperations;
+    const processBookData = dataToReplicate.includes(StorageDataType.DATA);
+    const processProgressData = dataToReplicate.includes(StorageDataType.PROGRESS);
+    const processStatistics = dataToReplicate.includes(StorageDataType.STATISTICS);
+    const processReadingGoals = dataToReplicate.includes(StorageDataType.READING_GOALS);
+    const processProfiles = dataToReplicate.includes(StorageDataType.PROFILES);
+    const processBookTags = dataToReplicate.includes(StorageDataType.BOOK_TAGS);
+    const processAudioBook = dataToReplicate.includes(StorageDataType.AUDIOBOOK);
+    const processSubtitleData = dataToReplicate.includes(StorageDataType.SUBTITLE);
+    const processUserBookmarks = dataToReplicate.includes(StorageDataType.USER_BOOKMARKS);
+    const replicationLimiter = pLimit(1);
+    const replicationTasks: Promise<void>[] = [];
 
-  let anyBookmarksChanged = false;
-  let anyUserBookmarksChanged = false;
-  let errorMessage = '';
-  let processed = 0;
+    let anyBookmarksChanged = false;
+    let anyUserBookmarksChanged = false;
+    let errorMessage = '';
+    let processed = 0;
 
-  replicationProgress$.next({ maxProgress });
+    replicationProgress$.next({ maxProgress });
 
-  await persistStorage(targetHandler.storageType).catch(() => {});
+    await persistStorage(targetHandler.storageType).catch(() => {});
 
-  [sourceHandler, targetHandler].forEach((handler) => {
-    if (handler.isCacheDisabled()) {
-      handler.clearData(false);
-    }
-  });
+    [sourceHandler, targetHandler].forEach((handler) => {
+      if (handler.isCacheDisabled()) {
+        handler.clearData(false);
+      }
+    });
 
-  contexts.forEach((context) =>
-    replicationTasks.push(
-      replicationLimiter(async () => {
-        try {
-          throwIfAborted(cancelSignal);
+    contexts.forEach((context) =>
+      replicationTasks.push(
+        replicationLimiter(async () => {
+          try {
+            throwIfAborted(cancelSignal);
 
-          let dataProcessed = false;
+            let dataProcessed = false;
 
-          sourceHandler.startContext(context, cancelSignal);
-          targetHandler.startContext(context, cancelSignal);
+            sourceHandler.startContext(context, cancelSignal);
+            targetHandler.startContext(context, cancelSignal);
 
-          if (processBookData) {
-            if (
-              await targetHandler.isBookPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck('bookdata_')
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, true, true);
-              checkCancelAndProgress(cancelSignal, true, true);
-            } else {
-              const bookData = await sourceHandler.getBook();
+            if (processBookData) {
+              if (
+                await targetHandler.isBookPresentAndUpToDate(
+                  await sourceHandler.getFilenameForRecentCheck('bookdata_', context),
+                  context
+                )
+              ) {
+                checkCancelAndProgress(cancelSignal, true, true);
+                checkCancelAndProgress(cancelSignal, true, true);
+              } else {
+                const bookData = await sourceHandler.getBook(context);
+
+                checkCancelAndProgress(cancelSignal);
+
+                if (bookData) {
+                  await targetHandler.saveBook(bookData, undefined, undefined, context);
+                  dataProcessed = true;
+                }
+
+                checkCancelAndProgress(cancelSignal, bookOperationsLength === 1, !bookData);
+              }
+            }
+
+            if (processProgressData) {
+              if (
+                await targetHandler.isProgressPresentAndUpToDate(
+                  await sourceHandler.getFilenameForRecentCheck('progress_', context),
+                  context
+                )
+              ) {
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              } else {
+                const progressData = await sourceHandler.getProgress(context);
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed);
+
+                if (progressData) {
+                  await targetHandler.saveProgress(progressData, context);
+
+                  dataProcessed = true;
+                }
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed, !progressData);
+              }
+            }
+
+            if (processStatistics) {
+              if (
+                await targetHandler.areStatisticsPresentAndUpToDate(
+                  await sourceHandler.getFilenameForRecentCheck('statistics_', context),
+                  context
+                )
+              ) {
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              } else {
+                const { statistics, lastStatisticModified } =
+                  await sourceHandler.getStatistics(context);
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed);
+
+                if (statistics) {
+                  await targetHandler.saveStatistics(statistics, lastStatisticModified, context);
+
+                  dataProcessed = true;
+                }
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed, !statistics);
+              }
+            }
+
+            if (processAudioBook) {
+              if (
+                await targetHandler.isAudioBookPresentAndUpToDate(
+                  await sourceHandler.getFilenameForRecentCheck(FilePrefix.AUDIO_BOOK, context),
+                  context
+                )
+              ) {
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              } else {
+                const audioBook = await sourceHandler.getAudioBook(context);
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed);
+
+                if (audioBook) {
+                  await targetHandler.saveAudioBook(audioBook, context);
+
+                  dataProcessed = true;
+                }
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed, !audioBook);
+              }
+            }
+
+            if (processSubtitleData) {
+              if (
+                await targetHandler.isSubtitleDataPresentAndUpToDate(
+                  await sourceHandler.getFilenameForRecentCheck(FilePrefix.SUBTITLE, context),
+                  context
+                )
+              ) {
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              } else {
+                const subtitleData = await sourceHandler.getSubtitleData(context);
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed);
+
+                if (subtitleData) {
+                  await targetHandler.saveSubtitleData(subtitleData, context);
+
+                  dataProcessed = true;
+                }
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed, !subtitleData);
+              }
+            }
+
+            if (processUserBookmarks) {
+              if (
+                await targetHandler.isUserBookmarksPresentAndUpToDate(
+                  await sourceHandler.getFilenameForRecentCheck(FilePrefix.USER_BOOKMARKS, context),
+                  context
+                )
+              ) {
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              } else {
+                const ubData = await sourceHandler.getUserBookmarks(context);
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed);
+
+                if (ubData) {
+                  await targetHandler.saveUserBookmarks(ubData, context);
+
+                  dataProcessed = true;
+                }
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed, !ubData);
+              }
+            }
+
+            if (dataProcessed) {
+              const coverData = await sourceHandler.getCover(context);
+
+              checkCancelAndProgress(cancelSignal, !coverData);
+
+              await targetHandler.saveCover(coverData, context);
 
               checkCancelAndProgress(cancelSignal);
 
-              if (bookData) {
-                await targetHandler.saveBook(bookData);
-                dataProcessed = true;
+              if (refreshDataList) {
+                database.dataListChanged$.next(targetHandler);
               }
 
-              checkCancelAndProgress(cancelSignal, bookOperationsLength === 1, !bookData);
-            }
-          }
+              if (targetHandler.storageType === StorageKey.BROWSER && processProgressData) {
+                anyBookmarksChanged = true;
+              }
 
-          if (processProgressData) {
-            if (
-              await targetHandler.isProgressPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck('progress_')
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              if (targetHandler.storageType === StorageKey.BROWSER && processUserBookmarks) {
+                anyUserBookmarksChanged = true;
+              }
             } else {
-              const progressData = await sourceHandler.getProgress();
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed);
-
-              if (progressData) {
-                await targetHandler.saveProgress(progressData);
-
-                dataProcessed = true;
-              }
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed, !progressData);
+              checkCancelAndProgress(cancelSignal, true, true);
+              checkCancelAndProgress(cancelSignal, true, true);
             }
+
+            processed += 1;
+          } catch (error: any) {
+            errorMessage = handleErrorDuringReplication(
+              error,
+              `Error Processing ${context.title}: `,
+              [replicationLimiter],
+              progressBaseForBookOperations
+            );
           }
-
-          if (processStatistics) {
-            if (
-              await targetHandler.areStatisticsPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck('statistics_')
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-            } else {
-              const { statistics, lastStatisticModified } = await sourceHandler.getStatistics();
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed);
-
-              if (statistics) {
-                await targetHandler.saveStatistics(statistics, lastStatisticModified);
-
-                dataProcessed = true;
-              }
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed, !statistics);
-            }
-          }
-
-          if (processAudioBook) {
-            if (
-              await targetHandler.isAudioBookPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(FilePrefix.AUDIO_BOOK)
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-            } else {
-              const audioBook = await sourceHandler.getAudioBook();
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed);
-
-              if (audioBook) {
-                await targetHandler.saveAudioBook(audioBook);
-
-                dataProcessed = true;
-              }
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed, !audioBook);
-            }
-          }
-
-          if (processSubtitleData) {
-            if (
-              await targetHandler.isSubtitleDataPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(FilePrefix.SUBTITLE)
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-            } else {
-              const subtitleData = await sourceHandler.getSubtitleData();
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed);
-
-              if (subtitleData) {
-                await targetHandler.saveSubtitleData(subtitleData);
-
-                dataProcessed = true;
-              }
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed, !subtitleData);
-            }
-          }
-
-          if (processUserBookmarks) {
-            if (
-              await targetHandler.isUserBookmarksPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(FilePrefix.USER_BOOKMARKS)
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-            } else {
-              const ubData = await sourceHandler.getUserBookmarks();
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed);
-
-              if (ubData) {
-                await targetHandler.saveUserBookmarks(ubData);
-
-                dataProcessed = true;
-              }
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed, !ubData);
-            }
-          }
-
-          if (dataProcessed) {
-            const coverData = await sourceHandler.getCover();
-
-            checkCancelAndProgress(cancelSignal, !coverData);
-
-            await targetHandler.saveCover(coverData);
-
-            checkCancelAndProgress(cancelSignal);
-
-            if (refreshDataList) {
-              database.dataListChanged$.next(targetHandler);
-            }
-
-            if (targetHandler.storageType === StorageKey.BROWSER && processProgressData) {
-              anyBookmarksChanged = true;
-            }
-
-            if (targetHandler.storageType === StorageKey.BROWSER && processUserBookmarks) {
-              anyUserBookmarksChanged = true;
-            }
-          } else {
-            checkCancelAndProgress(cancelSignal, true, true);
-            checkCancelAndProgress(cancelSignal, true, true);
-          }
-
-          processed += 1;
-        } catch (error: any) {
-          errorMessage = handleErrorDuringReplication(
-            error,
-            `Error Processing ${context.title}: `,
-            [replicationLimiter],
-            progressBaseForBookOperations
-          );
-        }
-      })
-    )
-  );
-
-  if (processReadingGoals) {
-    replicationTasks.push(
-      replicationLimiter(async () => {
-        try {
-          if (
-            await targetHandler.areReadingGoalsPresentAndUpToDate(
-              await sourceHandler.getFilenameForRecentCheck(
-                BaseStorageHandler.readingGoalsFilePrefix
-              )
-            )
-          ) {
-            checkCancelAndProgress(cancelSignal, true, true);
-            checkCancelAndProgress(cancelSignal, true, true);
-          } else {
-            const { readingGoals, lastGoalModified } = await sourceHandler.getReadingGoals();
-
-            checkCancelAndProgress(cancelSignal);
-
-            if (readingGoals) {
-              await targetHandler.saveReadingGoals(readingGoals, lastGoalModified);
-            }
-
-            checkCancelAndProgress(cancelSignal, false, !readingGoals);
-          }
-
-          processed += 1;
-        } catch (error) {
-          errorMessage = handleErrorDuringReplication(
-            error,
-            `Error Processing Reading Goals: `,
-            [replicationLimiter],
-            progressBaseForOtherOperations
-          );
-        }
-      })
+        })
+      )
     );
-  }
 
-  if (processProfiles) {
-    replicationTasks.push(
-      replicationLimiter(async () => {
-        try {
-          if (
-            await targetHandler.areProfilesPresentAndUpToDate(
-              await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.profilesFilePrefix)
-            )
-          ) {
-            checkCancelAndProgress(cancelSignal, true, true);
-            checkCancelAndProgress(cancelSignal, true, true);
-          } else {
-            const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
-              await sourceHandler.getProfiles();
+    if (processReadingGoals) {
+      replicationTasks.push(
+        replicationLimiter(async () => {
+          try {
+            if (
+              await targetHandler.areReadingGoalsPresentAndUpToDate(
+                await sourceHandler.getFilenameForRecentCheck(
+                  BaseStorageHandler.readingGoalsFilePrefix
+                )
+              )
+            ) {
+              checkCancelAndProgress(cancelSignal, true, true);
+              checkCancelAndProgress(cancelSignal, true, true);
+            } else {
+              const { readingGoals, lastGoalModified } = await sourceHandler.getReadingGoals();
 
-            checkCancelAndProgress(cancelSignal);
+              checkCancelAndProgress(cancelSignal);
 
-            if (profiles) {
-              await targetHandler.saveProfiles(
-                profiles,
-                lastProfilesModified,
-                customThemes,
-                statisticsSettings
-              );
+              if (readingGoals) {
+                await targetHandler.saveReadingGoals(readingGoals, lastGoalModified);
+              }
+
+              checkCancelAndProgress(cancelSignal, false, !readingGoals);
             }
 
-            checkCancelAndProgress(cancelSignal, false, !profiles);
+            processed += 1;
+          } catch (error) {
+            errorMessage = handleErrorDuringReplication(
+              error,
+              `Error Processing Reading Goals: `,
+              [replicationLimiter],
+              progressBaseForOtherOperations
+            );
           }
+        })
+      );
+    }
 
-          processed += 1;
-        } catch (error) {
-          errorMessage = handleErrorDuringReplication(
-            error,
-            `Error Processing Reader Profiles: `,
-            [replicationLimiter],
-            progressBaseForOtherOperations
-          );
-        }
-      })
-    );
-  }
+    if (processProfiles) {
+      replicationTasks.push(
+        replicationLimiter(async () => {
+          try {
+            if (
+              await targetHandler.areProfilesPresentAndUpToDate(
+                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.profilesFilePrefix)
+              )
+            ) {
+              checkCancelAndProgress(cancelSignal, true, true);
+              checkCancelAndProgress(cancelSignal, true, true);
+            } else {
+              const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
+                await sourceHandler.getProfiles();
 
-  if (processBookTags) {
-    replicationTasks.push(
-      replicationLimiter(async () => {
-        try {
-          if (
-            await targetHandler.areBookTagsPresentAndUpToDate(
-              await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.bookTagsFilePrefix)
-            )
-          ) {
-            checkCancelAndProgress(cancelSignal, true, true);
-            checkCancelAndProgress(cancelSignal, true, true);
-          } else {
-            const { tags, titles, lastTagsModified } = await sourceHandler.getBookTags();
+              checkCancelAndProgress(cancelSignal);
 
-            checkCancelAndProgress(cancelSignal);
+              if (profiles) {
+                await targetHandler.saveProfiles(
+                  profiles,
+                  lastProfilesModified,
+                  customThemes,
+                  statisticsSettings
+                );
+              }
 
-            if (tags) {
-              await targetHandler.saveBookTags(tags, titles, lastTagsModified);
+              checkCancelAndProgress(cancelSignal, false, !profiles);
             }
 
-            checkCancelAndProgress(cancelSignal, false, !tags);
+            processed += 1;
+          } catch (error) {
+            errorMessage = handleErrorDuringReplication(
+              error,
+              `Error Processing Reader Profiles: `,
+              [replicationLimiter],
+              progressBaseForOtherOperations
+            );
           }
+        })
+      );
+    }
 
-          processed += 1;
-        } catch (error) {
-          errorMessage = handleErrorDuringReplication(
-            error,
-            `Error Processing Book Tags: `,
-            [replicationLimiter],
-            progressBaseForOtherOperations
-          );
-        }
-      })
-    );
-  }
+    if (processBookTags) {
+      replicationTasks.push(
+        replicationLimiter(async () => {
+          try {
+            if (
+              await targetHandler.areBookTagsPresentAndUpToDate(
+                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.bookTagsFilePrefix)
+              )
+            ) {
+              checkCancelAndProgress(cancelSignal, true, true);
+              checkCancelAndProgress(cancelSignal, true, true);
+            } else {
+              const { tags, titles, lastTagsModified } = await sourceHandler.getBookTags();
 
-  await Promise.all(replicationTasks).catch(() => {});
+              checkCancelAndProgress(cancelSignal);
 
-  if (anyBookmarksChanged) {
-    database.bookmarksChanged$.next();
-  }
+              if (tags) {
+                await targetHandler.saveBookTags(tags, titles, lastTagsModified);
+              }
 
-  if (anyUserBookmarksChanged) {
-    database.userBookmarksChanged$.next();
-  }
+              checkCancelAndProgress(cancelSignal, false, !tags);
+            }
 
-  if (targetHandler instanceof BackupStorageHandler) {
-    await targetHandler
-      .createExportZip(document, cancelSignal?.aborted || !processed)
-      .catch((error) => {
-        errorMessage = error.message;
-      });
-  }
+            processed += 1;
+          } catch (error) {
+            errorMessage = handleErrorDuringReplication(
+              error,
+              `Error Processing Book Tags: `,
+              [replicationLimiter],
+              progressBaseForOtherOperations
+            );
+          }
+        })
+      );
+    }
 
-  if (
-    !skipTimestamp &&
-    !errorMessage &&
-    !cancelSignal?.aborted &&
-    !(targetHandler instanceof BackupStorageHandler) &&
-    !(sourceHandler instanceof BackupStorageHandler)
-  ) {
-    lastSyncTimestamp$.next(Date.now());
-  }
+    await Promise.all(replicationTasks).catch(() => {});
 
-  return errorMessage;
+    if (anyBookmarksChanged) {
+      database.bookmarksChanged$.next();
+    }
+
+    if (anyUserBookmarksChanged) {
+      database.userBookmarksChanged$.next();
+    }
+
+    if (targetHandler instanceof BackupStorageHandler) {
+      await targetHandler
+        .createExportZip(document, cancelSignal?.aborted || !processed)
+        .catch((error) => {
+          errorMessage = error.message;
+        });
+    }
+
+    if (
+      !skipTimestamp &&
+      !errorMessage &&
+      !cancelSignal?.aborted &&
+      !(targetHandler instanceof BackupStorageHandler) &&
+      !(sourceHandler instanceof BackupStorageHandler)
+    ) {
+      lastSyncTimestamp$.next(Date.now());
+    }
+
+    return errorMessage;
+  });
 }
 
 async function persistStorage(target: StorageKey) {

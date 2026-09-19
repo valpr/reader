@@ -74,13 +74,25 @@ export abstract class BaseStorageHandler {
 
   abstract updateLastRead(book: BooksDbBookData): Promise<void>;
 
-  abstract getFilenameForRecentCheck(fileIdentifier: string): Promise<string | undefined>;
+  abstract getFilenameForRecentCheck(
+    fileIdentifier: string,
+    context?: ReplicationContext
+  ): Promise<string | undefined>;
 
-  abstract isBookPresentAndUpToDate(referenceFilename: string | undefined): Promise<boolean>;
+  abstract isBookPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ): Promise<boolean>;
 
-  abstract isProgressPresentAndUpToDate(referenceFilename: string | undefined): Promise<boolean>;
+  abstract isProgressPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ): Promise<boolean>;
 
-  abstract areStatisticsPresentAndUpToDate(referenceFilename: string | undefined): Promise<boolean>;
+  abstract areStatisticsPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ): Promise<boolean>;
 
   abstract areReadingGoalsPresentAndUpToDate(
     referenceFilename: string | undefined
@@ -90,28 +102,39 @@ export abstract class BaseStorageHandler {
 
   abstract areBookTagsPresentAndUpToDate(referenceFilename: string | undefined): Promise<boolean>;
 
-  abstract isAudioBookPresentAndUpToDate(referenceFilename: string | undefined): Promise<boolean>;
+  abstract isAudioBookPresentAndUpToDate(
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
+  ): Promise<boolean>;
 
   abstract isSubtitleDataPresentAndUpToDate(
-    referenceFilename: string | undefined
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
   ): Promise<boolean>;
 
   abstract isUserBookmarksPresentAndUpToDate(
-    referenceFilename: string | undefined
+    referenceFilename: string | undefined,
+    context?: ReplicationContext
   ): Promise<boolean>;
 
-  abstract getBook(): Promise<Omit<BooksDbBookData, 'id'> | File | undefined>;
+  abstract getBook(
+    context?: ReplicationContext
+  ): Promise<Omit<BooksDbBookData, 'id'> | File | undefined>;
 
-  abstract getProgress(): Promise<BooksDbBookmarkData | File | undefined>;
+  abstract getProgress(
+    context?: ReplicationContext
+  ): Promise<BooksDbBookmarkData | File | undefined>;
 
-  abstract getUserBookmarks(): Promise<BooksDbUserBookmarkData[] | File | undefined>;
+  abstract getUserBookmarks(
+    context?: ReplicationContext
+  ): Promise<BooksDbUserBookmarkData[] | File | undefined>;
 
-  abstract getStatistics(): Promise<{
+  abstract getStatistics(context?: ReplicationContext): Promise<{
     statistics: BooksDbStatistic[] | undefined;
     lastStatisticModified: number;
   }>;
 
-  abstract getCover(): Promise<Blob | undefined>;
+  abstract getCover(context?: ReplicationContext): Promise<Blob | undefined>;
 
   abstract getReadingGoals(): Promise<{
     readingGoals: BooksDbReadingGoal[] | undefined;
@@ -131,23 +154,36 @@ export abstract class BaseStorageHandler {
     lastTagsModified: number;
   }>;
 
-  abstract getAudioBook(): Promise<BooksDbAudioBook | File | undefined>;
+  abstract getAudioBook(context?: ReplicationContext): Promise<BooksDbAudioBook | File | undefined>;
 
-  abstract getSubtitleData(): Promise<BooksDbSubtitleData | File | undefined>;
+  abstract getSubtitleData(
+    context?: ReplicationContext
+  ): Promise<BooksDbSubtitleData | File | undefined>;
 
   abstract saveBook(
     data: Omit<BooksDbBookData, 'id'> | File,
     skipTimestampFallback?: boolean,
-    removeStorageContext?: boolean
+    removeStorageContext?: boolean,
+    context?: ReplicationContext
   ): Promise<number>;
 
-  abstract saveProgress(data: BooksDbBookmarkData | File): Promise<void>;
+  abstract saveProgress(
+    data: BooksDbBookmarkData | File,
+    context?: ReplicationContext
+  ): Promise<void>;
 
-  abstract saveUserBookmarks(data: BooksDbUserBookmarkData[] | File): Promise<void>;
+  abstract saveUserBookmarks(
+    data: BooksDbUserBookmarkData[] | File,
+    context?: ReplicationContext
+  ): Promise<void>;
 
-  abstract saveStatistics(data: BooksDbStatistic[], lastStatisticModified: number): Promise<void>;
+  abstract saveStatistics(
+    data: BooksDbStatistic[],
+    lastStatisticModified: number,
+    context?: ReplicationContext
+  ): Promise<void>;
 
-  abstract saveCover(data: Blob | undefined): Promise<void>;
+  abstract saveCover(data: Blob | undefined, context?: ReplicationContext): Promise<void>;
 
   abstract saveReadingGoals(data: BooksDbReadingGoal[], lastGoalModified: number): Promise<void>;
 
@@ -164,15 +200,23 @@ export abstract class BaseStorageHandler {
     lastTagsModified: number
   ): Promise<void>;
 
-  abstract saveAudioBook(data: BooksDbAudioBook | File): Promise<void>;
+  abstract saveAudioBook(
+    data: BooksDbAudioBook | File,
+    context?: ReplicationContext
+  ): Promise<void>;
 
-  abstract saveSubtitleData(data: BooksDbSubtitleData | File): Promise<void>;
+  abstract saveSubtitleData(
+    data: BooksDbSubtitleData | File,
+    context?: ReplicationContext
+  ): Promise<void>;
 
   abstract deleteBookData(
     booksToDelete: string[],
     cancelSignal: AbortSignal,
     keepLocalStatistics: boolean
   ): Promise<ReplicationDeleteResult>;
+
+  abstract deleteBookProgressAndStats(title: string): Promise<void>;
 
   static rootName = storageRootName;
 
@@ -271,6 +315,10 @@ export abstract class BaseStorageHandler {
     this.currentLastProgressValue = 0;
     this.currentProgressBase = 0;
     this.sanitizedTitle = BaseStorageHandler.sanitizeForFilename(this.currentContext.title);
+  }
+
+  protected resolveContext(explicitContext?: ReplicationContext): ReplicationContext {
+    return explicitContext || this.currentContext;
   }
 
   static getStatisticsMetadata(filename: string) {
