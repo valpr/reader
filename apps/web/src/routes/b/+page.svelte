@@ -164,6 +164,11 @@
     ReplicationSaveBehavior
   } from '$lib/functions/replication/replication-options';
   import { replicateData } from '$lib/functions/replication/replicator';
+  import {
+    triggerExitSync,
+    waitForExitSync,
+    type ExitSyncSnapshot
+  } from '$lib/functions/replication/exit-sync';
   import { reconnectAndSyncNow } from '$lib/functions/replication/cloud-reauth';
   import { BOOK_SCOPED_DATA_TYPES } from '$lib/functions/replication/cloud-sync';
   import {
@@ -278,6 +283,8 @@
       let bookData: BooksDbBookData | undefined;
 
       try {
+        await waitForExitSync();
+
         localStorageHandler = getStorageHandler(
           window,
           StorageKey.BROWSER,
@@ -1875,20 +1882,6 @@
     ]);
   }
 
-  interface ExitSyncSnapshot {
-    types: StorageDataType[];
-    context: ReplicationContext;
-    localHandler: BrowserStorageHandler;
-    externalHandler: BaseStorageHandler;
-    storageSourceName: string;
-    syncTargetName: string;
-    refreshDataList: boolean;
-    saveBehavior: ReplicationSaveBehavior;
-    statisticsMergeMode: MergeMode;
-    readingGoalsMergeMode: MergeMode;
-    cacheStorageData: boolean;
-  }
-
   function capturePendingExitSync(): ExitSyncSnapshot | undefined {
     const raw = $rawBookData$;
 
@@ -1929,63 +1922,6 @@
     dataToReplicateQueue = [];
 
     return snapshot;
-  }
-
-  async function runExitSyncInBackground(snapshot: ExitSyncSnapshot) {
-    // Silent by design: no backdrop, no modal. Failures surface via the
-    // global CloudSyncStatus banner / reconnect flow, never as a blocker.
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const win = window;
-
-    snapshot.externalHandler.updateSettings(
-      win,
-      false,
-      snapshot.saveBehavior,
-      snapshot.statisticsMergeMode,
-      snapshot.readingGoalsMergeMode,
-      snapshot.cacheStorageData,
-      false,
-      snapshot.storageSourceName
-    );
-
-    try {
-      const types =
-        snapshot.storageSourceName === snapshot.syncTargetName
-          ? snapshot.types
-          : snapshot.types.filter((d) => BOOK_SCOPED_DATA_TYPES.includes(d));
-
-      if (!types.length) {
-        return;
-      }
-
-      const error = await replicateData(
-        snapshot.localHandler,
-        snapshot.externalHandler,
-        snapshot.refreshDataList,
-        [snapshot.context],
-        types
-      ).catch((err: any) => err?.message || String(err));
-
-      if (error) {
-        logger.warn(error);
-      }
-    } catch (error: any) {
-      logger.warn(error?.message || String(error));
-    } finally {
-      snapshot.externalHandler.updateSettings(
-        win,
-        true,
-        snapshot.saveBehavior,
-        snapshot.statisticsMergeMode,
-        snapshot.readingGoalsMergeMode,
-        snapshot.cacheStorageData,
-        false,
-        snapshot.storageSourceName
-      );
-    }
   }
 
   async function leaveReader(routeId: string, deleteLastItem = true) {
@@ -2098,7 +2034,7 @@
     await goto(`${pagePath}${routeId}`);
 
     if (pendingExitSync) {
-      void runExitSyncInBackground(pendingExitSync);
+      void triggerExitSync(pendingExitSync);
     }
   }
 

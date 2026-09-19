@@ -408,6 +408,26 @@ export class DatabaseService {
     return db.put('bookmark', bookmarkData);
   }
 
+  async deleteBookmark(dataId: number): Promise<void> {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
+      return;
+    }
+    const db = await this.db;
+    const tx = db.transaction(['bookmark', 'lastItem'], 'readwrite');
+    try {
+      await tx.objectStore('bookmark').delete(dataId);
+      const lastItem = await tx.objectStore('lastItem').get(LAST_ITEM_KEY);
+      if (lastItem?.dataId === dataId) {
+        await tx.objectStore('lastItem').delete(LAST_ITEM_KEY);
+        this.lastItemChanged$.next();
+      }
+      await tx.done;
+      this.bookmarksChanged$.next();
+    } catch (_) {
+      // no-op
+    }
+  }
+
   async getUserBookmarks(dataId: number): Promise<BooksDbUserBookmarkData[]> {
     if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
       return [];

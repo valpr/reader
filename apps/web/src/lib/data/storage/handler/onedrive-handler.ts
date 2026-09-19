@@ -288,19 +288,17 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     return titleId;
   }
 
-  protected async getExternalFiles(remoteTitleId: string) {
-    if (
-      (!this.cacheStorageData || !this.dataListFetched) &&
-      !this.titleToFiles.has(this.currentContext.title)
-    ) {
+  protected async getExternalFiles(remoteTitleId: string, titleOverride?: string) {
+    const title = titleOverride || this.currentContext.title;
+    if ((!this.cacheStorageData || !this.dataListFetched) && !this.titleToFiles.has(title)) {
       const externalFiles = await this.list(remoteTitleId, true, true);
 
       if (externalFiles.length) {
-        this.setTitleData(this.currentContext.title, externalFiles);
+        this.setTitleData(title, externalFiles);
       }
     }
 
-    return this.titleToFiles.get(this.currentContext.title) || [];
+    return this.titleToFiles.get(title) || [];
   }
 
   protected async setRootFiles() {
@@ -337,7 +335,8 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     remoteFile?: OneDriveFile,
     body?: Blob | string,
     rootFilePrefix?: string,
-    progressBase = 0.8
+    progressBase = 0.8,
+    titleOverride?: string
   ) {
     const params = new URLSearchParams();
     params.append('select', `id,name`);
@@ -392,7 +391,14 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
         );
 
         if (remoteFile && name !== remoteFile.name) {
-          const renameResponse = await this.rename(name, files, remoteFile, params, rootFilePrefix);
+          const renameResponse = await this.rename(
+            name,
+            files,
+            remoteFile,
+            params,
+            rootFilePrefix,
+            titleOverride
+          );
 
           return renameResponse;
         }
@@ -405,7 +411,8 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
           {
             thumbnails: response.thumbnails
           },
-          rootFilePrefix
+          rootFilePrefix,
+          titleOverride
         );
 
         return response;
@@ -421,7 +428,14 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
       throw new Error('Renaming requires a remote id');
     }
 
-    const renameResponse = await this.rename(name, files, remoteFile, params, rootFilePrefix);
+    const renameResponse = await this.rename(
+      name,
+      files,
+      remoteFile,
+      params,
+      rootFilePrefix,
+      titleOverride
+    );
 
     return renameResponse;
   }
@@ -536,7 +550,8 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     files: OneDriveFile[],
     remoteFile: OneDriveFile,
     params: URLSearchParams,
-    rootFilePrefix?: string
+    rootFilePrefix?: string,
+    titleOverride?: string
   ) {
     const renameResponse = await this.request(
       `${this.baseEndpoint}/${remoteFile.id}?${params.toString()}`,
@@ -555,7 +570,8 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
       {
         thumbnails: renameResponse?.thumbnails || []
       },
-      rootFilePrefix
+      rootFilePrefix,
+      titleOverride
     );
 
     return renameResponse;

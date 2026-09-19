@@ -211,4 +211,59 @@ test.describe('Book Card Options Menu', () => {
     await expect(page.getByRole('button', { name: 'View details' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Upload to primary cloud' })).toHaveCount(0);
   });
+
+  test('view details allows resetting reading progress and statistics', async ({ page }) => {
+    await seedReaderBook(page);
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('books');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(['bookmark'], 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore('bookmark').put({
+          dataId: 1,
+          exploredCharCount: 600,
+          progress: 0.5,
+          lastBookmarkModified: Date.now()
+        });
+      });
+    });
+
+    await page.goto('/manage');
+
+    const bookCard = page.locator('.aspect-w-2').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    await page.getByRole('button', { name: 'View details' }).click();
+
+    const details = page.getByTestId('book-details-dialog');
+    await expect(details).toBeVisible();
+    await expect(details).toContainText('50%');
+
+    // Click Reset button to reveal confirmation prompt
+    await page.getByTestId('reset-progress-button').click();
+    await expect(page.getByTestId('confirm-reset-progress')).toBeVisible();
+    await expect(page.getByTestId('cancel-reset-progress')).toBeVisible();
+
+    // Cancel hides the confirmation without resetting
+    await page.getByTestId('cancel-reset-progress').click();
+    await expect(page.getByTestId('confirm-reset-progress')).not.toBeVisible();
+    await expect(page.getByTestId('reset-progress-button')).toBeVisible();
+
+    // Confirm resets progress and closes details dialog
+    await page.getByTestId('reset-progress-button').click();
+    await page.getByTestId('confirm-reset-progress').click();
+    await expect(details).not.toBeVisible();
+
+    // Reopen details and verify progress is now 0%
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    await page.getByRole('button', { name: 'View details' }).click();
+    await expect(page.getByTestId('book-details-dialog')).toBeVisible();
+    await expect(page.getByTestId('book-details-dialog')).toContainText('0%');
+  });
 });

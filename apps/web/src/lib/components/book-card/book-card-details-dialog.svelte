@@ -18,6 +18,7 @@
   export let allTags: string[] = [];
   export let isCloudOnly = false;
   export let onSaveTags: ((tags: string[]) => Promise<void>) | undefined = undefined;
+  export let onResetProgress: (() => Promise<void>) | undefined = undefined;
 
   const dispatch = createEventDispatcher<{
     close: void;
@@ -29,6 +30,9 @@
   let highlightedIndex = -1;
   let saving = false;
   let saveError = '';
+  let resetting = false;
+  let resetError = '';
+  let showResetConfirm = false;
 
   $: sourceLabels = (sources || []).map(getSourceLabel);
   $: progressLabel = `${Math.round((progress || 0) * 100)}%`;
@@ -99,6 +103,20 @@
       saveError = error?.message || 'Failed to save tags';
     } finally {
       saving = false;
+    }
+  }
+
+  async function handleResetProgress() {
+    if (!onResetProgress || resetting) return;
+    resetting = true;
+    resetError = '';
+    try {
+      await onResetProgress();
+      dispatch('close');
+    } catch (error: any) {
+      resetError = error?.message || 'Failed to reset progress and stats';
+    } finally {
+      resetting = false;
     }
   }
 </script>
@@ -219,6 +237,68 @@
           {/if}
         {/if}
       </div>
+
+      {#if onResetProgress}
+        <div
+          class="mt-6 border-t border-[var(--astryx-color-border-subtle,rgba(0,0,0,0.1))] pt-4"
+          data-testid="reset-progress-section"
+        >
+          {#if showResetConfirm}
+            <div
+              class="w-full min-w-0 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+            >
+              <p class="font-semibold break-words [overflow-wrap:anywhere]">
+                Reset reading progress &amp; stats?
+              </p>
+              <p class="mt-1 text-xs opacity-90 break-words [overflow-wrap:anywhere]">
+                Are you sure you want to reset reading progress and statistics for this book? This
+                will reset progress to 0% and remove all stats entries for this book locally and in
+                the cloud.
+              </p>
+              {#if resetError}
+                <div
+                  class="mt-2 text-xs font-semibold text-red-700 dark:text-red-300 break-words [overflow-wrap:anywhere]"
+                  role="alert"
+                >
+                  {resetError}
+                </div>
+              {/if}
+              <div class="mt-3 flex flex-wrap gap-2 min-w-0">
+                <button
+                  type="button"
+                  data-testid="confirm-reset-progress"
+                  class="rounded bg-red-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none min-h-[44px] min-w-[44px]"
+                  disabled={resetting}
+                  on:click={handleResetProgress}
+                >
+                  {resetting ? 'Resetting...' : 'Yes, Reset'}
+                </button>
+                <button
+                  type="button"
+                  data-testid="cancel-reset-progress"
+                  class="rounded border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800 min-h-[44px] min-w-[44px]"
+                  disabled={resetting}
+                  on:click={() => {
+                    showResetConfirm = false;
+                    resetError = '';
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          {:else}
+            <button
+              type="button"
+              data-testid="reset-progress-button"
+              class="flex min-h-[44px] w-full items-center text-left text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 py-2"
+              on:click={() => (showResetConfirm = true)}
+            >
+              Reset Reading Progress &amp; Stats…
+            </button>
+          {/if}
+        </div>
+      {/if}
     </div>
   </svelte:fragment>
   <div class="flex grow justify-end gap-2" slot="footer">
