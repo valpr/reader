@@ -14,10 +14,13 @@ Valpr Reader features deep two-way awareness of Yomitan:
 
 ---
 
-## Required Yomitan Configuration
+## Optional Yomitan Configuration
 
 ::: danger Critical Setting: Disable "Use a secure container around popups"
 For Valpr Reader to detect open popups and track vocabulary lookups, Yomitan must render its popup within the host page DOM.
+You may want to create a separate profile that only activates on the valpr.github.io domain so that you can continue using this setting on other sites.
+You can duplicate your profile through the Yomitan Extensions setting page -> Configure Profiles
+Duplicate your chosen profile from the ... menu, then edit conditions, add URL | Matches Domain | github.valpr.io
 
 1. Click the **Yomitan** extension icon and open **Settings** (`⚙`).
 2. Scroll to the bottom and enable **Advanced settings** (toggle the toggle switch in the bottom-left corner).
