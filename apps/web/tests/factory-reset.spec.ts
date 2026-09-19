@@ -208,6 +208,7 @@ test.describe('Factory reset', () => {
     expect(uploadedBody).toContain('"name":"Cloud Custom"');
     expect(uploadedBody.match(/"id":"custom-cloud"/g)).toHaveLength(1);
     expect(uploadedBody).toContain('"id":"default-desktop"');
-    expect(uploadedBody.match(/"id":"/g)?.length).toBe(4);
+    expect(uploadedBody).toContain('"id":"default-ereader"');
+    expect(uploadedBody.match(/"id":"/g)?.length).toBe(5);
   });
 });

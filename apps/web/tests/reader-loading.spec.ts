@@ -32,6 +32,10 @@ test.describe('Reader Loading & Initialization', () => {
 
   test('end-to-end journey: upload file from manager and open reader', async ({ page }) => {
     await page.goto('/manage');
+    // Wait for JS hydration so file inputs and the book list are interactive.
+    // Without this, setInputFiles can fire before Svelte attaches the
+    // use:inputFile actions (slow CI), and the upload is silently dropped.
+    await page.waitForLoadState('networkidle');
 
     // Prepare a mock .txt file
     const fileContent = 'これはテスト本の本文です。\n第二段落の内容です。';
@@ -62,6 +66,8 @@ test.describe('Reader Loading & Initialization', () => {
   test('displays loading spinner overlay when clicking a book card to open', async ({ page }) => {
     await seedReaderBook(page);
     await page.goto('/manage');
+    // Wait for JS hydration so the book list is rendered and interactive.
+    await page.waitForLoadState('networkidle');
 
     const bookCard = page.locator('.aspect-w-2:has-text("吾輩は猫である")').first();
     await expect(bookCard).toBeVisible({ timeout: 10000 });
@@ -77,14 +83,19 @@ test.describe('Reader Loading & Initialization', () => {
 
   test('BookLoadingOverlay renders accessible spinner icon', async ({ page }) => {
     await page.goto('/manage');
+    // Wait for JS hydration so the manage page's onMount (which clears stale
+    // loading overlays) has already run before we push the overlay below.
+    // Otherwise hydration can clear the dialog after it is pushed (slow CI).
+    await page.waitForLoadState('networkidle');
 
     // Push the overlay into dialogs
     await page.evaluate(async () => {
       // @ts-expect-error - dynamic browser import in playwright evaluate
       const { dialogManager } = await import('/src/lib/data/dialog-manager.ts');
-      // @ts-expect-error - dynamic browser import in playwright evaluate
-      const { default: BookLoadingOverlay } =
-        await import('/src/lib/components/book-loading-overlay.svelte');
+      const { default: BookLoadingOverlay } = await import(
+        // @ts-expect-error - dynamic browser import of .svelte in playwright evaluate
+        '/src/lib/components/book-loading-overlay.svelte'
+      );
       dialogManager.dialogs$.next([
         {
           component: BookLoadingOverlay,
