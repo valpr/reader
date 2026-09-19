@@ -1,23 +1,28 @@
 <script lang="ts">
   import {
+    faCalendar,
     faChevronLeft,
     faChevronRight,
     faClose,
     faFloppyDisk,
     faPen,
+    faPlus,
     faTrash,
     faXmark
   } from '@fortawesome/free-solid-svg-icons';
   import Popover from '$lib/components/popover/popover.svelte';
   import {
     StatisticsSummaryKey,
+    type StatisticsAddRequest,
     type StatisticsDataSourceChange,
     type StatisticsDeleteRequest,
     type StatisticsEditRequest
   } from '$lib/components/statistics/statistics-summary/statistics-summary';
   import StatisticsSummaryHeader from '$lib/components/statistics/statistics-summary/statistics-summary-header.svelte';
+  import StatisticsAddActivityDialog from '$lib/components/statistics/statistics-summary/statistics-add-activity-dialog.svelte';
   import {
     type BookStatistic,
+    StatisticsRangeTemplate,
     StatisticsReadingDataAggregationMode,
     readingTimeDataSources,
     charactersDataSources,
@@ -25,20 +30,31 @@
     dateDataSources,
     titleDataSources
   } from '$lib/components/statistics/statistics-types';
+  import { dialogManager } from '$lib/data/dialog-manager';
   import { CLOSE_POPOVER } from '$lib/data/events';
   import { SortDirection } from '$lib/data/sort-types';
   import {
+    database,
     lastBlurredTrackerItems$,
     lastCharactersDataSource$,
     lastPrimaryReadingDataAggregationMode$,
     lastReadingSpeedDataSource$,
     lastReadingTimeDataSource$,
     lastStatisticsEndDate$,
+    lastStatisticsRangeTemplate$,
     lastStatisticsStartDate$,
     lastStatisticsSummarySortDirection$,
-    lastStatisticsSummarySortProperty$
+    lastStatisticsSummarySortProperty$,
+    startDayHoursForTracker$
   } from '$lib/data/store';
-  import { getNumberFromObject, secondsToMinutes } from '$lib/functions/statistic-util';
+  import {
+    advanceDateDays,
+    getDate,
+    getDateString,
+    getNumberFromObject,
+    getStartHoursDate,
+    secondsToMinutes
+  } from '$lib/functions/statistic-util';
   import { reduceToEmptyString } from '$lib/functions/rxjs/reduce-to-empty-string';
   import { convertRemToPixels, dummyFn, getFullHeight, limitToRange } from '$lib/functions/utils';
   import { debounceTime, fromEvent, tap } from 'rxjs';
@@ -51,6 +67,7 @@
   const dispatch = createEventDispatcher<{
     delete: StatisticsDeleteRequest;
     edit: StatisticsEditRequest;
+    add: StatisticsAddRequest;
   }>();
 
   const statisticsSummaryBaseRowRem = 3;
@@ -330,18 +347,219 @@
       rowInEditResetMinMaxValues = false;
     }
   }
+
+  $: today = getStartHoursDate($startDayHoursForTracker$);
+  $: todayKey = getDateString(today);
+  $: isViewingToday =
+    $lastStatisticsStartDate$ === todayKey && $lastStatisticsEndDate$ === todayKey;
+  $: isSingleDay = $lastStatisticsStartDate$ === $lastStatisticsEndDate$;
+  $: isTodayOrFuture = $lastStatisticsStartDate$ >= todayKey && $lastStatisticsEndDate$ >= todayKey;
+
+  $: displayDateLabel = formatSummaryDateLabel(
+    $lastStatisticsStartDate$,
+    $lastStatisticsEndDate$,
+    todayKey
+  );
+
+  function formatSummaryDateLabel(
+    startKey: string,
+    endKey: string,
+    currentTodayKey: string
+  ): string {
+    if (!startKey) return '';
+    if (startKey !== endKey) {
+      return statisticsDateRangeLabel;
+    }
+    if (startKey === currentTodayKey) {
+      const d = getDate(startKey);
+      const dateFormatted = d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      return `Today · ${dateFormatted}`;
+    }
+    const d = getDate(startKey);
+    const prevDate = new Date(today.getTime());
+    prevDate.setDate(prevDate.getDate() - 1);
+    const yesterdayKey = getDateString(prevDate);
+    if (startKey === yesterdayKey) {
+      const dateFormatted = d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      return `Yesterday · ${dateFormatted}`;
+    }
+    return d.toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  function goToPreviousDay() {
+    setRowInEditMode();
+    const currentKey = $lastStatisticsStartDate$ || todayKey;
+    const currentDate = getDate(currentKey, $startDayHoursForTracker$);
+    const { dateString: prevDateKey } = advanceDateDays(currentDate, -1);
+
+    $lastStatisticsRangeTemplate$ = StatisticsRangeTemplate.CUSTOM;
+    $lastStatisticsStartDate$ = prevDateKey;
+    $lastStatisticsEndDate$ = prevDateKey;
+  }
+
+  function goToNextDay() {
+    if (isTodayOrFuture) return;
+    setRowInEditMode();
+    const currentKey = $lastStatisticsStartDate$ || todayKey;
+    const currentDate = getDate(currentKey, $startDayHoursForTracker$);
+    const { dateString: nextDateKey } = advanceDateDays(currentDate, 1);
+
+    if (nextDateKey >= todayKey) {
+      goToToday();
+    } else {
+      $lastStatisticsRangeTemplate$ = StatisticsRangeTemplate.CUSTOM;
+      $lastStatisticsStartDate$ = nextDateKey;
+      $lastStatisticsEndDate$ = nextDateKey;
+    }
+  }
+
+  function goToToday() {
+    setRowInEditMode();
+    $lastStatisticsRangeTemplate$ = StatisticsRangeTemplate.TODAY;
+    $lastStatisticsStartDate$ = todayKey;
+    $lastStatisticsEndDate$ = todayKey;
+  }
+
+  function handleDatePick(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const selected = input.value;
+    if (!selected) return;
+    setRowInEditMode();
+
+    if (selected >= todayKey) {
+      goToToday();
+    } else {
+      $lastStatisticsRangeTemplate$ = StatisticsRangeTemplate.CUSTOM;
+      $lastStatisticsStartDate$ = selected;
+      $lastStatisticsEndDate$ = selected;
+    }
+  }
+
+  async function openAddActivityDialog() {
+    setRowInEditMode();
+    const books = await database.getDataList();
+    const currentTargetDate = $lastStatisticsStartDate$ || todayKey;
+
+    dialogManager.dialogs$.next([
+      {
+        component: StatisticsAddActivityDialog,
+        props: {
+          dateKey: currentTargetDate,
+          books,
+          existingStatistics: currentStatisticsSummaryRows,
+          resolver: (result: StatisticsAddRequest | null) => {
+            if (result) {
+              dispatch('add', result);
+            }
+          }
+        },
+        disableCloseOnClick: true,
+        zIndex: '70'
+      }
+    ]);
+  }
 </script>
 
 {$resizeHandler$ ?? ''}
-<div class="my-4" class:hidden={!aggregratedStatistics.length}>
-  Data for {statisticsDateRangeLabel}
+<div
+  data-testid="summary-date-stepper"
+  class="my-3 flex flex-wrap items-center justify-between gap-3 min-w-0"
+>
+  <div class="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
+    <!-- Previous day button -->
+    <button
+      type="button"
+      data-testid="summary-prev-day-btn"
+      class="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors cursor-pointer"
+      aria-label="Previous day"
+      title="Previous day"
+      on:click={goToPreviousDay}
+    >
+      <Fa icon={faChevronLeft} />
+    </button>
+
+    <!-- Date display & native date picker overlay -->
+    <div class="relative flex items-center min-w-0">
+      <input
+        id="summaryDatePicker"
+        data-testid="summary-date-picker-input"
+        type="date"
+        class="absolute inset-0 h-full w-full opacity-0 cursor-pointer z-10"
+        aria-label="Select date"
+        max={todayKey}
+        value={isSingleDay ? $lastStatisticsStartDate$ : ''}
+        on:change={handleDatePick}
+      />
+      <div
+        class="flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-1.5 text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors cursor-pointer select-none"
+        title="Click to choose a date"
+      >
+        <Fa
+          icon={faCalendar}
+          class="text-xs text-[var(--astryx-color-fg-muted,#71717a)] shrink-0"
+        />
+        <span data-testid="summary-date-label" class="truncate">{displayDateLabel}</span>
+      </div>
+    </div>
+
+    <!-- Next day button -->
+    <button
+      type="button"
+      data-testid="summary-next-day-btn"
+      class="flex h-9 w-9 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+      aria-label="Next day"
+      title="Next day"
+      disabled={isTodayOrFuture}
+      on:click={goToNextDay}
+    >
+      <Fa icon={faChevronRight} />
+    </button>
+
+    <!-- Today jump button (shown when viewing a past day) -->
+    {#if !isViewingToday}
+      <button
+        type="button"
+        data-testid="summary-today-btn"
+        class="flex min-h-[44px] items-center rounded-lg px-2.5 py-1 text-xs font-semibold text-[var(--astryx-color-primary,#6366f1)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors cursor-pointer"
+        title="Jump to Today"
+        on:click={goToToday}
+      >
+        Today
+      </button>
+    {/if}
+  </div>
+
+  <!-- Add Activity button -->
+  <button
+    type="button"
+    data-testid="summary-add-activity-btn"
+    class="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors shadow-sm cursor-pointer ml-auto"
+    title="Add reading activity for this date"
+    on:click={openAddActivityDialog}
+  >
+    <Fa icon={faPlus} class="text-xs text-[var(--astryx-color-primary,#6366f1)]" />
+    <span>Add Activity</span>
+  </button>
 </div>
+
 <div
   class="grow p-2 overflow-auto"
   class:flex={!statisticsData.length}
   class:justify-center={!statisticsData.length}
   class:items-center={!statisticsData.length}
-  class:text-4xl={!statisticsData.length}
   bind:this={statisticsSummaryTableContainerElm}
 >
   {#if statisticsData.length}
@@ -598,7 +816,21 @@
       </Popover>
     {/if}
   {:else}
-    No Data found for {statisticsDateRangeLabel}
+    <div
+      class="flex flex-col items-center justify-center p-8 text-center text-[var(--astryx-color-fg-muted,#71717a)] max-w-md mx-auto"
+    >
+      <div class="text-base sm:text-lg mb-4 text-[var(--astryx-color-fg-primary,#18181b)]">
+        No reading activity recorded for this date.
+      </div>
+      <button
+        type="button"
+        class="flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-4 py-2 text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors shadow-sm cursor-pointer"
+        on:click={openAddActivityDialog}
+      >
+        <Fa icon={faPlus} class="text-xs text-[var(--astryx-color-primary,#6366f1)]" />
+        <span>Add Reading Activity</span>
+      </button>
+    </div>
   {/if}
 </div>
 <div
