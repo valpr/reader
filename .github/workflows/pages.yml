@@ -45,6 +45,14 @@ jobs:
         run: pnpm svelte-kit sync
         working-directory: apps/web
 
+      - name: Build docs
+        run: pnpm docs:build
+        env:
+          DOCS_BASE_PATH: '/reader/docs/'
+
+      - name: Copy docs into web static
+        run: cp -r apps/docs/.vitepress/dist apps/web/static/docs
+
       - name: Build
         run: pnpm build
         working-directory: apps/web
