@@ -231,6 +231,11 @@ export class DatabaseService {
     return [dateKey, true];
   }
 
+  async getDataList(): Promise<BooksDbBookData[]> {
+    const db = await this.db;
+    return db.getAll('data');
+  }
+
   async upsertData(
     data: Omit<BooksDbBookData, 'id'>,
     saveBehavior: ReplicationSaveBehavior,
@@ -1010,6 +1015,8 @@ export class DatabaseService {
       throw new Error('Unable to find record in the database');
     }
 
+    const lastModified = newStatistic.lastStatisticModified || Date.now();
+
     existingStatistic = {
       ...existingStatistic,
       charactersRead: newStatistic.charactersRead,
@@ -1018,10 +1025,86 @@ export class DatabaseService {
       altMinReadingSpeed: newStatistic.altMinReadingSpeed,
       lastReadingSpeed: newStatistic.lastReadingSpeed,
       maxReadingSpeed: newStatistic.maxReadingSpeed,
-      lastStatisticModified: newStatistic.lastStatisticModified
+      lastStatisticModified: lastModified
     };
 
-    await db.put('statistic', existingStatistic);
+    const tx = db.transaction(['statistic', 'lastModified'], 'readwrite');
+    await tx.objectStore('statistic').put(existingStatistic);
+    await tx.objectStore('lastModified').put({
+      title: newStatistic.title,
+      dataType: StorageDataType.STATISTICS,
+      lastModifiedValue: lastModified
+    });
+    await tx.done;
+  }
+
+  async upsertStatistic(statistic: BooksDbStatistic) {
+    if (!statistic?.title || !statistic?.dateKey) {
+      throw new Error('Invalid statistic data');
+    }
+    const db = await this.db;
+    const tx = db.transaction(['statistic', 'lastModified'], 'readwrite');
+
+    try {
+      const statisticsStore = tx.objectStore('statistic');
+      const lastModifiedStore = tx.objectStore('lastModified');
+
+      let existingStatistic = await statisticsStore.get([statistic.title, statistic.dateKey]);
+      const lastModified = statistic.lastStatisticModified || Date.now();
+
+      if (existingStatistic) {
+        const updatedTime = (existingStatistic.readingTime || 0) + (statistic.readingTime || 0);
+        const updatedChars =
+          (existingStatistic.charactersRead || 0) + (statistic.charactersRead || 0);
+        const speed = updatedTime ? Math.ceil((3600 * updatedChars) / updatedTime) : 0;
+
+        existingStatistic = {
+          ...existingStatistic,
+          readingTime: updatedTime,
+          charactersRead: updatedChars,
+          lastReadingSpeed: speed,
+          maxReadingSpeed: Math.max(existingStatistic.maxReadingSpeed || 0, speed),
+          minReadingSpeed: existingStatistic.minReadingSpeed
+            ? Math.min(existingStatistic.minReadingSpeed, speed)
+            : speed,
+          altMinReadingSpeed: existingStatistic.altMinReadingSpeed
+            ? Math.min(existingStatistic.altMinReadingSpeed, speed)
+            : speed,
+          lastStatisticModified: lastModified
+        };
+        await statisticsStore.put(existingStatistic);
+      } else {
+        const speed = statistic.readingTime
+          ? Math.ceil((3600 * statistic.charactersRead) / statistic.readingTime)
+          : 0;
+        const newRecord: BooksDbStatistic = {
+          ...getDefaultStatistic(statistic.title, statistic.dateKey),
+          ...statistic,
+          lastReadingSpeed: speed,
+          maxReadingSpeed: speed,
+          minReadingSpeed: speed,
+          altMinReadingSpeed: speed,
+          lastStatisticModified: lastModified
+        };
+        await statisticsStore.put(newRecord);
+      }
+
+      await lastModifiedStore.put({
+        title: statistic.title,
+        dataType: StorageDataType.STATISTICS,
+        lastModifiedValue: lastModified
+      });
+
+      await tx.done;
+    } catch (error: any) {
+      try {
+        tx.abort();
+        await tx.done;
+      } catch (_) {
+        // no-op
+      }
+      throw error;
+    }
   }
 
   async clearZombieStatistics() {

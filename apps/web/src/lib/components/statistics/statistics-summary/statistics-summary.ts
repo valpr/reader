@@ -21,6 +21,13 @@ export interface StatisticsEditRequest {
   resetMinMaxValues: boolean;
 }
 
+export interface StatisticsAddRequest {
+  dateKey: string;
+  title: string;
+  readingTime: number;
+  charactersRead: number;
+}
+
 export interface StatisticsDataSourceChange {
   property: keyof BookStatistic;
   statisticsSummaryKey: StatisticsSummaryKey;
