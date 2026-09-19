@@ -71,40 +71,33 @@ test('data controls sheet: scope bar, tabs, apply filter updates scope', async (
   await expect(page.getByRole('tab', { name: 'Dates' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: '2 of 2 titles' })).toBeVisible();
 
-  // Switch to Titles tab; sheet stays open and shows labeled actions
+  // Switch to Titles tab; sheet stays open with search + instant actions
   await page.getByRole('tab', { name: 'Titles' }).click();
   await expect(page.getByRole('tab', { name: 'Titles' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
+  await expect(page.getByPlaceholder('Search titles…')).toBeVisible();
   await expect(page.getByRole('button', { name: 'All' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'None', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'In range' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Selected' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove Beta Book' })).toBeVisible();
 
   // Toggle a view-only switch: sheet must stay open
   await page.getByRole('button', { name: 'In range' }).click();
-  await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
+  await expect(page.getByPlaceholder('Search titles…')).toBeVisible();
   await page.getByRole('button', { name: 'In range' }).click();
 
-  // Uncheck Beta Book (paging through the list if needed), then Apply
-  const titleCells = page.locator('div.grid div.line-clamp-3');
-  const nextPage = page.getByRole('button', { name: 'Next titles page' });
-  let betaUnchecked = false;
-  for (let attempt = 0; attempt < 5 && !betaUnchecked; attempt += 1) {
-    const titleTexts = await titleCells.allTextContents();
-    const betaIndex = titleTexts.findIndex((text) => text.includes('Beta Book'));
-    if (betaIndex >= 0) {
-      const boxes = page.locator('div.grid input[type="checkbox"]');
-      await expect(boxes).toHaveCount(titleTexts.length);
-      await boxes.nth(betaIndex).uncheck();
-      betaUnchecked = true;
-    } else if (await nextPage.isEnabled()) {
-      await nextPage.click();
-    }
-  }
-  expect(betaUnchecked).toBe(true);
-  await page.getByRole('button', { name: 'Apply' }).click();
+  // Removing a title applies immediately: scope updates, sheet stays open
+  await page.getByRole('button', { name: 'Remove Beta Book' }).click();
+  await expect(page.getByText('1 of 2 titles').first()).toBeVisible();
+  await expect(page.getByText('Data controls').first()).toBeVisible();
 
-  await expect(page.getByText('1 of 2 titles')).toBeVisible();
+  // Searching finds the removed title; picking it re-adds it immediately
+  await page.getByPlaceholder('Search titles…').fill('Beta');
+  await page.getByRole('option', { name: 'Beta Book' }).click();
+  await expect(page.getByRole('button', { name: 'Remove Beta Book' })).toBeVisible();
+  await expect(page.getByText('2 of 2 titles').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByText('2 of 2 titles')).toBeVisible();
   await expect(page.getByText('Data controls').first()).toHaveCount(0);
 });
 
@@ -137,10 +130,13 @@ test('display tab changes aggregation and actions tab groups copy/export/delete'
   await expect(page.getByRole('button', { name: 'Delete current view' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete everything' })).toBeVisible();
 
+  // No grouping chip while aggregation is None
+  await expect(page.getByRole('button', { name: /grouped by/ })).toHaveCount(0);
+
   // Display tab: switching aggregation updates the scope bar and stays open
   await page.getByRole('tab', { name: 'Display' }).click();
-  await expect(page.getByLabel('Primary Aggregration')).toBeVisible();
-  await page.getByLabel('Primary Aggregration').selectOption('Title');
+  await expect(page.getByText('Primary Aggregation')).toBeVisible();
+  await page.getByRole('radio', { name: 'Title' }).click();
   await expect(page.getByRole('tab', { name: 'Display' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('grouped by Title')).toBeVisible();
 

@@ -7,12 +7,21 @@
 import { expect, test } from '@playwright/test';
 import { seedReaderBook, seedStatistics } from './fixtures/book-fixture';
 
+const TEST_COVER =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="150"><rect width="100" height="150" fill="#6366f1"/></svg>'
+  );
+
+const TOP_BOOK_TITLE = '本好きの下剋上 (Ascendance of a Bookworm)';
+
 test.describe('Reading Lookback E2E', () => {
   test.beforeEach(async ({ page }) => {
     // Seed a book and enriched statistics
     await seedReaderBook(page, {
-      title: '本好きの下剋上 (Ascendance of a Bookworm)',
-      characters: 150000
+      title: TOP_BOOK_TITLE,
+      characters: 150000,
+      coverImage: TEST_COVER
     });
 
     const now = new Date();
@@ -153,8 +162,33 @@ test.describe('Reading Lookback E2E', () => {
     // Chronotype Card
     await expect(page.getByText('24-Hour Reading Rhythm')).toBeVisible();
 
-    // Most Read Books Leaderboard
-    await expect(page.getByText('本好きの下剋上 (Ascendance of a Bookworm)')).toBeVisible();
+    // Most Read Books carousel with cover art
+    const carousel = page.getByRole('region', { name: 'Most read books' });
+    await expect(carousel).toBeVisible();
+    await expect(carousel.getByText(TOP_BOOK_TITLE)).toBeVisible();
+    await expect(carousel.getByRole('img', { name: `${TOP_BOOK_TITLE} cover` })).toBeVisible();
+
+    // Carousel controls cycle slides
+    await page.getByRole('button', { name: 'Next slide' }).click();
+    await expect(page.getByRole('button', { name: 'Go to slide 2' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+    await page.getByRole('button', { name: 'Previous slide' }).click();
+    await expect(page.getByRole('button', { name: 'Go to slide 1' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+
+    // Clicking a slide opens the reading-details dialog
+    await carousel.getByRole('button', { name: `${TOP_BOOK_TITLE}: view reading details` }).click();
+    await expect(page.getByRole('heading', { name: TOP_BOOK_TITLE })).toBeVisible();
+    const details = page.getByTestId('lookback-book-details');
+    await expect(details.getByText('#1')).toBeVisible();
+    await expect(details.getByText('Finished (100%)')).toBeVisible();
+    await expect(details.getByText('450')).toBeVisible();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(page.getByRole('heading', { name: TOP_BOOK_TITLE })).toHaveCount(0);
 
     // Launch Story Player
     await playStoryBtn.click();

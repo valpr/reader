@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedReaderBook, seedStatistics } from '../fixtures/book-fixture';
-import { expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
+import { expectDialogFitsViewport, expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
 
 for (const width of [412, 360]) {
   test(`statistics lookback fits and functions at ${width}px without overflow`, async ({
@@ -144,6 +144,38 @@ for (const width of [412, 360]) {
     await expect(page.getByRole('heading', { name: 'Vocab Hunter' })).toBeVisible();
     await expect(page.getByText('Drop-off Cliff Analysis', { exact: true })).toBeVisible();
     await expect(page.getByText('Device Sanctuary', { exact: true })).toBeVisible();
+
+    // Most Read Books carousel scrolls internally without page overflow
+    const carousel = page.getByRole('region', { name: 'Most read books' });
+    await expect(carousel).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    // Carousel controls are fully in viewport and cycle slides
+    const viewport = page.viewportSize();
+    expect(viewport, 'no viewport size').not.toBeNull();
+    const nextSlide = page.getByRole('button', { name: 'Next slide' });
+    await expect(nextSlide).toBeVisible();
+    const nextBox = await nextSlide.boundingBox();
+    expect(nextBox, 'Next slide has no bounding box').not.toBeNull();
+    expect(nextBox!.x + nextBox!.width).toBeLessThanOrEqual(viewport!.width + 1);
+    await nextSlide.tap();
+    await expect(page.getByRole('button', { name: 'Go to slide 2' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+
+    // Tapping a slide opens the reading-details dialog inside the viewport
+    const longTitle =
+      '本好きの下剋上〜司書になるためには手段を選んでいられません〜 (Very Long Unbroken Title)';
+    await carousel.getByRole('button', { name: `${longTitle}: view reading details` }).tap();
+    await expect(page.getByRole('heading', { name: longTitle })).toBeVisible();
+    const details = page.getByTestId('lookback-book-details');
+    await expect(details).toBeVisible();
+    await expectDialogFitsViewport(details);
+    await expectNoHorizontalOverflow(page);
+    await page.getByRole('button', { name: 'Close', exact: true }).tap();
+    await expect(page.getByRole('heading', { name: longTitle })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
 
     // Tap Play Story
     const playBtn = page.getByRole('button', { name: /Play Story/ });
