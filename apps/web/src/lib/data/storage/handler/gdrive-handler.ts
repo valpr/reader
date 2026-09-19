@@ -201,11 +201,9 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     return titleId;
   }
 
-  protected async getExternalFiles(remoteTitleId: string) {
-    if (
-      (!this.cacheStorageData || !this.dataListFetched) &&
-      !this.titleToFiles.has(this.currentContext.title)
-    ) {
+  protected async getExternalFiles(remoteTitleId: string, titleOverride?: string) {
+    const title = titleOverride || this.currentContext.title;
+    if ((!this.cacheStorageData || !this.dataListFetched) && !this.titleToFiles.has(title)) {
       const externalFiles = await this.list(
         `trashed=false and '${remoteTitleId}' in parents`,
         'files(id,name,thumbnailLink,parents)'
@@ -214,12 +212,12 @@ export class GDriveStorageHandler extends ApiStorageHandler {
       if (externalFiles.length) {
         const groupedExternalFiles = new Map<string, GDriveFile[]>();
 
-        groupedExternalFiles.set(this.currentContext.title, externalFiles);
+        groupedExternalFiles.set(title, externalFiles);
         this.setTitleData(groupedExternalFiles);
       }
     }
 
-    return this.titleToFiles.get(this.currentContext.title) || [];
+    return this.titleToFiles.get(title) || [];
   }
 
   protected async setRootFiles() {
@@ -263,7 +261,8 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     externalFile: GDriveFile | undefined,
     data: Blob | string | undefined,
     rootFilePrefix?: string,
-    progressBase = 0.8
+    progressBase = 0.8,
+    titleOverride?: string
   ): Promise<GDriveFile> {
     const form = new FormData();
     const params = new URLSearchParams();
@@ -308,7 +307,8 @@ export class GDriveStorageHandler extends ApiStorageHandler {
       {
         parents: [folderId]
       },
-      rootFilePrefix
+      rootFilePrefix,
+      titleOverride
     );
 
     return response;

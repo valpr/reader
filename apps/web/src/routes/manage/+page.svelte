@@ -81,6 +81,7 @@
   import { keyBy } from '$lib/functions/key-by';
   import { handleErrorDuringReplication } from '$lib/functions/replication/error-handler';
   import { importBackup, importData, replicateData } from '$lib/functions/replication/replicator';
+  import { waitForExitSync } from '$lib/functions/replication/exit-sync';
   import { throwIfAborted } from '$lib/functions/replication/replication-error';
   import {
     replicationProgress$,
@@ -424,6 +425,8 @@
       sourceName
     );
 
+    await waitForExitSync();
+
     let error: string | undefined;
     try {
       error = await replicateData(
@@ -471,6 +474,8 @@
     if (!operationAllowed()) {
       return;
     }
+
+    await waitForExitSync();
 
     if (!selectMode) {
       dialogManager.dialogs$.next([
@@ -864,6 +869,8 @@
       return;
     }
 
+    await waitForExitSync();
+
     const effectiveDeleteFromCloud = deleteFromCloud && cloudSummary.length > 0;
 
     if (effectiveDeleteFromCloud && !operationAllowed(StorageKey.GDRIVE) && gDriveTitles.length) {
@@ -1053,6 +1060,8 @@
       $statisticsMergeMode$,
       $readingGoalsMergeMode$
     );
+    await waitForExitSync();
+
     const error = await replicateData(
       sourceHandler,
       targetHandler,
@@ -1132,6 +1141,43 @@
           initialTags: card.tags || [],
           allTags,
           isCloudOnly,
+          onResetProgress: async () => {
+            await waitForExitSync();
+
+            const browserHandler = getStorageHandler(window, StorageKey.BROWSER, '');
+            await browserHandler.deleteBookProgressAndStats(card.title);
+
+            const clouds: { source: StorageKey; sourceName: string }[] = [];
+            if ((card.sources || []).includes(StorageKey.GDRIVE) && $gDriveStorageSource$) {
+              clouds.push({ source: StorageKey.GDRIVE, sourceName: $gDriveStorageSource$ });
+            }
+            if ((card.sources || []).includes(StorageKey.ONEDRIVE) && $oneDriveStorageSource$) {
+              clouds.push({ source: StorageKey.ONEDRIVE, sourceName: $oneDriveStorageSource$ });
+            }
+            const primary = await resolvePrimaryCloud();
+            if (
+              primary &&
+              !clouds.some((c) => c.source === primary.type && c.sourceName === primary.name)
+            ) {
+              clouds.push({ source: primary.type, sourceName: primary.name });
+            }
+
+            if ($isOnline$) {
+              for (const cloud of clouds) {
+                try {
+                  const cloudHandler = getStorageHandler(window, cloud.source, cloud.sourceName);
+                  await cloudHandler.deleteBookProgressAndStats(card.title);
+                } catch (err: any) {
+                  logger.warn(
+                    `Error deleting cloud progress/stats for ${card.title}: ${err?.message || err}`
+                  );
+                }
+              }
+            }
+
+            browserHandler.clearData();
+            database.dataListChanged$.next(undefined);
+          },
           onSaveTags: async (tags: string[]) => {
             const local = await database.getDataByTitle(card.title);
 
@@ -1370,6 +1416,8 @@
           $readingGoalsMergeMode$
         )
       );
+      await waitForExitSync();
+
       const error = await replicateData(
         handlers[0],
         handlers[1],

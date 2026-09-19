@@ -62,4 +62,41 @@ test.describe('Mobile: book details dialog', () => {
     await page.reload();
     await expect(page.getByTestId('book-card-tags-1')).toContainText('cozy-mystery');
   });
+
+  test('reset progress confirmation fits mobile viewport and works via tap', async ({ page }) => {
+    await seedReaderBook(page);
+    await page.goto('/manage');
+
+    const bookCard = page.locator('.aspect-w-2').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).tap();
+    await page.getByRole('button', { name: 'View details' }).tap();
+
+    const dialog = page.getByTestId('book-details-dialog');
+    await expectDialogFitsViewport(dialog);
+
+    const resetBtn = page.getByTestId('reset-progress-button');
+    await resetBtn.scrollIntoViewIfNeeded();
+    await expect(resetBtn).toBeVisible();
+    await resetBtn.tap();
+
+    const confirmBtn = page.getByTestId('confirm-reset-progress');
+    const cancelBtn = page.getByTestId('cancel-reset-progress');
+    await expect(confirmBtn).toBeVisible();
+    await expect(cancelBtn).toBeVisible();
+
+    await expectDialogFitsViewport(dialog);
+    await expectNoHorizontalOverflow(page);
+
+    // Cancel tap hides prompt
+    await cancelBtn.tap();
+    await expect(confirmBtn).not.toBeVisible();
+    await expect(resetBtn).toBeVisible();
+
+    // Confirm tap resets and closes dialog
+    await resetBtn.tap();
+    await confirmBtn.tap();
+    await expect(dialog).not.toBeVisible();
+  });
 });
