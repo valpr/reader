@@ -499,11 +499,6 @@ export const lastStatisticsFilterDateRangeOnly$ = writableBooleanLocalStorageSub
   false
 );
 
-export const lastStatisticsFilterShowSelectedTitlesOnly$ = writableBooleanLocalStorageSubject()(
-  'lastStatisticsFilterShowSelectedTitlesOnly',
-  false
-);
-
 export const lastReadingDataHeatmapAggregationMode$ =
   writableStringLocalStorageSubject<HeatmapDataAggregration>()(
     'lastReadingDataHeatmapAggregationMode',

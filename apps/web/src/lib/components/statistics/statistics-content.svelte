@@ -845,12 +845,28 @@
 {:else}
   {#if $lastStatisticsTab$ === StatisticsTab.LOOKBACK}
     <div class="mb-4 text-sm opacity-70">Recap ignores date and title filters.</div>
+  {:else if $lastStatisticsTab$ === StatisticsTab.OVERVIEW}
+    <div class="mb-2 flex min-h-[44px] items-center text-xs sm:text-sm">
+      <button
+        type="button"
+        title={$statisticsTitleFilterEnabled$
+          ? 'Open title controls'
+          : 'Title filter not applicable'}
+        class="flex min-h-[44px] min-w-0 items-center truncate underline decoration-dotted underline-offset-4 disabled:no-underline disabled:opacity-50"
+        disabled={!$statisticsTitleFilterEnabled$}
+        on:click={() => openStatisticsDataControls('titles')}
+      >
+        <span class="truncate"
+          >{$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles} titles</span
+        >
+      </button>
+    </div>
   {:else}
-    <div class="mb-4 flex min-h-[44px] flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+    <div class="mb-2 flex min-h-[44px] flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
       <button
         type="button"
         title="Open date controls"
-        class="flex min-h-[44px] min-w-0 items-center truncate font-semibold underline decoration-dotted underline-offset-4"
+        class="flex min-h-[44px] min-w-0 max-w-full items-center truncate font-semibold underline decoration-dotted underline-offset-4"
         on:click={() => openStatisticsDataControls('dates')}
       >
         <span class="truncate">Data for {statisticsDateRangeLabel}</span>
@@ -861,26 +877,30 @@
         title={$statisticsTitleFilterEnabled$
           ? 'Open title controls'
           : 'Title filter not applicable'}
-        class="flex min-h-[44px] items-center underline decoration-dotted underline-offset-4 disabled:no-underline disabled:opacity-50"
+        class="flex min-h-[44px] min-w-0 items-center truncate underline decoration-dotted underline-offset-4 disabled:no-underline disabled:opacity-50"
         disabled={!$statisticsTitleFilterEnabled$}
         on:click={() => openStatisticsDataControls('titles')}
       >
-        {$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles} titles
+        <span class="truncate"
+          >{$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles} titles</span
+        >
       </button>
       <span aria-hidden="true" class="opacity-50">·</span>
-      <span class="opacity-80">
+      <span class="whitespace-nowrap opacity-80">
         {secondsToMinutes($statisticsScopeSummary$.readingTimeSeconds)} min · {$statisticsScopeSummary$.charactersRead}
         characters
       </span>
-      <span aria-hidden="true" class="opacity-50">·</span>
-      <button
-        type="button"
-        title="Open display controls"
-        class="flex min-h-[44px] items-center underline decoration-dotted underline-offset-4"
-        on:click={() => openStatisticsDataControls('display')}
-      >
-        grouped by {$lastPrimaryReadingDataAggregationMode$}
-      </button>
+      {#if $lastPrimaryReadingDataAggregationMode$ !== StatisticsReadingDataAggregationMode.NONE}
+        <span aria-hidden="true" class="opacity-50">·</span>
+        <button
+          type="button"
+          title="Open display controls"
+          class="flex min-h-[44px] items-center underline decoration-dotted underline-offset-4"
+          on:click={() => openStatisticsDataControls('display')}
+        >
+          grouped by {$lastPrimaryReadingDataAggregationMode$}
+        </button>
+      {/if}
     </div>
   {/if}
   {#if $lastStatisticsTab$ === StatisticsTab.OVERVIEW}

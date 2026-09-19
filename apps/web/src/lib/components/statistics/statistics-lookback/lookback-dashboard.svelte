@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { Button, Card, Select } from '@custom-ereader/ui';
   import type { LookbackMetrics } from './lookback-types';
+  import LookbackTopBooksCarousel from './lookback-top-books-carousel.svelte';
 
   export let metrics: LookbackMetrics;
   export let selectedYear: number | 'all';
@@ -536,7 +537,7 @@
     </div>
   </Card>
 
-  <!-- Top Books Leaderboard -->
+  <!-- Top Books Carousel -->
   <Card
     variant="surface"
     padding="md"
@@ -557,61 +558,7 @@
       </h3>
     </div>
 
-    {#if metrics.topBooks.length === 0}
-      <p class="text-sm text-[var(--astryx-color-fg-muted,#71717a)] py-4 text-center">
-        No reading sessions recorded for this time period.
-      </p>
-    {:else}
-      <div class="divide-y divide-[var(--astryx-color-border-subtle,#e4e4e7)] dark:divide-zinc-800">
-        {#each metrics.topBooks as book (book.title)}
-          <div class="py-3 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
-            <div class="flex items-center gap-3 min-w-0">
-              <span
-                class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold {book.rank ===
-                1
-                  ? 'bg-amber-400 text-zinc-900 shadow-sm'
-                  : book.rank === 2
-                    ? 'bg-zinc-300 dark:bg-zinc-600 text-zinc-800 dark:text-zinc-100'
-                    : book.rank === 3
-                      ? 'bg-amber-700/40 text-amber-900 dark:text-amber-200'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}"
-              >
-                #{book.rank}
-              </span>
-              <div class="min-w-0">
-                <div
-                  class="font-semibold text-sm text-[var(--astryx-color-fg-primary,#18181b)] truncate"
-                  title={book.title}
-                >
-                  {book.title}
-                </div>
-                <div
-                  class="text-xs text-[var(--astryx-color-fg-muted,#71717a)] flex items-center gap-2 mt-0.5"
-                >
-                  <span>{formatSeconds(book.readingTimeSeconds)}</span>
-                  <span>•</span>
-                  <span>{formatNumber(book.charactersRead)} chars</span>
-                  {#if book.completed}
-                    <span>•</span>
-                    <span class="text-emerald-600 dark:text-emerald-400 font-medium">Finished</span>
-                  {/if}
-                </div>
-              </div>
-            </div>
-
-            <div class="text-right flex-shrink-0">
-              <span
-                class="text-xs font-semibold px-2 py-0.5 rounded-full {book.completed
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}"
-              >
-                {book.completed ? '100%' : `${Math.round(book.maxProgress * 100)}%`}
-              </span>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
+    <LookbackTopBooksCarousel books={metrics.topBooks} />
   </Card>
 
   <!-- Year-over-Year Card (if available) -->

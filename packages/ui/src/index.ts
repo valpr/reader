@@ -20,6 +20,8 @@ export { default as List } from './list/List.svelte';
 export { default as ListItem } from './list/ListItem.svelte';
 export { default as ListSection } from './list/ListSection.svelte';
 export { default as Select } from './select/Select.svelte';
+export { default as Combobox } from './combobox/Combobox.svelte';
+export { default as Carousel } from './carousel/Carousel.svelte';
 export { default as Tabs } from './tabs/Tabs.svelte';
 export { default as TopBar } from './top-bar/TopBar.svelte';
 export { default as CloudStatusIcon } from './cloud-status/CloudStatusIcon.svelte';

@@ -50,6 +50,14 @@ export interface SelectOption {
 export type SelectSize = 'sm' | 'md' | 'lg';
 export type SelectVariant = 'outline' | 'filled' | 'underline';
 
+export interface ComboboxOption {
+  value: string;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+}
+export type ComboboxSize = 'sm' | 'md' | 'lg';
+
 export interface TabItem {
   id: string;
   label: string;

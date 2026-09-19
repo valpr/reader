@@ -80,6 +80,19 @@ async function expectSheetNoHorizontalOverflow(page: Page) {
   ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
+/** A control must be fully inside the viewport — not cut off on the right. */
+async function expectFullyInViewport(page: Page, name: string | RegExp) {
+  const locator = page.getByRole('button', { name });
+  await expect(locator).toBeVisible();
+  const viewport = page.viewportSize();
+  expect(viewport, 'no viewport size').not.toBeNull();
+  const box = await locator.boundingBox();
+  expect(box, `${name} has no bounding box`).not.toBeNull();
+  expect(box!.x + box!.width, `${name} is cut off on the right`).toBeLessThanOrEqual(
+    viewport!.width + 1
+  );
+}
+
 for (const width of [412, 360]) {
   test(`data controls sheet fits and closes at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 915 });
@@ -99,15 +112,31 @@ for (const width of [412, 360]) {
     await expectNoHorizontalOverflow(page);
     await expectSheetNoHorizontalOverflow(page);
 
-    // All four tabs stay reachable; toggles keep the sheet open
+    // All four tabs stay reachable; view toggles keep the sheet open
     await page.getByRole('tab', { name: 'Titles' }).tap();
-    const longTitleCell = sheet.locator(`div[title="${LONG_TITLE}"]`);
-    await expect(longTitleCell).toBeVisible();
+    // Every action button fits on screen — nothing scrolls off the right
+    await expectFullyInViewport(page, 'All');
+    await expectFullyInViewport(page, 'None');
+    await expectFullyInViewport(page, 'In range');
     await expectSheetNoHorizontalOverflow(page);
     await expectNoHorizontalOverflow(page);
 
+    // Removing the long title then searching for it surfaces it as a
+    // truncated dropdown option without overflowing the sheet
+    await page.getByRole('button', { name: `Remove ${LONG_TITLE}` }).tap();
+    await page.getByPlaceholder('Search titles…').fill(LONG_TITLE);
+    const longTitleOption = page.getByRole('option', { name: LONG_TITLE });
+    await expect(longTitleOption).toBeVisible();
+    await expectSheetNoHorizontalOverflow(page);
+    await expectNoHorizontalOverflow(page);
+
+    // Re-adding restores the scope immediately (no Apply step)
+    await longTitleOption.tap();
+    await expect(page.getByRole('button', { name: `Remove ${LONG_TITLE}` })).toBeVisible();
+    await expect(page.getByText('2 of 2 titles').first()).toBeVisible();
+
     await page.getByRole('button', { name: 'In range' }).tap();
-    await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
+    await expect(page.getByPlaceholder('Search titles…')).toBeVisible();
     await expectDialogFitsViewport(sheet);
 
     await page.getByRole('tab', { name: 'Actions' }).tap();
@@ -122,5 +151,30 @@ for (const width of [412, 360]) {
     await expect(sheet).not.toBeVisible();
 
     await expectNoHorizontalOverflow(page);
+  });
+
+  test(`heatmap shows compact titles chip without date header at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 });
+    await seedTwoTitles(page);
+    await page.goto('/statistics');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('radio', { name: 'Heatmap' }).tap();
+    // Titles chip is the only scope affordance; date header is irrelevant here
+    await expect(page.getByRole('button', { name: '2 of 2 titles' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Data for/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /grouped by/ })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+
+    // Chip opens the sheet directly at the Titles tab
+    await page.getByRole('button', { name: '2 of 2 titles' }).tap();
+    const sheet = page.getByTestId('statistics-data-controls');
+    await expectSheetSettledInViewport(page);
+    await expect(page.getByRole('tab', { name: 'Titles' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expectDialogFitsViewport(sheet);
+    await expectSheetNoHorizontalOverflow(page);
   });
 }
