@@ -12,7 +12,7 @@
     StatisticsDeleteRequest,
     StatisticsEditRequest
   } from '$lib/components/statistics/statistics-summary/statistics-summary';
-  import StatisticsTitleFilter from '$lib/components/statistics/statistics-title-filter.svelte';
+  import StatisticsDataControls from '$lib/components/statistics/statistics-data-controls.svelte';
   import {
     type BookStatistic,
     StatisticsTab,
@@ -20,7 +20,10 @@
     statisticsRangeTemplates,
     copyStatisticsData$,
     statisticsTitleFilterEnabled$,
-    statisticsTitleFilterIsOpen$,
+    statisticsDataControlsOpen$,
+    statisticsDataControlsTab$,
+    statisticsScopeSummary$,
+    openStatisticsDataControls,
     type StatisticsTitleFilterItem,
     preFilteredTitlesForStatistics$,
     statisticsDataAggregrationModes,
@@ -264,6 +267,10 @@
     }),
     reduceToEmptyString()
   );
+
+  function slideFromBottomForDataControls() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+  }
 
   let isLoading = true;
   let today = getStartHoursDate($startDayHoursForTracker$);
@@ -683,6 +690,29 @@
     titlesInStatisticsDateRange = newTitleFilterForStatisticsSet;
 
     aggregratedStatistics = [...getAggregatedStatistics($lastPrimaryReadingDataAggregationMode$)];
+
+    let selectedTitlesCount = 0;
+
+    for (const isSelected of statisticsTitleFilters.values()) {
+      if (isSelected) {
+        selectedTitlesCount += 1;
+      }
+    }
+
+    let scopeCharactersRead = 0;
+    let scopeReadingTimeSeconds = 0;
+
+    for (let index = 0, { length } = statisticsForSelection; index < length; index += 1) {
+      scopeCharactersRead += statisticsForSelection[index].charactersRead;
+      scopeReadingTimeSeconds += statisticsForSelection[index].readingTime;
+    }
+
+    statisticsScopeSummary$.next({
+      selectedTitles: selectedTitlesCount,
+      totalTitles: statisticsTitleFilters.size,
+      charactersRead: scopeCharactersRead,
+      readingTimeSeconds: scopeReadingTimeSeconds
+    });
   }
 
   function getAggregatedStatistics(
@@ -813,6 +843,46 @@
     <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Loading statistics…" />
   </div>
 {:else}
+  {#if $lastStatisticsTab$ === StatisticsTab.LOOKBACK}
+    <div class="mb-4 text-sm opacity-70">Recap ignores date and title filters.</div>
+  {:else}
+    <div class="mb-4 flex min-h-[44px] flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <button
+        type="button"
+        title="Open date controls"
+        class="flex min-h-[44px] min-w-0 items-center truncate font-semibold underline decoration-dotted underline-offset-4"
+        on:click={() => openStatisticsDataControls('dates')}
+      >
+        <span class="truncate">Data for {statisticsDateRangeLabel}</span>
+      </button>
+      <span aria-hidden="true" class="opacity-50">·</span>
+      <button
+        type="button"
+        title={$statisticsTitleFilterEnabled$
+          ? 'Open title controls'
+          : 'Title filter not applicable'}
+        class="flex min-h-[44px] items-center underline decoration-dotted underline-offset-4 disabled:no-underline disabled:opacity-50"
+        disabled={!$statisticsTitleFilterEnabled$}
+        on:click={() => openStatisticsDataControls('titles')}
+      >
+        {$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles} titles
+      </button>
+      <span aria-hidden="true" class="opacity-50">·</span>
+      <span class="opacity-80">
+        {secondsToMinutes($statisticsScopeSummary$.readingTimeSeconds)} min · {$statisticsScopeSummary$.charactersRead}
+        characters
+      </span>
+      <span aria-hidden="true" class="opacity-50">·</span>
+      <button
+        type="button"
+        title="Open display controls"
+        class="flex min-h-[44px] items-center underline decoration-dotted underline-offset-4"
+        on:click={() => openStatisticsDataControls('display')}
+      >
+        grouped by {$lastPrimaryReadingDataAggregationMode$}
+      </button>
+    </div>
+  {/if}
   {#if $lastStatisticsTab$ === StatisticsTab.OVERVIEW}
     <StatisticsHeatmap
       {statisticsData}
@@ -848,18 +918,28 @@
     <StatisticsLookback {statisticsData} />
   {/if}
 {/if}
-{#if $statisticsTitleFilterIsOpen$}
+{#if $statisticsDataControlsOpen$}
   <div
-    class="writing-horizontal-tb fixed top-0 right-0 z-[60] flex h-full w-full max-w-xl flex-col justify-between bg-gray-700 text-white"
-    in:fly|local={{ x: 100, duration: 100, easing: quintInOut }}
-    use:clickOutside={() => ($statisticsTitleFilterIsOpen$ = false)}
+    data-testid="statistics-data-controls"
+    class="writing-horizontal-tb fixed inset-x-0 bottom-0 z-[60] flex max-h-[90vh] max-h-[90dvh] w-full max-w-full flex-col justify-between rounded-t-2xl bg-gray-700 text-white md:left-auto md:right-0 md:top-0 md:bottom-auto md:h-full md:max-h-none md:rounded-none md:max-w-xl"
+    in:fly|local={slideFromBottomForDataControls()
+      ? { y: 100, duration: 100, easing: quintInOut }
+      : { x: 100, duration: 100, easing: quintInOut }}
+    use:clickOutside={() => {
+      if (!$statisticsActionInProgress$) {
+        $statisticsDataControlsOpen$ = false;
+      }
+    }}
   >
-    <StatisticsTitleFilter
+    <StatisticsDataControls
+      initialTab={$statisticsDataControlsTab$}
       {statisticsTitleFilters}
       {titlesInStatisticsDateRange}
+      {statisticsDateRangeLabel}
+      on:statisticsDateChange
       on:applyFilter={updateTitleFilter}
       on:clearPrefilter={clearPrefilter}
-      on:close={() => ($statisticsTitleFilterIsOpen$ = false)}
+      on:close={() => ($statisticsDataControlsOpen$ = false)}
     />
   </div>
 {/if}
