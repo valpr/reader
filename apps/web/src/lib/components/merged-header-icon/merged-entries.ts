@@ -7,16 +7,15 @@
 import {
   faBug,
   faChartLine,
+  faCircleQuestion,
   faCog,
   faEllipsis,
   faFileArrowUp,
-  faFileContract,
   faFileZipper,
   faFolderPlus,
   faHashtag,
   faIcons,
   faImages,
-  faShieldHalved,
   faSignOutAlt,
   faTriangleExclamation
 } from '@fortawesome/free-solid-svg-icons';
@@ -65,6 +64,13 @@ export const mergeEntries = {
     icon: faTriangleExclamation,
     title: 'Old Domain used'
   },
+  DOCUMENTATION: {
+    routeId: '/docs/',
+    label: 'Documentation',
+    icon: faCircleQuestion,
+    title: 'Documentation & Guides',
+    external: true
+  },
   BUG_REPORT: { routeId: '', label: 'Bug Report', icon: faBug, title: 'Report an Issue' },
   FOLDER_IMPORT: {
     routeId: '',
@@ -78,17 +84,5 @@ export const mergeEntries = {
     label: 'Import Backup',
     icon: faFileZipper,
     title: 'Import Backup'
-  },
-  PRIVACY: {
-    routeId: '/privacy',
-    label: 'Privacy Policy',
-    icon: faShieldHalved,
-    title: 'Privacy Policy'
-  },
-  TERMS: {
-    routeId: '/terms',
-    label: 'Terms of Service',
-    icon: faFileContract,
-    title: 'Terms of Service'
   }
 };

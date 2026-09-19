@@ -1725,7 +1725,29 @@
     <!-- Section 4: Storage Sources -->
     <SettingsStorageSourceList storageSources={$storageSources$} />
 
-    <!-- Section 5: Privacy & Legal -->
+    <!-- Section 5: Help & Documentation -->
+    <ListSection
+      title="Help & Documentation"
+      description="User guides, settings descriptions, device profiles, and troubleshooting"
+    >
+      <ListItem
+        headline="Documentation & User Guides"
+        description="Comprehensive guides for Yomitan setup, device profiles, cloud synchronization, and reading statistics"
+      >
+        <div slot="suffix">
+          <a
+            href="{pagePath}/docs/"
+            target="_blank"
+            rel="noreferrer external"
+            class="text-sm font-medium text-[var(--astryx-color-primary,#6366f1)] hover:underline"
+          >
+            Open Docs
+          </a>
+        </div>
+      </ListItem>
+    </ListSection>
+
+    <!-- Section 6: Privacy & Legal -->
     <ListSection
       title="Privacy & Legal"
       description="Data handling policies, Google Drive Limited Use disclosure, and terms of service"
@@ -1807,9 +1829,19 @@
         {#if trackerAutoPause !== TrackerAutoPause.OFF}
           <ListItem
             headline="Dictionary Popup Detection"
-            description="Skips auto-pause if an open Yomitan or JPDB popup is detected (requires Yomitan 'Secure Container' disabled)"
+            description="Counts Yomitan/JPDB lookups and skips auto-pause while a popup is open. Disclaimer: Certain Yomitan settings can interfere with this setting. In Yomitan Settings > Advanced > Security, turn OFF 'Use a secure container around popups' ('Use secure popup frame URL' can stay on)."
           >
-            <Switch slot="suffix" bind:checked={trackerPopupDetection} />
+            <div slot="suffix" class="flex items-center gap-3">
+              <a
+                href="{pagePath}/docs/troubleshooting/dictionary-popup"
+                target="_blank"
+                rel="noreferrer external"
+                class="text-xs font-medium text-[var(--astryx-color-primary,#6366f1)] hover:underline whitespace-nowrap"
+              >
+                Help Guide
+              </a>
+              <Switch bind:checked={trackerPopupDetection} />
+            </div>
           </ListItem>
         {/if}
 

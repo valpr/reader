@@ -12,7 +12,10 @@
     "lint": "eslint --fix .",
     "format": "prettier --write .",
     "test:e2e": "pnpm -F web test:e2e",
-    "test:smoke": "pnpm -F web test:smoke"
+    "test:smoke": "pnpm -F web test:smoke",
+    "docs:dev": "pnpm -F docs dev",
+    "docs:build": "pnpm -F docs build",
+    "docs:preview": "pnpm -F docs preview"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
