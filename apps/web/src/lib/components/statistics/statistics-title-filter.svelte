@@ -16,11 +16,9 @@
     preFilteredTitlesForStatistics$,
     type StatisticsTitleFilterItem
   } from '$lib/components/statistics/statistics-types';
-  import { dialogManager } from '$lib/data/dialog-manager';
   import {
     lastStatisticsFilterDateRangeOnly$,
-    lastStatisticsFilterShowSelectedTitlesOnly$,
-    skipKeyDownListener$
+    lastStatisticsFilterShowSelectedTitlesOnly$
   } from '$lib/data/store';
   import { reduceToEmptyString } from '$lib/functions/rxjs/reduce-to-empty-string';
   import { convertRemToPixels, getFullHeight, limitToRange } from '$lib/functions/utils';
@@ -30,6 +28,7 @@
 
   export let statisticsTitleFilters: Map<string, boolean>;
   export let titlesInStatisticsDateRange: Set<string>;
+  export let showHeader = true;
 
   const dispatch = createEventDispatcher<{
     applyFilter: StatisticsTitleFilterItem[];
@@ -69,15 +68,7 @@
   $: updateStatisticsTitleFilterTableData(currentStatisticsTitleFilterPage);
 
   onMount(() => {
-    $skipKeyDownListener$ = true;
-    dialogManager.dialogs$.next([{ component: '<div/>' }]);
-
     updateStatisticsTitleFilterRowsPerPage();
-
-    return () => {
-      dialogManager.dialogs$.next([]);
-      $skipKeyDownListener$ = false;
-    };
   });
 
   function handleTitleFilterChange() {
@@ -168,15 +159,19 @@
 </script>
 
 {$resizeHandler$ ?? ''}
-<div class="flex items-center p-4">
-  <button
-    title="Close Title Filter"
-    class="flex items-end md:items-center"
-    on:click={() => dispatch('close')}
-  >
-    <Fa icon={faXmark} />
-  </button>
-</div>
+{#if showHeader}
+  <div class="flex items-center p-4">
+    <button
+      title="Close Title Filter"
+      aria-label="Close Title Filter"
+      class="flex min-h-[44px] min-w-[44px] items-end justify-center md:items-center"
+      on:click={() => dispatch('close')}
+    >
+      <Fa icon={faXmark} />
+    </button>
+    <div class="ml-2 text-lg font-semibold">Title Filter</div>
+  </div>
+{/if}
 <div class="flex flex-col flex-1 px-4">
   <input
     type="search"
@@ -185,57 +180,86 @@
     bind:value={titleFilter}
     on:input={handleTitleFilterChange}
   />
-  <div class="flex justify-between mt-6 text-2xl">
+  <div class="mt-6 flex gap-2 overflow-x-auto pb-1">
     <button
-      title="Apply Filter"
-      class="hover:text-red-500"
+      type="button"
+      title="Apply Filter - updates Summary and Heatmap"
+      class="flex min-h-[44px] shrink-0 items-center gap-2 rounded border border-white/30 px-3 text-sm whitespace-nowrap hover:text-red-500"
       on:click={() => {
         dispatch('applyFilter', titlesToFilter);
         dispatch('close');
       }}
     >
       <Fa icon={faCircleCheck} />
-    </button>
-    <button title="Select All" class="hover:text-red-500" on:click={() => handleSelectAll(true)}>
-      <Fa icon={faListCheck} />
-    </button>
-    <button title="Remove All" class="hover:text-red-500" on:click={() => handleSelectAll(false)}>
-      <Fa icon={faList} />
+      <span>Apply</span>
     </button>
     <button
+      type="button"
+      title="Select All"
+      class="flex min-h-[44px] shrink-0 items-center gap-2 rounded border border-white/30 px-3 text-sm whitespace-nowrap hover:text-red-500"
+      on:click={() => handleSelectAll(true)}
+    >
+      <Fa icon={faListCheck} />
+      <span>All</span>
+    </button>
+    <button
+      type="button"
+      title="Remove All"
+      class="flex min-h-[44px] shrink-0 items-center gap-2 rounded border border-white/30 px-3 text-sm whitespace-nowrap hover:text-red-500"
+      on:click={() => handleSelectAll(false)}
+    >
+      <Fa icon={faList} />
+      <span>None</span>
+    </button>
+    <button
+      type="button"
       title={$lastStatisticsFilterDateRangeOnly$
         ? 'Display Titles across all Time'
         : 'Display Titles in selected Date Range only'}
-      class="hover:text-red-500"
+      aria-pressed={$lastStatisticsFilterDateRangeOnly$}
+      class="flex min-h-[44px] shrink-0 items-center gap-2 rounded border border-white/30 px-3 text-sm whitespace-nowrap hover:text-red-500"
+      class:bg-white={$lastStatisticsFilterDateRangeOnly$}
+      class:text-black={$lastStatisticsFilterDateRangeOnly$}
       on:click={() => ($lastStatisticsFilterDateRangeOnly$ = !$lastStatisticsFilterDateRangeOnly$)}
     >
       <Fa icon={$lastStatisticsFilterDateRangeOnly$ ? faCalendarXmark : faCalendar} />
+      <span>In range</span>
     </button>
     <button
+      type="button"
       title={$lastStatisticsFilterShowSelectedTitlesOnly$
         ? 'Display all Titles'
         : 'Display selected Titles only'}
-      class="hover:text-red-500"
+      aria-pressed={$lastStatisticsFilterShowSelectedTitlesOnly$}
+      class="flex min-h-[44px] shrink-0 items-center gap-2 rounded border border-white/30 px-3 text-sm whitespace-nowrap hover:text-red-500"
+      class:bg-white={$lastStatisticsFilterShowSelectedTitlesOnly$}
+      class:text-black={$lastStatisticsFilterShowSelectedTitlesOnly$}
       on:click={() =>
         ($lastStatisticsFilterShowSelectedTitlesOnly$ =
           !$lastStatisticsFilterShowSelectedTitlesOnly$)}
     >
       <Fa icon={$lastStatisticsFilterShowSelectedTitlesOnly$ ? faEyeSlash : faEye} />
+      <span>Selected</span>
     </button>
     {#if $preFilteredTitlesForStatistics$.size}
       <button
+        type="button"
         title="Remove Prefilter"
-        class="hover:text-red-500"
+        class="flex min-h-[44px] shrink-0 items-center gap-2 rounded border border-white/30 px-3 text-sm whitespace-nowrap hover:text-red-500"
         on:click={() => dispatch('clearPrefilter')}
       >
         <Fa icon={faTrash} />
+        <span>Prefilter</span>
       </button>
     {/if}
   </div>
+  <p class="mt-2 text-xs opacity-70">
+    Title selection applies to the Summary and Heatmap tabs. Press Apply to update the numbers.
+  </p>
   <div class="grow mt-8 pl-1 overflow-auto" bind:this={statisticsTitleFilterTableContainerElm}>
     {#if filteredTitles.length}
       <div
-        class="grid grid-cols-[max-content,auto] gap-x-8 items-center"
+        class="grid grid-cols-[max-content,minmax(0,1fr)] gap-x-8 items-center"
         style:grid-auto-rows={`${statisticsTitleFilterBaseRowRem}rem`}
         style:row-gap={`${statisticsTitleFilterBaseRowGap}rem`}
       >
@@ -250,7 +274,7 @@
             }}
           />
           <div
-            class="line-clamp-3"
+            class="line-clamp-3 min-w-0 break-words [overflow-wrap:anywhere]"
             class:opacity-50={!titlesInStatisticsDateRange.has(currentTitlesToFilterRow.title)}
             title={currentTitlesToFilterRow.title}
           >
@@ -268,7 +292,11 @@
     bind:this={statisticsTitleFilterButtonContainer}
   >
     <button
+      type="button"
+      title="Previous titles page"
+      aria-label="Previous titles page"
       disabled={currentStatisticsTitleFilterPage === 1}
+      class="min-h-[44px] min-w-[44px]"
       class:opacity-25={currentStatisticsTitleFilterPage === 1}
       class:cursor-not-allowed={currentStatisticsTitleFilterPage === 1}
       on:click={() => (currentStatisticsTitleFilterPage -= 1)}
@@ -277,7 +305,11 @@
     </button>
     <div class="mx-6">{statisticsTitleFilterPageLabel}</div>
     <button
+      type="button"
+      title="Next titles page"
+      aria-label="Next titles page"
       disabled={currentStatisticsTitleFilterPage === statisticsTitleFilterMaxPages}
+      class="min-h-[44px] min-w-[44px]"
       class:opacity-25={currentStatisticsTitleFilterPage === statisticsTitleFilterMaxPages}
       class:cursor-not-allowed={currentStatisticsTitleFilterPage === statisticsTitleFilterMaxPages}
       on:click={() => (currentStatisticsTitleFilterPage += 1)}

@@ -96,7 +96,30 @@ export const statisticsActionInProgress$ = writableSubject<boolean>(false);
 
 export const statisticsTitleFilterEnabled$ = writableSubject<boolean>(false);
 
-export const statisticsTitleFilterIsOpen$ = writableSubject<boolean>(false);
+export type StatisticsDataControlsTab = 'dates' | 'titles' | 'display' | 'actions';
+
+export const statisticsDataControlsOpen$ = writableSubject<boolean>(false);
+
+export const statisticsDataControlsTab$ = writableSubject<StatisticsDataControlsTab>('dates');
+
+export interface StatisticsScopeSummary {
+  selectedTitles: number;
+  totalTitles: number;
+  charactersRead: number;
+  readingTimeSeconds: number;
+}
+
+export const statisticsScopeSummary$ = writableSubject<StatisticsScopeSummary>({
+  selectedTitles: 0,
+  totalTitles: 0,
+  charactersRead: 0,
+  readingTimeSeconds: 0
+});
+
+export function openStatisticsDataControls(tab: StatisticsDataControlsTab = 'dates') {
+  statisticsDataControlsTab$.next(tab);
+  statisticsDataControlsOpen$.next(true);
+}
 
 export const preFilteredTitlesForStatistics$ = writableSubject<Set<string>>(new Set());
 

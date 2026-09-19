@@ -42,19 +42,32 @@ for (const width of [412, 360]) {
     await expectFullyInViewport(page, segmentedControl, 'SegmentedControl');
 
     const moreActions = page.locator('button[aria-label="More Actions"]');
-    await expectFullyInViewport(page, moreActions, 'More Actions');
 
-    await expectNoHorizontalOverflow(page);
+    if (width === 412) {
+      // At 412px all four actions fit on the bar, so there is no overflow menu
+      await expect(moreActions).toHaveCount(0);
+      await expectFullyInViewport(
+        page,
+        page.getByRole('button', { name: 'Open Data controls' }),
+        'Data controls'
+      );
+      await expectFullyInViewport(
+        page,
+        page.getByRole('button', { name: 'Open data actions' }),
+        'Data actions'
+      );
+    } else {
+      await expectFullyInViewport(page, moreActions, 'More Actions');
 
-    // Tap More Actions to verify overflow dropdown items
-    await moreActions.tap();
-    await expect(page.getByRole('button', { name: 'Manager' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
 
-    if (width === 360) {
-      // At 360px, copyData collapses into the overflow menu as direct action buttons
-      await expect(page.getByRole('button', { name: 'Copy Reading Time' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Copy Characters Read' })).toBeVisible();
+      // Tap More Actions to verify overflow dropdown items
+      await moreActions.tap();
+      await expect(page.getByRole('button', { name: 'Manager' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+
+      // At 360px, the data-actions shortcut collapses into the overflow menu
+      await expect(page.getByRole('button', { name: 'Copy, export or delete data' })).toBeVisible();
     }
 
     await expectNoHorizontalOverflow(page);

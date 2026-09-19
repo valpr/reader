@@ -1,12 +1,10 @@
 <script lang="ts">
   import StatisticsContent from '$lib/components/statistics/statistics-content.svelte';
   import StatisticsHeader from '$lib/components/statistics/statistics-header.svelte';
-  import StatisticsSettings from '$lib/components/statistics/statistics-settings.svelte';
   import {
     StatisticsRangeTemplate,
     type StatisticsDateChange,
-    preFilteredTitlesForStatistics$,
-    statisticsActionInProgress$
+    preFilteredTitlesForStatistics$
   } from '$lib/components/statistics/statistics-types';
   import { pxScreen } from '$lib/css-classes';
   import {
@@ -23,18 +21,13 @@
     getDateString,
     getStartHoursDate
   } from '$lib/functions/statistic-util';
-  import { clickOutside } from '$lib/functions/use-click-outside';
   import { map, share } from 'rxjs';
   import { onDestroy, tick } from 'svelte';
-  import { quintInOut } from 'svelte/easing';
-  import { fly } from 'svelte/transition';
 
   const currentBookId$ = database.lastItem$.pipe(
     map((item) => item?.dataId),
     share()
   );
-
-  let showStatisticsSettings = false;
 
   $: if ($lastStatisticsRangeTemplate$ || $lastStartDayOfWeek$ > -1) {
     tick().then(() => setSelectedStatisticsDays());
@@ -125,25 +118,8 @@
   }
 </script>
 
-<StatisticsHeader currentBookId={$currentBookId$} bind:showStatisticsSettings />
+<StatisticsHeader currentBookId={$currentBookId$} />
 
 <div class="{pxScreen} flex flex-col pt-16 h-full xl:pt-14">
-  <StatisticsContent />
+  <StatisticsContent on:statisticsDateChange={handleSelectedStatisticsDateChange} />
 </div>
-
-{#if showStatisticsSettings}
-  <div
-    class="writing-horizontal-tb fixed top-0 right-0 z-[60] flex h-full w-full max-w-xl flex-col justify-between bg-gray-700 text-white"
-    in:fly|local={{ x: 100, duration: 100, easing: quintInOut }}
-    use:clickOutside={() => {
-      if (!$statisticsActionInProgress$) {
-        showStatisticsSettings = false;
-      }
-    }}
-  >
-    <StatisticsSettings
-      on:statisticsDateChange={handleSelectedStatisticsDateChange}
-      on:close={() => (showStatisticsSettings = false)}
-    />
-  </div>
-{/if}

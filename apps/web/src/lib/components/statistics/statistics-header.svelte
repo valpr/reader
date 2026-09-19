@@ -6,17 +6,17 @@
     faCopy,
     faEllipsis,
     faFilter,
-    faSignOutAlt,
-    faSliders
+    faSignOutAlt
   } from '@fortawesome/free-solid-svg-icons';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import Popover from '$lib/components/popover/popover.svelte';
   import {
     StatisticsTab,
-    copyStatisticsData$,
     statisticsTitleFilterEnabled$,
-    statisticsTitleFilterIsOpen$,
-    type StatisticsDataSource
+    statisticsDataControlsOpen$,
+    statisticsDataControlsTab$,
+    statisticsScopeSummary$,
+    openStatisticsDataControls
   } from '$lib/components/statistics/statistics-types';
   import { pagePath } from '$lib/data/env';
   import { lastStatisticsTab$ } from '$lib/data/store';
@@ -24,12 +24,6 @@
   import Fa from 'svelte-fa';
 
   export let currentBookId: number | undefined;
-  export let showStatisticsSettings: boolean;
-
-  const copyStatisticsDataItems: StatisticsDataSource[] = [
-    { key: 'readingTime', label: 'Reading Time' },
-    { key: 'charactersRead', label: 'Characters Read' }
-  ];
 
   const tabOptions = [
     { value: StatisticsTab.SUMMARY, label: 'Summary' },
@@ -37,7 +31,6 @@
     { value: StatisticsTab.LOOKBACK, label: 'Recap' }
   ];
 
-  let copyStatisticsDataPopover: Popover;
   let overflowMenuElm: Popover;
 
   let headerWidth = 0;
@@ -51,18 +44,16 @@
     actualHeaderWidth - (startWidth || 200) - (actualHeaderWidth >= 768 ? 64 : 48)
   );
 
-  type StatisticsActionId =
-    'filter' | 'statsSettings' | 'backToBook' | 'copyData' | 'settings' | 'manage';
+  type StatisticsActionId = 'dataControls' | 'backToBook' | 'dataActions' | 'settings' | 'manage';
 
   interface StatisticsActionItem {
     id: StatisticsActionId;
   }
 
   $: actionItems = [
-    ...($lastStatisticsTab$ !== StatisticsTab.LOOKBACK ? [{ id: 'filter' as const }] : []),
-    { id: 'statsSettings' as const },
+    ...($lastStatisticsTab$ !== StatisticsTab.LOOKBACK ? [{ id: 'dataControls' as const }] : []),
     ...(currentBookId ? [{ id: 'backToBook' as const }] : []),
-    { id: 'copyData' as const },
+    ...($lastStatisticsTab$ !== StatisticsTab.LOOKBACK ? [{ id: 'dataActions' as const }] : []),
     { id: 'settings' as const },
     { id: 'manage' as const }
   ];
@@ -89,39 +80,38 @@
         let:item
       >
         <!-- Visible Items on the Bar -->
-        {#if item.id === 'filter'}
+        {#if item.id === 'dataControls'}
           <Tooltip
             text={$statisticsTitleFilterEnabled$
-              ? 'Open Title Filter'
-              : 'Title filter not applicable'}
+              ? `Data controls (${$statisticsScopeSummary$.selectedTitles} of ${$statisticsScopeSummary$.totalTitles} titles)`
+              : 'Data controls not applicable'}
           >
-            <IconButton
-              nativeTooltip={false}
-              variant="ghost"
-              size="md"
-              label="Open Title Filter"
-              disabled={!$statisticsTitleFilterEnabled$}
-              active={$statisticsTitleFilterIsOpen$}
-              on:click={() => {
-                if ($statisticsTitleFilterEnabled$) {
-                  $statisticsTitleFilterIsOpen$ = true;
-                }
-              }}
-            >
-              <Fa icon={faFilter} />
-            </IconButton>
-          </Tooltip>
-        {:else if item.id === 'statsSettings'}
-          <Tooltip text="Statistics Settings">
-            <IconButton
-              nativeTooltip={false}
-              variant="ghost"
-              size="md"
-              label="Statistics Settings"
-              on:click={() => (showStatisticsSettings = true)}
-            >
-              <Fa icon={faSliders} />
-            </IconButton>
+            <span class="relative inline-flex">
+              <IconButton
+                nativeTooltip={false}
+                variant="ghost"
+                size="md"
+                label="Open Data controls"
+                disabled={!$statisticsTitleFilterEnabled$}
+                active={$statisticsDataControlsOpen$ && $statisticsDataControlsTab$ !== 'actions'}
+                on:click={() => {
+                  if ($statisticsTitleFilterEnabled$) {
+                    openStatisticsDataControls('dates');
+                  }
+                }}
+              >
+                <Fa icon={faFilter} />
+              </IconButton>
+              {#if $statisticsTitleFilterEnabled$ && $statisticsScopeSummary$.totalTitles > 0}
+                <span
+                  aria-hidden="true"
+                  class="pointer-events-none absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold"
+                  style="background-color: var(--astryx-color-brand, #18181b); color: var(--astryx-color-fg-on-brand, #ffffff);"
+                >
+                  {$statisticsScopeSummary$.selectedTitles}
+                </span>
+              {/if}
+            </span>
           </Tooltip>
         {:else if item.id === 'backToBook'}
           {#if currentBookId}
@@ -149,45 +139,28 @@
               </IconButton>
             </Tooltip>
           {/if}
-        {:else if item.id === 'copyData'}
-          <Popover
-            placement="bottom"
-            fallbackPlacements={['bottom-end', 'bottom-start']}
-            yOffset={4}
-            bind:this={copyStatisticsDataPopover}
+        {:else if item.id === 'dataActions'}
+          <Tooltip
+            text={$statisticsTitleFilterEnabled$
+              ? 'Copy, export or delete data'
+              : 'Data actions not applicable'}
           >
-            <div slot="icon">
-              <Tooltip text="Copy Data in TMW Log Format">
-                <IconButton
-                  nativeTooltip={false}
-                  variant="ghost"
-                  size="md"
-                  label="Copy Data in TMW Log Format"
-                >
-                  <Fa icon={faCopy} />
-                </IconButton>
-              </Tooltip>
-            </div>
-            <div
-              class="w-44 py-1.5 rounded-lg border shadow-lg text-sm"
-              style="background-color: var(--astryx-color-surface, #ffffff); border-color: var(--astryx-color-border-default, #e4e4e7); color: var(--astryx-color-fg-primary, #18181b);"
-              slot="content"
+            <IconButton
+              nativeTooltip={false}
+              variant="ghost"
+              size="md"
+              label="Open data actions"
+              disabled={!$statisticsTitleFilterEnabled$}
+              active={$statisticsDataControlsOpen$ && $statisticsDataControlsTab$ === 'actions'}
+              on:click={() => {
+                if ($statisticsTitleFilterEnabled$) {
+                  openStatisticsDataControls('actions');
+                }
+              }}
             >
-              {#each copyStatisticsDataItems as copyStatisticsDataItem (copyStatisticsDataItem.key)}
-                <button
-                  type="button"
-                  class="w-full px-3.5 py-2 text-sm text-left hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors cursor-pointer"
-                  style="color: var(--astryx-color-fg-primary, inherit);"
-                  on:click={() => {
-                    copyStatisticsData$.next(copyStatisticsDataItem.key);
-                    copyStatisticsDataPopover.toggleOpen();
-                  }}
-                >
-                  {copyStatisticsDataItem.label}
-                </button>
-              {/each}
-            </div>
-          </Popover>
+              <Fa icon={faCopy} />
+            </IconButton>
+          </Tooltip>
         {:else if item.id === 'settings'}
           <Tooltip text={mergeEntries.SETTINGS.title}>
             <IconButton
@@ -239,32 +212,23 @@
                 slot="content"
               >
                 {#each overflowItems as oItem (oItem.id)}
-                  {#if oItem.id === 'filter'}
+                  {#if oItem.id === 'dataControls'}
                     <button
                       type="button"
                       disabled={!$statisticsTitleFilterEnabled$}
                       class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                       on:click={() => {
                         if ($statisticsTitleFilterEnabled$) {
-                          $statisticsTitleFilterIsOpen$ = true;
+                          openStatisticsDataControls('dates');
                           overflowMenuElm?.toggleOpen();
                         }
                       }}
                     >
                       <Fa icon={faFilter} class="w-4 text-center opacity-70" />
-                      <span>Open Title Filter</span>
-                    </button>
-                  {:else if oItem.id === 'statsSettings'}
-                    <button
-                      type="button"
-                      class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
-                      on:click={() => {
-                        showStatisticsSettings = true;
-                        overflowMenuElm?.toggleOpen();
-                      }}
-                    >
-                      <Fa icon={faSliders} class="w-4 text-center opacity-70" />
-                      <span>Statistics Settings</span>
+                      <span
+                        >Open Data controls ({$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles}
+                        titles)</span
+                      >
                     </button>
                   {:else if oItem.id === 'backToBook'}
                     {#if currentBookId}
@@ -296,20 +260,21 @@
                         <span>Back to Current Book</span>
                       </button>
                     {/if}
-                  {:else if oItem.id === 'copyData'}
-                    {#each copyStatisticsDataItems as copyStatisticsDataItem (copyStatisticsDataItem.key)}
-                      <button
-                        type="button"
-                        class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
-                        on:click={() => {
-                          copyStatisticsData$.next(copyStatisticsDataItem.key);
+                  {:else if oItem.id === 'dataActions'}
+                    <button
+                      type="button"
+                      disabled={!$statisticsTitleFilterEnabled$}
+                      class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                      on:click={() => {
+                        if ($statisticsTitleFilterEnabled$) {
+                          openStatisticsDataControls('actions');
                           overflowMenuElm?.toggleOpen();
-                        }}
-                      >
-                        <Fa icon={faCopy} class="w-4 text-center opacity-70" />
-                        <span>Copy {copyStatisticsDataItem.label}</span>
-                      </button>
-                    {/each}
+                        }
+                      }}
+                    >
+                      <Fa icon={faCopy} class="w-4 text-center opacity-70" />
+                      <span>Copy, export or delete data</span>
+                    </button>
                   {:else if oItem.id === 'settings'}
                     <button
                       type="button"
