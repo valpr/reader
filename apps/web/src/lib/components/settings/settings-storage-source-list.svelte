@@ -587,41 +587,42 @@
                   {#if isCloudSource}
                     {#if activeConnectionState === StorageConnectionState.CONNECTED}
                       <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 shrink-0 whitespace-nowrap"
                       >
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"
+                        ></span>
                         Connected
                       </span>
                     {:else if activeConnectionState === StorageConnectionState.NEEDS_RECONNECT}
                       <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 shrink-0 whitespace-nowrap"
                       >
                         <Fa icon={faTriangleExclamation} />
                         Needs Reconnect
                       </span>
                     {:else if checkingConnection}
                       <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 shrink-0 whitespace-nowrap"
                       >
                         Checking
                       </span>
                     {:else if !isSourceConfigured}
                       <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 shrink-0 whitespace-nowrap"
                       >
                         <Fa icon={faTriangleExclamation} />
                         Setup Required
                       </span>
                     {:else}
                       <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0 whitespace-nowrap"
                       >
                         Disconnected
                       </span>
                     {/if}
                   {:else}
                     <span
-                      class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400"
+                      class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 shrink-0 whitespace-nowrap"
                     >
                       Local Filesystem
                     </span>
@@ -853,14 +854,14 @@
       <div class="mt-4 border-t border-zinc-200 dark:border-zinc-800 pt-4">
         <button
           type="button"
-          class="flex items-center justify-between w-full text-left text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 py-1 transition-colors"
+          class="flex items-center justify-between gap-2 w-full min-w-0 text-left text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 py-1 transition-colors"
           on:click={() => (showAdvanced = !showAdvanced)}
         >
-          <span class="flex items-center gap-2">
-            <Fa icon={showAdvanced ? faChevronDown : faChevronRight} class="text-xs" />
-            <span>Advanced: Custom Credentials & Directory Folders</span>
+          <span class="flex items-center gap-2 min-w-0 flex-1">
+            <Fa icon={showAdvanced ? faChevronDown : faChevronRight} class="text-xs shrink-0" />
+            <span class="truncate">Advanced: Custom Credentials & Directory Folders</span>
           </span>
-          <span class="text-xs text-zinc-400 dark:text-zinc-500">
+          <span class="text-xs text-zinc-400 dark:text-zinc-500 shrink-0">
             {customSources.length} custom {customSources.length === 1 ? 'source' : 'sources'}
           </span>
         </button>
@@ -920,30 +921,30 @@
                       </svg>
                     </div>
 
-                    <div slot="suffix" class="flex items-center gap-1">
+                    <div slot="suffix" class="flex items-center gap-1 shrink-0 min-w-0">
                       {#if isCloudRow}
                         {#if sourceState === StorageConnectionState.CONNECTED}
                           <span
-                            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400"
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 shrink-0 whitespace-nowrap"
                           >
                             Connected
                           </span>
                         {:else if sourceState === StorageConnectionState.NEEDS_RECONNECT}
                           <span
-                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400"
+                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 shrink-0 whitespace-nowrap"
                           >
                             <Fa icon={faTriangleExclamation} />
                             Needs Reconnect
                           </span>
                         {:else if checkingRow}
                           <span
-                            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400"
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 shrink-0 whitespace-nowrap"
                           >
                             Checking
                           </span>
                         {:else}
                           <span
-                            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 shrink-0 whitespace-nowrap"
                           >
                             Disconnected
                           </span>

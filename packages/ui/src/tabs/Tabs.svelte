@@ -308,6 +308,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     min-width: 18px;
     height: 18px;
     padding: 0 5px;

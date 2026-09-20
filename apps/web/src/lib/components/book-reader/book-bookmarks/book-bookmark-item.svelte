@@ -82,7 +82,7 @@
           {bookmark.note}
         </div>
       {/if}
-      <div class="mt-1 flex items-center gap-2 text-xs opacity-60">
+      <div class="mt-1 flex flex-wrap items-center gap-2 text-xs opacity-60">
         <span>{Math.round(bookmark.progress * 100)}%</span>
         <span>•</span>
         <span
@@ -93,7 +93,7 @@
         {#if isCurrentPosition}
           <span>•</span>
           <span
-            class="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-400/25 dark:text-blue-300"
+            class="shrink-0 whitespace-nowrap rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-400/25 dark:text-blue-300"
           >
             Current
           </span>
