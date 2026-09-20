@@ -45,7 +45,6 @@
   import { storageSource$ } from '$lib/data/storage/storage-view';
   import {
     cacheStorageData$,
-    confirmStatisticsDeletion$,
     database,
     externalReadAction$,
     fileCountData$,
@@ -1279,27 +1278,24 @@
       .filter((card) => selectedBookIds.has(card.id))
       .map((book) => book.title);
 
-    let wasCanceled = false;
-
-    if ($confirmStatisticsDeletion$) {
-      wasCanceled = await new Promise((resolver) => {
-        dialogManager.dialogs$.next([
-          {
-            component: ConfirmDialog,
-            props: {
-              dialogHeader: 'Delete Data',
-              dialogMessage: `This will delete all Statistics for the selected ${pluralize(
-                titles.length,
-                'Title',
-                false
-              )} (which may include start and/or completion Data)\n\nExecute a one time Sync with an export behavior of "replace" and/or statistics merge mode of "replace" to apply deletions to other devices`,
-              contentStyles: 'white-space: pre-line;',
-              resolver
-            }
+    // Deletion is destructive and cannot be undone — always warn first.
+    const wasCanceled = await new Promise((resolver) => {
+      dialogManager.dialogs$.next([
+        {
+          component: ConfirmDialog,
+          props: {
+            dialogHeader: 'Delete Data',
+            dialogMessage: `This will delete all Statistics for the selected ${pluralize(
+              titles.length,
+              'Title',
+              false
+            )} (which may include start and/or completion Data)\n\nExecute a one time Sync with an export behavior of "replace" and/or statistics merge mode of "replace" to apply deletions to other devices`,
+            contentStyles: 'white-space: pre-line;',
+            resolver
           }
-        ]);
-      });
-    }
+        }
+      ]);
+    });
 
     if (wasCanceled) {
       return;

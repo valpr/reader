@@ -489,11 +489,6 @@ export const lastPrimaryReadingDataAggregationMode$ =
     StatisticsReadingDataAggregationMode.NONE
   );
 
-export const confirmStatisticsDeletion$ = writableBooleanLocalStorageSubject()(
-  'confirmStatisticsDeletion',
-  true
-);
-
 export const lastStatisticsFilterDateRangeOnly$ = writableBooleanLocalStorageSubject()(
   'lastStatisticsFilterDateRangeOnly',
   false
