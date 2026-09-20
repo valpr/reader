@@ -408,7 +408,7 @@
               handleSelectProfile(profile.id);
             }
           }}
-          class="relative flex flex-col items-start p-3 rounded-lg border text-left transition-all duration-150 cursor-pointer select-none"
+          class="relative flex flex-col items-start p-3 rounded-lg border text-left transition-all duration-150 cursor-pointer select-none min-w-0 overflow-hidden"
           class:border-zinc-800={isActive}
           class:dark:border-zinc-200={isActive}
           class:bg-zinc-100={isActive}
@@ -422,22 +422,22 @@
             ? 'var(--astryx-color-surface-selected, rgba(255, 255, 255, 0.08))'
             : 'var(--astryx-color-surface, transparent)'};"
         >
-          <div class="flex items-center justify-between w-full mb-1">
-            <div class="flex items-center gap-2">
+          <div class="flex items-center justify-between gap-2 w-full mb-1 min-w-0">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
               <span
-                class="w-7 h-7 rounded-md flex items-center justify-center text-xs font-semibold"
+                class="w-7 h-7 rounded-md flex items-center justify-center text-xs font-semibold shrink-0"
                 style="background-color: var(--astryx-color-surface-subtle, rgba(0, 0, 0, 0.05)); color: var(--astryx-color-fg-primary, inherit);"
               >
                 <Fa icon={getIcon(profile.icon)} />
               </span>
-              <span class="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate">
+              <span class="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate min-w-0">
                 {profile.name}
               </span>
             </div>
 
             {#if isActive}
               <span
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0"
               >
                 <Fa icon={faCheck} class="text-[9px]" />
                 Active
