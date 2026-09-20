@@ -60,6 +60,8 @@
   } from '$lib/data/store';
   import { reduceToEmptyString } from '$lib/functions/rxjs/reduce-to-empty-string';
   import {
+    CHARS_PER_BUNKOBON_PAGE,
+    formatBunkobonPages,
     getDateString,
     getNumberFromObject,
     getStartHoursDate,
@@ -982,6 +984,13 @@
       <span class="whitespace-nowrap opacity-80">
         {secondsToMinutes($statisticsScopeSummary$.readingTimeSeconds)} min · {$statisticsScopeSummary$.charactersRead}
         characters
+      </span>
+      <span aria-hidden="true" class="opacity-50">·</span>
+      <span
+        class="whitespace-nowrap opacity-60"
+        title={`1 bunkobon page ≈ ${CHARS_PER_BUNKOBON_PAGE} characters`}
+      >
+        ≈ {formatBunkobonPages($statisticsScopeSummary$.charactersRead)} pages
       </span>
       {#if $lastPrimaryReadingDataAggregationMode$ !== StatisticsReadingDataAggregationMode.NONE}
         <span aria-hidden="true" class="opacity-50">·</span>

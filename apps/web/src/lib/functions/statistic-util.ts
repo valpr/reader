@@ -92,6 +92,35 @@ export function secondsToMinutes(seconds: number) {
   return Math.floor((seconds / 60 + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * Approximate characters per Japanese bunkobon (文庫本) paperback page.
+ * Standard line is ~42 chars; a typical page holds 15-17 lines (630-714 chars
+ * before punctuation/rubi/line-break loss). 650 is the midpoint.
+ */
+export const CHARS_PER_BUNKOBON_PAGE = 650;
+
+export function charactersToBunkobonPages(characters: number): number {
+  if (!Number.isFinite(characters) || characters <= 0) {
+    return 0;
+  }
+
+  return characters / CHARS_PER_BUNKOBON_PAGE;
+}
+
+export function formatBunkobonPages(characters: number): string {
+  const pages = charactersToBunkobonPages(characters);
+
+  if (pages <= 0) {
+    return '0';
+  }
+
+  if (pages < 10) {
+    return (Math.round(pages * 10) / 10).toLocaleString();
+  }
+
+  return Math.round(pages).toLocaleString();
+}
+
 export function getDateString(date: Date) {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(
     2,

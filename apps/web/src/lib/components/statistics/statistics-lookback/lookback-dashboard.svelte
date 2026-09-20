@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { Button, Card, Select } from '@custom-ereader/ui';
+  import { formatBunkobonPages } from '$lib/functions/statistic-util';
   import type { LookbackMetrics } from './lookback-types';
   import LookbackTopBooksCarousel from './lookback-top-books-carousel.svelte';
 
@@ -213,6 +214,12 @@
       </div>
       <div class="text-[11px] text-[var(--astryx-color-fg-muted,#71717a)] mt-1">
         ~{formatNumber(metrics.averageReadingSpeedCharsPerHour)} chars/hr
+      </div>
+      <div
+        class="text-[11px] text-[var(--astryx-color-fg-muted,#71717a)]"
+        title="1 bunkobon page ≈ 650 characters"
+      >
+        ≈ {formatBunkobonPages(metrics.totalCharactersRead)} bunkobon pages 📖
       </div>
     </Card>
 

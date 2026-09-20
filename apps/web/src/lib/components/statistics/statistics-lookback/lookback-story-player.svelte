@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { Button, IconButton } from '@custom-ereader/ui';
+  import { formatBunkobonPages } from '$lib/functions/statistic-util';
   import type { LookbackMetrics } from './lookback-types';
 
   export let metrics: LookbackMetrics;
@@ -129,7 +130,9 @@
       `📖 My Reading Lookback (${currentYearLabel})`,
       `⭐ Persona: ${metrics.primaryArchetype.name} ${metrics.primaryArchetype.badge}`,
       `⏱️ Total Time: ${formatSeconds(metrics.totalReadingTimeSeconds)}`,
-      `🔤 Characters: ${metrics.totalCharactersRead.toLocaleString()}`,
+      `🔤 Characters: ${metrics.totalCharactersRead.toLocaleString()} (≈ ${formatBunkobonPages(
+        metrics.totalCharactersRead
+      )} bunkobon pages)`,
       `📅 Active Days: ${metrics.activeReadingDays} (${metrics.consistencyPercentage}% consistency)`,
       `🔥 Longest Streak: ${metrics.longestStreakDays} days`,
       `🏆 Books Completed: ${metrics.booksCompleted} of ${metrics.booksStarted}`,
@@ -294,6 +297,9 @@
               Totaling <strong class="text-white text-base"
                 >{metrics.totalCharactersRead.toLocaleString()}</strong
               > characters read.
+            </div>
+            <div class="text-sm text-white/80 break-words [overflow-wrap:anywhere]">
+              ≈ {formatBunkobonPages(metrics.totalCharactersRead)} bunkobon pages 📖
             </div>
             <div class="text-xs text-white/50">
               Averaging ~{metrics.averageReadingSpeedCharsPerHour.toLocaleString()} chars/hr.
@@ -532,6 +538,12 @@
               <span class="text-white/60">Characters:</span>
               <span class="font-bold text-white"
                 >{metrics.totalCharactersRead.toLocaleString()}</span
+              >
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-white/60">Bunkobon pages:</span>
+              <span class="font-bold text-white"
+                >≈ {formatBunkobonPages(metrics.totalCharactersRead)}</span
               >
             </div>
             <div class="flex items-center justify-between">

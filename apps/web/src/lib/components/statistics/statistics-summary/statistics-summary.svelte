@@ -49,6 +49,8 @@
   } from '$lib/data/store';
   import {
     advanceDateDays,
+    CHARS_PER_BUNKOBON_PAGE,
+    formatBunkobonPages,
     getDate,
     getDateString,
     getNumberFromObject,
@@ -749,11 +751,17 @@
           <button
             class="text-left"
             class:blur={$lastBlurredTrackerItems$.has('charactersRead')}
+            title={`≈ ${formatBunkobonPages(
+              currentStatisticsSummaryRow.charactersRead
+            )} bunkobon pages (1 page ≈ ${CHARS_PER_BUNKOBON_PAGE} characters)`}
             on:click={(event) => {
               statisticsSummaryPopoverDetails = [
                 `Characters: ${currentStatisticsSummaryRow.charactersRead}`,
                 `Average Characters: ${currentStatisticsSummaryRow.averageCharactersRead}`,
-                `Weighted Characters: ${currentStatisticsSummaryRow.averageWeightedCharactersRead}`
+                `Weighted Characters: ${currentStatisticsSummaryRow.averageWeightedCharactersRead}`,
+                `≈ ${formatBunkobonPages(
+                  currentStatisticsSummaryRow.charactersRead
+                )} bunkobon pages (1 page ≈ ${CHARS_PER_BUNKOBON_PAGE} characters)`
               ];
 
               tick().then(() => {
