@@ -30,7 +30,6 @@
     statisticsDataAggregrationModes,
     exportStatisticsData$,
     statisticsActionInProgress$,
-    deleteStatisticsData$,
     setStatisticsDatesToAllTime$,
     StatisticsRangeTemplate
   } from '$lib/components/statistics/statistics-types';
@@ -44,7 +43,6 @@
   import { getStorageHandler } from '$lib/data/storage/storage-handler-factory';
   import { StorageDataType, StorageKey } from '$lib/data/storage/storage-types';
   import {
-    confirmStatisticsDeletion$,
     database,
     lastPrimaryReadingDataAggregationMode$,
     lastReadingDataHeatmapAggregationMode$,
@@ -71,7 +69,7 @@
   import { pluralize } from '$lib/functions/utils';
   import pLimit from 'p-limit';
   import { tap } from 'rxjs';
-  import { onDestroy, onMount, tick } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { quintInOut } from 'svelte/easing';
   import { fly } from 'svelte/transition';
 
@@ -215,29 +213,6 @@
     reduceToEmptyString()
   );
 
-  const deleteStatisticsDataHandler$ = deleteStatisticsData$.pipe(
-    tap(async (deleteAllData) => {
-      const dataList = deleteAllData ? statisticsData : statisticsForSelection;
-      const request: StatisticsDeleteRequest = {
-        startDate: deleteAllData ? '' : $lastStatisticsStartDate$,
-        endDate: deleteAllData ? '' : $lastStatisticsEndDate$,
-        titlesToCheck: new Set<string>(),
-        takeAsIs: true
-      };
-
-      for (let index = 0, { length } = dataList; index < length; index += 1) {
-        request.titlesToCheck.add(dataList[index].title);
-      }
-
-      handleDeleteRequest(
-        new CustomEvent<StatisticsDeleteRequest>('delete', { detail: request })
-      ).finally(() => {
-        tick().then(() => dialogManager.dialogs$.next([{ component: '<div/>' }]));
-      });
-    }),
-    reduceToEmptyString()
-  );
-
   const setStatisticsDatesToAllTimeHandler$ = setStatisticsDatesToAllTime$.pipe(
     tap(() => {
       if (!statisticsTitleFilters.size) {
@@ -366,29 +341,26 @@
 
     const titleLabel = pluralize(titlesToDelete.size, 'Title');
 
-    let wasCanceled = false;
-
-    if ($confirmStatisticsDeletion$) {
-      wasCanceled = await new Promise((resolver) => {
-        dialogManager.dialogs$.next([
-          {
-            component: ConfirmDialog,
-            props: {
-              dialogHeader: 'Delete Data',
-              dialogMessage: `This will delete data ${
-                startDate ? `from ${getDateRangeLabel(startDate, endDate)}` : ''
-              }  for ${titleLabel} (which may include start and/or completion Data)\n\nExecute an one time Sync with an export behavior of "overwrite" and/or statistics merge mode of "replace" to apply deletions to other devices.\n\n${titleLabel}:\n${[
-                ...titlesToDelete
-              ].join('\n\n')}`,
-              contentStyles: 'white-space: pre-line;max-height: 20rem;overflow: auto;',
-              resolver
-            },
-            disableCloseOnClick: true,
-            zIndex: '70'
-          }
-        ]);
-      });
-    }
+    // Deletion is destructive and cannot be undone — always warn first.
+    const wasCanceled = await new Promise((resolver) => {
+      dialogManager.dialogs$.next([
+        {
+          component: ConfirmDialog,
+          props: {
+            dialogHeader: 'Delete Data',
+            dialogMessage: `This will delete data ${
+              startDate ? `from ${getDateRangeLabel(startDate, endDate)}` : ''
+            }  for ${titleLabel} (which may include start and/or completion Data)\n\nExecute an one time Sync with an export behavior of "overwrite" and/or statistics merge mode of "replace" to apply deletions to other devices.\n\n${titleLabel}:\n${[
+              ...titlesToDelete
+            ].join('\n\n')}`,
+            contentStyles: 'white-space: pre-line;max-height: 20rem;overflow: auto;',
+            resolver
+          },
+          disableCloseOnClick: true,
+          zIndex: '70'
+        }
+      ]);
+    });
 
     if (wasCanceled) {
       $statisticsActionInProgress$ = false;
@@ -930,7 +902,6 @@
 
 {$copyStatisticsDataHandler$ ?? ''}
 {$exportStatisticsDataHandler$ ?? ''}
-{$deleteStatisticsDataHandler$ ?? ''}
 {$setStatisticsDatesToAllTimeHandler$ ?? ''}
 <svelte:window on:keyup={onKeyUp} />
 {#if isLoading}
@@ -945,8 +916,8 @@
       <button
         type="button"
         title={$statisticsTitleFilterEnabled$
-          ? 'Open title controls'
-          : 'Title filter not applicable'}
+          ? 'Open Advanced Filtering (titles)'
+          : 'Advanced Filtering not applicable'}
         class="flex min-h-[44px] min-w-0 items-center truncate underline decoration-dotted underline-offset-4 disabled:no-underline disabled:opacity-50"
         disabled={!$statisticsTitleFilterEnabled$}
         on:click={() => openStatisticsDataControls('titles')}
@@ -960,7 +931,7 @@
     <div class="mb-2 flex min-h-[44px] flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
       <button
         type="button"
-        title="Open date controls"
+        title="Open Advanced Filtering (dates)"
         class="flex min-h-[44px] min-w-0 max-w-full items-center truncate font-semibold underline decoration-dotted underline-offset-4"
         on:click={() => openStatisticsDataControls('dates')}
       >
@@ -970,8 +941,8 @@
       <button
         type="button"
         title={$statisticsTitleFilterEnabled$
-          ? 'Open title controls'
-          : 'Title filter not applicable'}
+          ? 'Open Advanced Filtering (titles)'
+          : 'Advanced Filtering not applicable'}
         class="flex min-h-[44px] min-w-0 items-center truncate underline decoration-dotted underline-offset-4 disabled:no-underline disabled:opacity-50"
         disabled={!$statisticsTitleFilterEnabled$}
         on:click={() => openStatisticsDataControls('titles')}
@@ -996,7 +967,7 @@
         <span aria-hidden="true" class="opacity-50">·</span>
         <button
           type="button"
-          title="Open display controls"
+          title="Open Advanced Filtering (display)"
           class="flex min-h-[44px] items-center underline decoration-dotted underline-offset-4"
           on:click={() => openStatisticsDataControls('display')}
         >

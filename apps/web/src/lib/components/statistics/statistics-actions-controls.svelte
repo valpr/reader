@@ -1,16 +1,11 @@
 <script lang="ts">
-  import ButtonToggleGroup from '$lib/components/button-toggle-group/button-toggle-group.svelte';
-  import { optionsForToggle } from '$lib/components/button-toggle-group/toggle-option';
-  import SettingsItemGroup from '$lib/components/settings/settings-item-group.svelte';
   import {
     copyStatisticsData$,
     exportStatisticsData$,
     statisticsActionInProgress$,
-    deleteStatisticsData$,
     statisticsScopeSummary$,
     type StatisticsDataSource
   } from '$lib/components/statistics/statistics-types';
-  import { confirmStatisticsDeletion$ } from '$lib/data/store';
 
   export let statisticsDateRangeLabel: string;
 
@@ -23,12 +18,6 @@
     $statisticsActionInProgress$ = true;
 
     exportStatisticsData$.next(exportAllStatisticsData);
-  }
-
-  async function deleteStatisticsData(deleteAllStatisticsData = true) {
-    $statisticsActionInProgress$ = true;
-
-    deleteStatisticsData$.next(deleteAllStatisticsData);
   }
 </script>
 
@@ -69,35 +58,6 @@
       >
         Export everything
       </button>
-    </div>
-  </section>
-  <section aria-label="Delete data">
-    <h3 class="font-semibold">Delete</h3>
-    <div class="mt-2 flex flex-col gap-2">
-      <button
-        type="button"
-        class="flex min-h-[44px] items-center justify-center gap-2 rounded border border-red-400/60 px-3 text-sm hover:text-red-500"
-        on:click={() => deleteStatisticsData(false)}
-      >
-        Delete current view ({$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles}
-        titles · {statisticsDateRangeLabel})
-      </button>
-      <button
-        type="button"
-        class="flex min-h-[44px] items-center justify-center gap-2 rounded border border-red-400/60 px-3 text-sm hover:text-red-500"
-        on:click={() => deleteStatisticsData()}
-      >
-        Delete everything
-      </button>
-    </div>
-    <div class="mt-4">
-      <SettingsItemGroup title="Confirm Statistics Deletion" applyHeaderClasses={false}>
-        <ButtonToggleGroup
-          invertColors
-          options={optionsForToggle}
-          bind:selectedOptionId={$confirmStatisticsDeletion$}
-        />
-      </SettingsItemGroup>
     </div>
   </section>
 </div>

@@ -88,8 +88,6 @@ export const copyStatisticsData$ = new Subject<keyof BookStatistic>();
 
 export const exportStatisticsData$ = new Subject<boolean>();
 
-export const deleteStatisticsData$ = new Subject<boolean>();
-
 export const setStatisticsDatesToAllTime$ = new Subject<void>();
 
 export const statisticsActionInProgress$ = writableSubject<boolean>(false);
