@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+
+# Reject pushes directly to main or to branches whose PR has already been merged
+
+zero_oid="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  # Allow branch deletions
+  if [ "$local_oid" = "$zero_oid" ] || [ "$local_ref" = "(delete)" ]; then
+    continue
+  fi
+
+  branch="${remote_ref#refs/heads/}"
+
+  # 1. Prevent direct push to main
+  if [ "$branch" = "main" ]; then
+    echo "❌ Error: Direct push to 'main' is not allowed."
+    echo "Please push to a dedicated branch ('feat/*', 'fix/*', etc.) and open a PR."
+    exit 1
+  fi
+
+  # 2. Prevent pushing to a branch whose PR was already merged
+  if command -v gh >/dev/null 2>&1; then
+    pr_state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null || echo "")
+    if [ "$pr_state" = "MERGED" ]; then
+      echo "❌ Error: Pull request for '$branch' has already been merged."
+      echo "Cannot update a merged PR. Please branch off main to open a new PR:"
+      echo "  git checkout main && git pull origin main"
+      echo "  git checkout -b <new-branch-name>"
+      exit 1
+    fi
+  fi
+done
+
+exit 0
