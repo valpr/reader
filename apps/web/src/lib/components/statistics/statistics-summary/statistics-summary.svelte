@@ -187,6 +187,15 @@
     dispatch('delete', request);
   }
 
+  function dispatchDeleteCurrentView() {
+    setRowInEditMode();
+    dispatch('delete', {
+      startDate: $lastStatisticsStartDate$,
+      endDate: $lastStatisticsEndDate$,
+      titlesToCheck: new Set<string>()
+    });
+  }
+
   function handlePropertyChange({
     detail: { property, statisticsSummaryKey }
   }: CustomEvent<StatisticsDataSourceChange>) {
@@ -352,8 +361,6 @@
 
   $: today = getStartHoursDate($startDayHoursForTracker$);
   $: todayKey = getDateString(today);
-  $: isViewingToday =
-    $lastStatisticsStartDate$ === todayKey && $lastStatisticsEndDate$ === todayKey;
   $: isSingleDay = $lastStatisticsStartDate$ === $lastStatisticsEndDate$;
   $: isTodayOrFuture = $lastStatisticsStartDate$ >= todayKey && $lastStatisticsEndDate$ >= todayKey;
 
@@ -529,32 +536,33 @@
     >
       <Fa icon={faChevronRight} />
     </button>
-
-    <!-- Today jump button (shown when viewing a past day) -->
-    {#if !isViewingToday}
-      <button
-        type="button"
-        data-testid="summary-today-btn"
-        class="flex min-h-[44px] items-center rounded-lg px-2.5 py-1 text-xs font-semibold text-[var(--astryx-color-primary,#6366f1)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors cursor-pointer"
-        title="Jump to Today"
-        on:click={goToToday}
-      >
-        Today
-      </button>
-    {/if}
   </div>
 
-  <!-- Add Activity button -->
-  <button
-    type="button"
-    data-testid="summary-add-activity-btn"
-    class="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors shadow-sm cursor-pointer ml-auto"
-    title="Add reading activity for this date"
-    on:click={openAddActivityDialog}
-  >
-    <Fa icon={faPlus} class="text-xs text-[var(--astryx-color-primary,#6366f1)]" />
-    <span>Add Activity</span>
-  </button>
+  <!-- Activity actions for the displayed date -->
+  <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+    <button
+      type="button"
+      data-testid="summary-delete-view-btn"
+      class="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-red-400/60 px-3 py-1.5 text-xs sm:text-sm font-medium hover:text-red-500 transition-colors shadow-sm cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+      title={`Delete activity shown for this ${isSingleDay ? 'date' : 'date range'}. A confirmation prompt always appears before permanent deletion.`}
+      aria-label={`Delete activity shown for this ${isSingleDay ? 'date' : 'date range'}`}
+      disabled={!statisticsData.length}
+      on:click={dispatchDeleteCurrentView}
+    >
+      <Fa icon={faTrash} class="text-xs" />
+      <span>Delete</span>
+    </button>
+    <button
+      type="button"
+      data-testid="summary-add-activity-btn"
+      class="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors shadow-sm cursor-pointer"
+      title="Add reading activity for this date"
+      on:click={openAddActivityDialog}
+    >
+      <Fa icon={faPlus} class="text-xs text-[var(--astryx-color-primary,#6366f1)]" />
+      <span>Add Activity</span>
+    </button>
+  </div>
 </div>
 
 <div

@@ -51,15 +51,15 @@ test('data controls sheet: scope bar, tabs, apply filter updates scope', async (
 
   // Scope bar shows committed selection
   await expect(page.getByText('2 of 2 titles')).toBeVisible();
-  await expect(page.getByTitle('Open date controls')).toBeVisible();
+  await expect(page.getByTitle('Open Advanced Filtering (dates)')).toBeVisible();
 
   // Header data-controls entry with count badge
-  const dataBtn = page.getByRole('button', { name: 'Open Data controls' });
+  const dataBtn = page.getByRole('button', { name: 'Open Advanced Filtering' });
   await expect(dataBtn).toBeVisible();
 
   // Open sheet at Dates tab by default
   await dataBtn.click();
-  await expect(page.getByText('Data controls').first()).toBeVisible();
+  await expect(page.getByText('Advanced Filtering').first()).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Dates' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('Template')).toBeVisible();
   await expect(page.getByText('Date range applies to the Summary tab only.')).toBeVisible();
@@ -88,7 +88,7 @@ test('data controls sheet: scope bar, tabs, apply filter updates scope', async (
   // Removing a title applies immediately: scope updates, sheet stays open
   await page.getByRole('button', { name: 'Remove Beta Book' }).click();
   await expect(page.getByText('1 of 2 titles').first()).toBeVisible();
-  await expect(page.getByText('Data controls').first()).toBeVisible();
+  await expect(page.getByText('Advanced Filtering').first()).toBeVisible();
 
   // Searching finds the removed title; picking it re-adds it immediately
   await page.getByPlaceholder('Search titles…').fill('Beta');
@@ -98,7 +98,7 @@ test('data controls sheet: scope bar, tabs, apply filter updates scope', async (
 
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByText('2 of 2 titles')).toBeVisible();
-  await expect(page.getByText('Data controls').first()).toHaveCount(0);
+  await expect(page.getByText('Advanced Filtering').first()).toHaveCount(0);
 });
 
 test('recap tab shows ignore-filters caption and no data button', async ({ page }) => {
@@ -107,10 +107,10 @@ test('recap tab shows ignore-filters caption and no data button', async ({ page 
 
   await page.getByRole('radio', { name: 'Recap' }).click();
   await expect(page.getByText('Recap ignores date and title filters.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open Data controls' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open Advanced Filtering' })).toHaveCount(0);
 });
 
-test('display tab changes aggregation and actions tab groups copy/export/delete', async ({
+test('display tab changes aggregation and actions tab groups copy/export only', async ({
   page
 }) => {
   await page.goto('/statistics');
@@ -127,8 +127,10 @@ test('display tab changes aggregation and actions tab groups copy/export/delete'
   await expect(page.getByRole('button', { name: 'Copy Characters Read' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export current view' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export everything' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Delete current view' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Delete everything' })).toBeVisible();
+
+  // Delete lives in the Summary toolbar now, not in Advanced Filtering
+  await expect(page.getByRole('button', { name: 'Delete current view' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Delete everything' })).toHaveCount(0);
 
   // No grouping chip while aggregation is None
   await expect(page.getByRole('button', { name: /grouped by/ })).toHaveCount(0);
@@ -143,5 +145,5 @@ test('display tab changes aggregation and actions tab groups copy/export/delete'
   // Close via footer; scope bar keeps the new aggregation
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByText('grouped by Title')).toBeVisible();
-  await expect(page.getByText('Data controls').first()).toHaveCount(0);
+  await expect(page.getByText('Advanced Filtering').first()).toHaveCount(0);
 });

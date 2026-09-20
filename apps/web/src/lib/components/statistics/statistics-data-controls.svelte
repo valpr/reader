@@ -52,14 +52,14 @@
 <div class="flex items-center p-4">
   <button
     type="button"
-    title="Close Data controls"
-    aria-label="Close Data controls"
+    title="Close Advanced Filtering"
+    aria-label="Close Advanced Filtering"
     class="flex min-h-[44px] min-w-[44px] items-end justify-center md:items-center"
     on:click={() => dispatch('close')}
   >
     <Fa icon={faXmark} />
   </button>
-  <div class="ml-2 text-lg font-semibold">Data controls</div>
+  <div class="ml-2 text-lg font-semibold">Advanced Filtering</div>
 </div>
 <div class="px-4">
   <Tabs

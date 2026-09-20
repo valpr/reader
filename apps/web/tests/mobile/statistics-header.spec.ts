@@ -48,8 +48,8 @@ for (const width of [412, 360]) {
       await expect(moreActions).toHaveCount(0);
       await expectFullyInViewport(
         page,
-        page.getByRole('button', { name: 'Open Data controls' }),
-        'Data controls'
+        page.getByRole('button', { name: 'Open Advanced Filtering' }),
+        'Advanced Filtering'
       );
       await expectFullyInViewport(
         page,
@@ -67,7 +67,7 @@ for (const width of [412, 360]) {
       await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
 
       // At 360px, the data-actions shortcut collapses into the overflow menu
-      await expect(page.getByRole('button', { name: 'Copy, export or delete data' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Copy or export data' })).toBeVisible();
     }
 
     await expectNoHorizontalOverflow(page);

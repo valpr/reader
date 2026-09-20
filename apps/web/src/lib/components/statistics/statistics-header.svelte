@@ -83,15 +83,15 @@
         {#if item.id === 'dataControls'}
           <Tooltip
             text={$statisticsTitleFilterEnabled$
-              ? `Data controls (${$statisticsScopeSummary$.selectedTitles} of ${$statisticsScopeSummary$.totalTitles} titles)`
-              : 'Data controls not applicable'}
+              ? `Advanced Filtering (${$statisticsScopeSummary$.selectedTitles} of ${$statisticsScopeSummary$.totalTitles} titles)`
+              : 'Advanced Filtering not applicable'}
           >
             <span class="relative inline-flex">
               <IconButton
                 nativeTooltip={false}
                 variant="ghost"
                 size="md"
-                label="Open Data controls"
+                label="Open Advanced Filtering"
                 disabled={!$statisticsTitleFilterEnabled$}
                 active={$statisticsDataControlsOpen$ && $statisticsDataControlsTab$ !== 'actions'}
                 on:click={() => {
@@ -142,7 +142,7 @@
         {:else if item.id === 'dataActions'}
           <Tooltip
             text={$statisticsTitleFilterEnabled$
-              ? 'Copy, export or delete data'
+              ? 'Copy or export data'
               : 'Data actions not applicable'}
           >
             <IconButton
@@ -226,7 +226,7 @@
                     >
                       <Fa icon={faFilter} class="w-4 text-center opacity-70" />
                       <span
-                        >Open Data controls ({$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles}
+                        >Open Advanced Filtering ({$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles}
                         titles)</span
                       >
                     </button>
@@ -273,7 +273,7 @@
                       }}
                     >
                       <Fa icon={faCopy} class="w-4 text-center opacity-70" />
-                      <span>Copy, export or delete data</span>
+                      <span>Copy or export data</span>
                     </button>
                   {:else if oItem.id === 'settings'}
                     <button

@@ -5,7 +5,7 @@
  */
 
 /**
- * Mobile (Pixel 9) specs for the statistics Data controls bottom sheet.
+ * Mobile (Pixel 9) specs for the statistics Advanced Filtering bottom sheet.
  * Runs in the `mobile` project only (see playwright.config.ts).
  */
 
@@ -104,7 +104,7 @@ for (const width of [412, 360]) {
     await expect(page.getByText('2 of 2 titles')).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
-    await page.getByRole('button', { name: 'Open Data controls' }).tap();
+    await page.getByRole('button', { name: 'Open Advanced Filtering' }).tap();
 
     const sheet = page.getByTestId('statistics-data-controls');
     await expectSheetSettledInViewport(page);
@@ -141,6 +141,8 @@ for (const width of [412, 360]) {
 
     await page.getByRole('tab', { name: 'Actions' }).tap();
     await expect(page.getByRole('button', { name: 'Copy Reading Time' })).toBeVisible();
+    // Delete lives in the Summary toolbar now, not in Advanced Filtering
+    await expect(page.getByRole('button', { name: 'Delete everything' })).toHaveCount(0);
     await expectSheetNoHorizontalOverflow(page);
 
     // Primary footer action is visible, enabled, and tappable

@@ -45,8 +45,10 @@ test.describe('Mobile (Pixel 9): Summary Date Stepper & Activity Dialog', () => 
     // Switch to Summary tab
     await page.getByRole('radio', { name: 'Summary' }).tap();
 
-    // Check at default 412px
+    // Check at default 412px; toolbar Delete sits next to Add Activity
     await expect(page.getByTestId('summary-date-stepper')).toBeVisible();
+    await expect(page.getByTestId('summary-delete-view-btn')).toBeVisible();
+    await expect(page.getByTestId('summary-delete-view-btn')).toBeEnabled();
     await expectNoHorizontalOverflow(page);
 
     // Step to yesterday
@@ -58,8 +60,9 @@ test.describe('Mobile (Pixel 9): Summary Date Stepper & Activity Dialog', () => 
     await page.setViewportSize({ width: 360, height: 800 });
     await expectNoHorizontalOverflow(page);
 
-    // Tap Today to return
-    await page.getByTestId('summary-today-btn').tap();
+    // Step forward to return to today (default view, no Today shortcut)
+    await expect(page.getByTestId('summary-today-btn')).toHaveCount(0);
+    await page.getByTestId('summary-next-day-btn').tap();
     await expect(page.getByTestId('summary-date-label')).toContainText('Today');
     await expectNoHorizontalOverflow(page);
   });

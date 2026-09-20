@@ -58,7 +58,7 @@ test.describe('Statistics Summary Date Stepper & Activity Management', () => {
     // Switch to Summary tab
     await page.getByRole('radio', { name: 'Summary' }).click();
 
-    // Check date stepper is visible
+    // Check date stepper is visible; default view is today
     const dateLabel = page.getByTestId('summary-date-label');
     await expect(dateLabel).toBeVisible();
     await expect(dateLabel).toContainText('Today');
@@ -67,9 +67,8 @@ test.describe('Statistics Summary Date Stepper & Activity Management', () => {
     const nextBtn = page.getByTestId('summary-next-day-btn');
     await expect(nextBtn).toBeDisabled();
 
-    // Today jump button is not visible when already on today
-    const todayBtn = page.getByTestId('summary-today-btn');
-    await expect(todayBtn).toHaveCount(0);
+    // No instant Today shortcut — today is the default view
+    await expect(page.getByTestId('summary-today-btn')).toHaveCount(0);
 
     // Verify today's activity is shown (20 min = 1200s, 6000 chars)
     await expect(page.getByText('Kokoro Book').first()).toBeVisible();
@@ -83,9 +82,9 @@ test.describe('Statistics Summary Date Stepper & Activity Management', () => {
     // Verify date label switched to Yesterday
     await expect(dateLabel).toContainText('Yesterday');
 
-    // Next day button is now enabled and Today button is visible
+    // Next day button is now enabled; there is no Today shortcut
     await expect(nextBtn).toBeEnabled();
-    await expect(todayBtn).toBeVisible();
+    await expect(page.getByTestId('summary-today-btn')).toHaveCount(0);
 
     // Verify yesterday's activity is displayed (30 min = 1800s, 9000 chars)
     await expect(page.getByText('Kokoro Book').first()).toBeVisible();
@@ -99,17 +98,31 @@ test.describe('Statistics Summary Date Stepper & Activity Management', () => {
 
     // Empty state should be visible for date with no activity
     await expect(page.getByText('No reading activity recorded for this date.')).toBeVisible();
+    await expect(page.getByTestId('summary-delete-view-btn')).toBeDisabled();
 
     // Step forward 1 day back to yesterday
     await nextBtn.click();
     await expect(dateLabel).toContainText('Yesterday');
     await expect(page.getByRole('button', { name: '30 min' })).toBeVisible();
 
-    // Jump back to Today using Today button
-    await todayBtn.click();
+    // Step forward once more to return to today (the default view)
+    await nextBtn.click();
     await expect(dateLabel).toContainText('Today');
     await expect(nextBtn).toBeDisabled();
-    await expect(todayBtn).toHaveCount(0);
+    await expect(page.getByTestId('summary-today-btn')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '20 min' })).toBeVisible();
+
+    // Toolbar Delete warns every time — even with the legacy opt-out flag set
+    const toolbarDelete = page.getByTestId('summary-delete-view-btn');
+    await expect(toolbarDelete).toBeEnabled();
+    await expect(toolbarDelete).toHaveAttribute('title', /confirmation prompt always appears/);
+    await page.evaluate(() => localStorage.setItem('confirmStatisticsDeletion', '0'));
+    await toolbarDelete.click();
+    await expect(page.getByRole('heading', { name: 'Delete Data' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    // Cancel keeps today's data in place
+    await expect(dateLabel).toContainText('Today');
     await expect(page.getByRole('button', { name: '20 min' })).toBeVisible();
   });
 
