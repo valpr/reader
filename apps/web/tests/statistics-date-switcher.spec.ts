@@ -112,11 +112,10 @@ test.describe('Statistics Summary Date Stepper & Activity Management', () => {
     await expect(page.getByTestId('summary-today-btn')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '20 min' })).toBeVisible();
 
-    // Toolbar Delete warns every time — even with the legacy opt-out flag set
+    // Toolbar Delete warns every time
     const toolbarDelete = page.getByTestId('summary-delete-view-btn');
     await expect(toolbarDelete).toBeEnabled();
     await expect(toolbarDelete).toHaveAttribute('title', /confirmation prompt always appears/);
-    await page.evaluate(() => localStorage.setItem('confirmStatisticsDeletion', '0'));
     await toolbarDelete.click();
     await expect(page.getByRole('heading', { name: 'Delete Data' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
