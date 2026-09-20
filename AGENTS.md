@@ -6,7 +6,7 @@ Guidelines and architectural constraints for working in **reader** (based on ッ
 
 ## 1. Git Workflow
 
-- **Never push directly to `main`**: Open PRs from dedicated branches (`feat/*`, `fix/*`, `chore/*`, `refactor/*`).
+- **Branches**: Open PRs from dedicated branches (`feat/*`, `fix/*`, `chore/*`, `refactor/*`).
 - **Commits**: Follow Conventional Commits (enforced by Husky and commitlint).
 
 ---
