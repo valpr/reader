@@ -208,12 +208,13 @@ export class DatabaseService {
       const statisticsStore = tx.objectStore('statistic');
       const lastModifiedStore = tx.objectStore('lastModified');
       const newStatistic = getDefaultStatistic(bookTitle, dateKey);
+      newStatistic.lastStatisticModified = 0;
 
       await statisticsStore.put(newStatistic);
       await lastModifiedStore.put({
         title: bookTitle,
         dataType: StorageDataType.STATISTICS,
-        lastModifiedValue: newStatistic.lastStatisticModified
+        lastModifiedValue: 0
       });
 
       await tx.done;

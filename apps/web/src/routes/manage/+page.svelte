@@ -436,6 +436,7 @@
         [
           StorageDataType.DATA,
           StorageDataType.PROGRESS,
+          StorageDataType.STATISTICS,
           StorageDataType.USER_BOOKMARKS,
           StorageDataType.BOOK_TAGS
         ],

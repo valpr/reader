@@ -32,7 +32,8 @@ const SYNC_DATA_TYPES = [
   StorageDataType.PROGRESS,
   StorageDataType.STATISTICS,
   StorageDataType.READING_GOALS,
-  StorageDataType.USER_BOOKMARKS
+  StorageDataType.USER_BOOKMARKS,
+  StorageDataType.PROFILES
 ];
 
 /**
@@ -50,10 +51,14 @@ export const BOOK_SCOPED_DATA_TYPES = [
 
 /**
  * Aggregate data: kept on the primary sync target (`$syncTarget$`) only.
- * Statistics and reading goals describe global reading behaviour, not a single
+ * Statistics, reading goals, and profiles describe global reading behaviour, not a single
  * book, so they are never fanned out to a secondary cloud.
  */
-export const PRIMARY_ONLY_DATA_TYPES = [StorageDataType.STATISTICS, StorageDataType.READING_GOALS];
+export const PRIMARY_ONLY_DATA_TYPES = [
+  StorageDataType.STATISTICS,
+  StorageDataType.READING_GOALS,
+  StorageDataType.PROFILES
+];
 
 function resolveSource(
   sourceName: string,

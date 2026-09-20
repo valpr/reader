@@ -304,8 +304,23 @@ export class BrowserStorageHandler extends BaseStorageHandler {
       ctx.title,
       StorageDataType.STATISTICS
     );
+    const localStats = await database.getStatisticsForBook(ctx.title);
+    const hasLocalReading = localStats.some(
+      (s) => (s.readingTime || 0) > 0 || (s.charactersRead || 0) > 0
+    );
+    const remoteMeta = BaseStorageHandler.getStatisticsMetadata(referenceFilename);
+    const hasRemoteReading =
+      (remoteMeta.readingTime || 0) > 0 || (remoteMeta.charactersRead || 0) > 0;
+
+    // If local has no actual reading progress (e.g. fresh placeholder), but remote has reading history,
+    // local is not up-to-date regardless of placeholder timestamps.
+    if (!hasLocalReading && hasRemoteReading) {
+      BaseStorageHandler.reportProgress();
+      return false;
+    }
+
     const fileName = existingLastModified
-      ? BaseStorageHandler.getStatisticsFileName([], existingLastModified)
+      ? BaseStorageHandler.getStatisticsFileName(localStats, existingLastModified)
       : undefined;
 
     BaseStorageHandler.reportProgress();
