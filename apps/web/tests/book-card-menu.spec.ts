@@ -266,4 +266,62 @@ test.describe('Book Card Options Menu', () => {
     await expect(page.getByTestId('book-details-dialog')).toBeVisible();
     await expect(page.getByTestId('book-details-dialog')).toContainText('0%');
   });
+
+  test('rapidly opening two books keeps progress scoped to each book', async ({ page }) => {
+    const SECOND_BOOK = {
+      ...SAMPLE_BOOK,
+      id: 2,
+      title: '坊っちゃん (Playwright Second Book)'
+    };
+
+    await seedReaderBook(page);
+    await seedReaderBook(page, SECOND_BOOK);
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('books');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(['bookmark'], 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore('bookmark').put({
+          dataId: 1,
+          exploredCharCount: 600,
+          progress: 0.5,
+          lastBookmarkModified: Date.now()
+        });
+      });
+    });
+
+    // Open book 1 then book 2 in quick succession: exercises the reader
+    // bootstrap + updateLastRead path for two contexts back-to-back.
+    await page.goto('/b?id=1');
+    await expect(page).toHaveTitle(/吾輩は猫である/);
+    await page.goto('/b?id=2');
+    await expect(page).toHaveTitle(/坊っちゃん/);
+    await expect(page.locator('.book-content')).toBeVisible();
+
+    await page.goto('/manage');
+    const bookCard = page.locator('.aspect-w-2').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    // Book 1 keeps its own 50% progress
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    await page.getByRole('button', { name: 'View details' }).click();
+    const detailsOne = page.getByTestId('book-details-dialog');
+    await expect(detailsOne).toBeVisible();
+    await expect(detailsOne).toContainText('50%');
+    await page.locator('.astryx-dialog-surface button').filter({ hasText: 'Close' }).click();
+    await expect(detailsOne).not.toBeVisible();
+
+    // Book 2 shows 0% — book 1's progress must not leak across (paired-books bug)
+    await page.getByRole('button', { name: `Book options for ${SECOND_BOOK.title}` }).click();
+    await page.getByRole('button', { name: 'View details' }).click();
+    const detailsTwo = page.getByTestId('book-details-dialog');
+    await expect(detailsTwo).toBeVisible();
+    await expect(detailsTwo).toContainText('0%');
+    await expect(detailsTwo).not.toContainText('50%');
+  });
 });

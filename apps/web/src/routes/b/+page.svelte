@@ -296,8 +296,7 @@
           $readingGoalsMergeMode$
         );
 
-        localStorageHandler.startContext({ id, title: '' });
-        bookData = await localStorageHandler.getBook();
+        bookData = await database.getData(id);
 
         if (!bookData) {
           return bookData;
@@ -309,8 +308,6 @@
           imagePath: bookData.coverImage
         };
 
-        localStorageHandler.startContext(currentContext);
-
         if (bookData.storageSource) {
           externalStorageHandler = await getStorageHandlerByName(bookData.storageSource, true);
         } else if ($autoReplication$ !== AutoReplicationType.Off) {
@@ -319,7 +316,7 @@
 
         bookData.lastBookOpen = new Date().getTime();
 
-        await localStorageHandler.updateLastRead(bookData);
+        await localStorageHandler.updateLastRead(bookData, currentContext);
         if (justDownloaded) {
           // Option B: download already synced DATA/PROGRESS/BOOKMARKS. Skip
           // all network on open; strip the flag so a refresh syncs normally.
@@ -348,7 +345,7 @@
 
         if (!justDownloaded) {
           loaderStage = 'Saving reading position…';
-          bookData = await saveExternalLastRead(externalStorageHandler, bookData);
+          bookData = await saveExternalLastRead(externalStorageHandler, bookData, currentContext);
         }
 
         if (bookData.language) {
@@ -1326,7 +1323,8 @@
 
   async function saveExternalLastRead(
     storageHandler: BaseStorageHandler | undefined,
-    localBookData: BooksDbBookData
+    localBookData: BooksDbBookData,
+    context: ReplicationContext
   ) {
     if (!storageHandler) {
       return localBookData;
@@ -1336,7 +1334,7 @@
     let { id, ...bookData } = localBookData;
 
     if (localBookData.storageSource) {
-      const externalBookData = await storageHandler.getBook();
+      const externalBookData = await storageHandler.getBook(context);
 
       if (externalBookData && !(externalBookData instanceof File)) {
         bookData = {
@@ -1354,7 +1352,7 @@
 
     const dataToReturn = { id, ...bookData };
 
-    await storageHandler.updateLastRead(dataToReturn).catch((error: any) => {
+    await storageHandler.updateLastRead(dataToReturn, context).catch((error: any) => {
       // Expired sessions surface via banner/icon + reconnect; a modal here
       // would interrupt reading for a background write that retries later.
       if (isSessionExpiredError(error)) {
@@ -1384,10 +1382,6 @@
     storageHandler: BaseStorageHandler | undefined,
     context: ReplicationContext
   ) {
-    if (localStorageHandler && storageHandler) {
-      storageHandler.startContext(context);
-    }
-
     if (
       !localStorageHandler ||
       !storageHandler ||

@@ -98,8 +98,6 @@ export async function importData(
               imagePath: bookContent.coverImage || ''
             };
 
-            targetHandler.startContext(context, cancelSignal);
-
             dataIds.push(await targetHandler.saveBook(bookContent, false, undefined, context));
 
             checkCancelAndProgress(cancelSignal, false);
@@ -229,9 +227,6 @@ export async function replicateData(
             throwIfAborted(cancelSignal);
 
             let dataProcessed = false;
-
-            sourceHandler.startContext(context, cancelSignal);
-            targetHandler.startContext(context, cancelSignal);
 
             if (processBookData) {
               if (
