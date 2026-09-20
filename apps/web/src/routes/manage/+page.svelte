@@ -541,13 +541,11 @@
           handler.clearData(false);
         }
 
-        handler.startContext({
+        idToOpen = await handler.prepareBookForReading({
           id: isForBrowser ? bookItem.id : 0,
           title: bookItem.title,
           imagePath: bookItem.imagePath
         });
-
-        idToOpen = await handler.prepareBookForReading();
 
         if (handler instanceof ApiStorageHandler) {
           const remembered = externalReadAction$.getValue();

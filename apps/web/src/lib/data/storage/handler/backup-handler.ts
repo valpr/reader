@@ -42,30 +42,39 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return Promise.resolve({ connected: false, hasData: false });
   }
 
-  prepareBookForReading() {
+  prepareBookForReading(_context: ReplicationContext) {
     return Promise.resolve(0);
   }
 
-  updateLastRead() {
+  updateLastRead(_book: BooksDbBookData, _context: ReplicationContext) {
     return Promise.resolve();
   }
 
-  isBookPresentAndUpToDate(_referenceFilename?: string, _context?: ReplicationContext) {
+  isBookPresentAndUpToDate(_referenceFilename: string | undefined, _context: ReplicationContext) {
     BaseStorageHandler.reportProgress();
     return Promise.resolve(false);
   }
 
-  isProgressPresentAndUpToDate(_referenceFilename?: string, _context?: ReplicationContext) {
+  isProgressPresentAndUpToDate(
+    _referenceFilename: string | undefined,
+    _context: ReplicationContext
+  ) {
     BaseStorageHandler.reportProgress();
     return Promise.resolve(false);
   }
 
-  isUserBookmarksPresentAndUpToDate(_referenceFilename?: string, _context?: ReplicationContext) {
+  isUserBookmarksPresentAndUpToDate(
+    _referenceFilename: string | undefined,
+    _context: ReplicationContext
+  ) {
     BaseStorageHandler.reportProgress();
     return Promise.resolve(false);
   }
 
-  areStatisticsPresentAndUpToDate(_referenceFilename?: string, _context?: ReplicationContext) {
+  areStatisticsPresentAndUpToDate(
+    _referenceFilename: string | undefined,
+    _context: ReplicationContext
+  ) {
     BaseStorageHandler.reportProgress();
     return Promise.resolve(false);
   }
@@ -85,12 +94,18 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return Promise.resolve(false);
   }
 
-  isAudioBookPresentAndUpToDate(_referenceFilename?: string, _context?: ReplicationContext) {
+  isAudioBookPresentAndUpToDate(
+    _referenceFilename: string | undefined,
+    _context: ReplicationContext
+  ) {
     BaseStorageHandler.reportProgress();
     return Promise.resolve(false);
   }
 
-  isSubtitleDataPresentAndUpToDate(_referenceFilename?: string, _context?: ReplicationContext) {
+  isSubtitleDataPresentAndUpToDate(
+    _referenceFilename: string | undefined,
+    _context: ReplicationContext
+  ) {
     BaseStorageHandler.reportProgress();
     return Promise.resolve(false);
   }
@@ -159,16 +174,21 @@ export class BackupStorageHandler extends BaseStorageHandler {
       return undefined;
     }
 
+    if (!this.validRootFiles.includes(fileIdentifier) && !context) {
+      BaseStorageHandler.completeStep();
+      return undefined;
+    }
+
     const { filename } = this.validRootFiles.includes(fileIdentifier)
       ? this.getRootFile(fileIdentifier)
-      : this.findEntry(fileIdentifier, 0.1, context);
+      : this.findEntry(fileIdentifier, 0.1, context!);
 
     BaseStorageHandler.completeStep();
 
     return filename;
   }
 
-  async getBook(context?: ReplicationContext) {
+  async getBook(context: ReplicationContext) {
     const { zipEntry, filename } = this.findEntry('bookdata_', 0.1, context);
 
     if (!zipEntry) {
@@ -187,7 +207,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
       : new File([bookBlob], filename, { type: 'application/zip' });
   }
 
-  async getProgress(context?: ReplicationContext) {
+  async getProgress(context: ReplicationContext) {
     const { zipEntry, filename } = this.findEntry('progress_', 0.1, context);
 
     if (!zipEntry) {
@@ -208,7 +228,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return new File([progressBlob], filename, { type: 'application/json' });
   }
 
-  async getUserBookmarks(context?: ReplicationContext) {
+  async getUserBookmarks(context: ReplicationContext) {
     const { zipEntry, filename } = this.findEntry(FilePrefix.USER_BOOKMARKS, 0.1, context);
 
     if (!zipEntry) {
@@ -229,7 +249,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return new File([ubBlob], filename, { type: 'application/json' });
   }
 
-  async getStatistics(context?: ReplicationContext) {
+  async getStatistics(context: ReplicationContext) {
     const { zipEntry, filename } = this.findEntry('statistics_', 0.1, context);
 
     if (!zipEntry) {
@@ -245,8 +265,8 @@ export class BackupStorageHandler extends BaseStorageHandler {
     };
   }
 
-  async getCover(context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async getCover(context: ReplicationContext) {
+    const ctx = context;
     if (ctx.imagePath instanceof Blob) {
       BaseStorageHandler.reportProgress();
 
@@ -328,7 +348,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
     };
   }
 
-  async getAudioBook(context?: ReplicationContext) {
+  async getAudioBook(context: ReplicationContext) {
     const { zipEntry, filename } = this.findEntry(FilePrefix.AUDIO_BOOK, 0.1, context);
 
     if (!zipEntry) {
@@ -349,7 +369,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return new File([audioBookBlob], filename, { type: 'application/json' });
   }
 
-  async getSubtitleData(context?: ReplicationContext) {
+  async getSubtitleData(context: ReplicationContext) {
     const { zipEntry, filename } = this.findEntry(FilePrefix.SUBTITLE, 0.1, context);
 
     if (!zipEntry) {
@@ -374,9 +394,9 @@ export class BackupStorageHandler extends BaseStorageHandler {
     data: Omit<BooksDbBookData, 'id'> | File,
     _skipTimestampFallback = true,
     _removeStorageContext = true,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
-    const ctx = this.resolveContext(context);
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = `${sanitizedTitle}/${BaseStorageHandler.getBookFileName(data)}`;
 
@@ -394,8 +414,8 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return 0;
   }
 
-  async saveProgress(data: BooksDbBookmarkData | File, context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async saveProgress(data: BooksDbBookmarkData | File, context: ReplicationContext) {
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = `${sanitizedTitle}/${BaseStorageHandler.getProgressFileName(data)}`;
 
@@ -410,8 +430,8 @@ export class BackupStorageHandler extends BaseStorageHandler {
     }
   }
 
-  async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File, context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File, context: ReplicationContext) {
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = `${sanitizedTitle}/${BaseStorageHandler.getUserBookmarksFileName(data)}`;
 
@@ -429,9 +449,9 @@ export class BackupStorageHandler extends BaseStorageHandler {
   async saveStatistics(
     data: BooksDbStatistic[],
     lastStatisticModified: number,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
-    const ctx = this.resolveContext(context);
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = `${sanitizedTitle}/${BaseStorageHandler.getStatisticsFileName(
       data,
@@ -447,13 +467,13 @@ export class BackupStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async saveCover(data: Blob | undefined, context?: ReplicationContext) {
+  async saveCover(data: Blob | undefined, context: ReplicationContext) {
     if (!data) {
       BaseStorageHandler.reportProgress();
       return;
     }
 
-    const ctx = this.resolveContext(context);
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = await BaseStorageHandler.getCoverFileName(data);
     this.exportZipWriter = await this.addDataToZip(
@@ -517,8 +537,8 @@ export class BackupStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async saveAudioBook(data: BooksDbAudioBook | File, context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async saveAudioBook(data: BooksDbAudioBook | File, context: ReplicationContext) {
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = `${sanitizedTitle}/${BaseStorageHandler.getAudioBookFileName(data)}`;
 
@@ -533,8 +553,8 @@ export class BackupStorageHandler extends BaseStorageHandler {
     }
   }
 
-  async saveSubtitleData(data: BooksDbSubtitleData | File, context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async saveSubtitleData(data: BooksDbSubtitleData | File, context: ReplicationContext) {
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const filename = `${sanitizedTitle}/${BaseStorageHandler.getSubtitleDataFileName(data)}`;
 
@@ -579,8 +599,8 @@ export class BackupStorageHandler extends BaseStorageHandler {
     }
   }
 
-  private findEntry(filePrefix: string, progressBase = 0.1, context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  private findEntry(filePrefix: string, progressBase = 0.1, context: ReplicationContext) {
+    const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
     const zipEntry = this.importEntries.find((entry) =>
       entry.filename.startsWith(`${sanitizedTitle}/${filePrefix}`)

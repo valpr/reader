@@ -126,18 +126,18 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     }
   }
 
-  async prepareBookForReading(): Promise<number> {
-    const book = await database.getDataByTitle(this.currentContext.title);
+  async prepareBookForReading(context: ReplicationContext): Promise<number> {
+    const book = await database.getDataByTitle(context.title);
 
     let idToReturn = 0;
     let data: Omit<BooksDbBookData, 'id'> | undefined = book;
 
     if (!data || !data.elementHtml) {
-      const { file } = await this.getExternalFile('bookdata_');
+      const { file } = await this.getExternalFile('bookdata_', 1, context);
 
       data = file
         ? data || {
-            title: this.currentContext.title,
+            title: context.title,
             styleSheet: '',
             elementHtml: '',
             blobs: {},
@@ -166,7 +166,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
         true,
         this.cacheStorageData,
         ReplicationSaveBehavior.Overwrite
-      ).saveBook(data, true, false);
+      ).saveBook(data, true, false, context);
     } else if (book?.id) {
       idToReturn = book.id;
     }
@@ -174,8 +174,8 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     return idToReturn;
   }
 
-  async updateLastRead(book: BooksDbBookData) {
-    const { file, files, rootDirectory } = await this.getExternalFile('bookdata_');
+  async updateLastRead(book: BooksDbBookData, context: ReplicationContext) {
+    const { file, files, rootDirectory } = await this.getExternalFile('bookdata_', 1, context);
 
     if (!file) {
       return;
@@ -186,9 +186,18 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     const { characters, lastBookModified, lastBookOpen } =
       BaseStorageHandler.getBookMetadata(filename);
 
-    await this.writeFile(rootDirectory, filename, bookData, files, file);
+    await this.writeFile(
+      rootDirectory,
+      filename,
+      bookData,
+      files,
+      file,
+      0.4,
+      undefined,
+      context.title
+    );
 
-    this.addBookCard(this.currentContext.title, { characters, lastBookModified, lastBookOpen });
+    this.addBookCard(context.title, { characters, lastBookModified, lastBookOpen });
   }
 
   async getFilenameForRecentCheck(fileIdentifier: string, context?: ReplicationContext) {
@@ -197,16 +206,20 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       return undefined;
     }
 
+    if (!this.validRootFiles.includes(fileIdentifier) && !context) {
+      return undefined;
+    }
+
     const { file } = this.validRootFiles.includes(fileIdentifier)
       ? await this.getRootFile(fileIdentifier)
-      : await this.getExternalFile(fileIdentifier, 1, context);
+      : await this.getExternalFile(fileIdentifier, 1, context!);
 
     return file?.name;
   }
 
   async isBookPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
@@ -236,7 +249,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
   async isProgressPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
@@ -255,7 +268,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
   async areStatisticsPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
@@ -322,7 +335,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
   async isAudioBookPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
@@ -341,7 +354,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
   async isSubtitleDataPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
@@ -360,7 +373,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
   async isUserBookmarksPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
     if (!referenceFilename) {
       BaseStorageHandler.reportProgress();
@@ -377,7 +390,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async getBook(context?: ReplicationContext) {
+  async getBook(context: ReplicationContext) {
     const { file } = await this.getExternalFile(
       'bookdata_',
       this.isForBrowser ? 0.4 : 0.8,
@@ -393,7 +406,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     return this.isForBrowser ? this.extractBookData(bookFile, bookFile.name, 0.6) : bookFile;
   }
 
-  async getProgress(context?: ReplicationContext) {
+  async getProgress(context: ReplicationContext) {
     const { file } = await this.getExternalFile(
       'progress_',
       this.isForBrowser ? 0.6 : 0.8,
@@ -416,7 +429,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     return progressFile;
   }
 
-  async getStatistics(context?: ReplicationContext) {
+  async getStatistics(context: ReplicationContext) {
     const { file } = await this.getExternalFile('statistics_', 0.6, context);
 
     if (!file) {
@@ -436,8 +449,8 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     };
   }
 
-  async getCover(context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async getCover(context: ReplicationContext) {
+    const ctx = context;
     if (ctx.imagePath instanceof Blob) {
       BaseStorageHandler.reportProgress();
 
@@ -520,7 +533,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     };
   }
 
-  async getAudioBook(context?: ReplicationContext) {
+  async getAudioBook(context: ReplicationContext) {
     const { file } = await this.getExternalFile(
       FilePrefix.AUDIO_BOOK,
       this.isForBrowser ? 0.6 : 0.8,
@@ -543,7 +556,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     return audioBookFile;
   }
 
-  async getSubtitleData(context?: ReplicationContext) {
+  async getSubtitleData(context: ReplicationContext) {
     const { file } = await this.getExternalFile(
       FilePrefix.SUBTITLE,
       this.isForBrowser ? 0.6 : 0.8,
@@ -568,7 +581,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     return subtitleDataFile;
   }
 
-  async getUserBookmarks(context?: ReplicationContext) {
+  async getUserBookmarks(context: ReplicationContext) {
     const { file } = await this.getExternalFile(
       FilePrefix.USER_BOOKMARKS,
       this.isForBrowser ? 0.6 : 0.8,
@@ -595,9 +608,9 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     data: Omit<BooksDbBookData, 'id'> | File,
     skipTimestampFallback = true,
     _removeStorageContext = true,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
-    const ctx = this.resolveContext(context);
+    const ctx = context;
     const isFile = data instanceof File;
     const { file, files, rootDirectory } = await this.getExternalFile('bookdata_', 0.2, context);
     const filename = BaseStorageHandler.getBookFileName(
@@ -630,15 +643,24 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       bookData = await this.zipBookData(data, 0.4);
     }
 
-    await this.writeFile(rootDirectory, filename, bookData, files, file, isFile ? 0.6 : 0.4);
+    await this.writeFile(
+      rootDirectory,
+      filename,
+      bookData,
+      files,
+      file,
+      isFile ? 0.6 : 0.4,
+      undefined,
+      ctx.title
+    );
 
     this.addBookCard(ctx.title, { characters, lastBookModified, lastBookOpen });
 
     return 0;
   }
 
-  async saveProgress(data: BooksDbBookmarkData | File, context?: ReplicationContext) {
-    const ctx = this.resolveContext(context);
+  async saveProgress(data: BooksDbBookmarkData | File, context: ReplicationContext) {
+    const ctx = context;
     const filename = BaseStorageHandler.getProgressFileName(data);
     const { lastBookmarkModified, progress } = BaseStorageHandler.getProgressMetadata(filename);
     const { file, files, rootDirectory } = await this.getExternalFile('progress_', 0.4, context);
@@ -649,13 +671,15 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       data instanceof File ? data : JSON.stringify(data),
       files,
       file,
-      0.6
+      0.6,
+      undefined,
+      ctx.title
     );
 
     this.addBookCard(ctx.title, { lastBookmarkModified, progress });
   }
 
-  async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File, context?: ReplicationContext) {
+  async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File, context: ReplicationContext) {
     const filename = BaseStorageHandler.getUserBookmarksFileName(data);
     const { file, files, rootDirectory } = await this.getExternalFile(
       FilePrefix.USER_BOOKMARKS,
@@ -669,16 +693,18 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       data instanceof File ? data : JSON.stringify(data),
       files,
       file,
-      0.6
+      0.6,
+      undefined,
+      context.title
     );
   }
 
   async saveStatistics(
     statistics: BooksDbStatistic[],
     lastStatisticModified: number,
-    context?: ReplicationContext
+    context: ReplicationContext
   ) {
-    const ctx = this.resolveContext(context);
+    const ctx = context;
     const isMerge = this.statisticsMergeMode === MergeMode.MERGE;
     const { file, files, rootDirectory } = await this.getExternalFile('statistics_', 0.4, context);
 
@@ -717,25 +743,36 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       JSON.stringify(statisticsToStore),
       files,
       file,
-      0.6
+      0.6,
+      undefined,
+      ctx.title
     );
 
     this.addBookCard(ctx.title, {});
   }
 
-  async saveCover(data: Blob | undefined, context?: ReplicationContext) {
+  async saveCover(data: Blob | undefined, context: ReplicationContext) {
     if (!data) {
       BaseStorageHandler.reportProgress();
       return;
     }
 
-    const ctx = this.resolveContext(context);
+    const ctx = context;
     const { file, files, rootDirectory } = await this.getExternalFile('cover_', 0.4, context);
 
     if (!file) {
       const filename = await BaseStorageHandler.getCoverFileName(data);
 
-      await this.writeFile(rootDirectory, filename, data, files, undefined, 0.6);
+      await this.writeFile(
+        rootDirectory,
+        filename,
+        data,
+        files,
+        undefined,
+        0.6,
+        undefined,
+        ctx.title
+      );
     }
 
     if (this.titleToBookCard.has(ctx.title)) {
@@ -901,7 +938,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     );
   }
 
-  async saveAudioBook(data: BooksDbAudioBook | File, context?: ReplicationContext) {
+  async saveAudioBook(data: BooksDbAudioBook | File, context: ReplicationContext) {
     const filename = BaseStorageHandler.getAudioBookFileName(data);
     const { file, files, rootDirectory } = await this.getExternalFile(
       FilePrefix.AUDIO_BOOK,
@@ -915,11 +952,13 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       data instanceof File ? data : JSON.stringify(data),
       files,
       file,
-      0.6
+      0.6,
+      undefined,
+      context.title
     );
   }
 
-  async saveSubtitleData(data: BooksDbSubtitleData | File, context?: ReplicationContext) {
+  async saveSubtitleData(data: BooksDbSubtitleData | File, context: ReplicationContext) {
     const filename = BaseStorageHandler.getSubtitleDataFileName(data);
     const { file, files, rootDirectory } = await this.getExternalFile(
       FilePrefix.SUBTITLE,
@@ -933,7 +972,9 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       data instanceof File ? data : JSON.stringify(data),
       files,
       file,
-      0.6
+      0.6,
+      undefined,
+      context.title
     );
   }
 
@@ -1208,9 +1249,9 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
   private async getExternalFile(
     fileIdentifier: string,
     progressBase = 0.4,
-    contextOverride?: ReplicationContext
+    context: ReplicationContext
   ) {
-    const ctx = this.resolveContext(contextOverride);
+    const ctx = context;
     const progressPerStep = progressBase / 2;
     const rootDirectory = await this.ensureRoot();
 
@@ -1237,9 +1278,8 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
   private async getExternalFiles(
     rootHandle: FileSystemDirectoryHandle,
-    titleOverride?: string
+    title: string
   ): Promise<FileSystemFileHandle[]> {
-    const title = titleOverride || this.currentContext.title;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(title);
 
     if ((!this.cacheStorageData || !this.dataListFetched) && !this.titleToFiles.has(title)) {
@@ -1288,13 +1328,18 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     files: FileSystemFileHandle[],
     file: FileSystemFileHandle | undefined,
     progressBase = 0.4,
-    rootFilePrefix?: string
+    rootFilePrefix?: string,
+    title?: string
   ) {
     const progressPerStep = progressBase / 2;
+    if (!rootFilePrefix && !title) {
+      throw new Error('writeFile requires a title for book-scoped writes');
+    }
+    const sanitizedTitle = title ? BaseStorageHandler.sanitizeForFilename(title) : '';
     const directory = rootFilePrefix
       ? rootDirectory
-      : this.titleToDirectory.get(this.currentContext.title) ||
-        (await rootDirectory.getDirectoryHandle(this.sanitizedTitle, { create: true }));
+      : this.titleToDirectory.get(title as string) ||
+        (await rootDirectory.getDirectoryHandle(sanitizedTitle, { create: true }));
     const savedFile = await directory.getFileHandle(filename, { create: true });
     const writer = await savedFile.createWritable();
 
@@ -1312,18 +1357,18 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
         const titleFiles = files.filter((entry) => entry.name !== file.name);
         titleFiles.push(savedFile);
 
-        this.titleToFiles.set(this.currentContext.title, titleFiles);
+        this.titleToFiles.set(title as string, titleFiles);
       }
     } else if (!rootFilePrefix) {
       files.push(savedFile);
 
-      this.titleToFiles.set(this.currentContext.title, files);
+      this.titleToFiles.set(title as string, files);
     }
 
     if (rootFilePrefix) {
       this.rootFileHandles.set(rootFilePrefix, savedFile);
     } else {
-      this.titleToDirectory.set(this.currentContext.title, directory);
+      this.titleToDirectory.set(title as string, directory);
     }
 
     BaseStorageHandler.reportProgress(progressPerStep);

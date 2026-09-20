@@ -182,9 +182,11 @@
                 );
 
                 if (dataToExport.length) {
-                  backupHandler.startContext({ id: 0, title: titleToExport, imagePath: '' });
-
-                  await backupHandler.saveStatistics(dataToExport, lastStatisticsModified);
+                  await backupHandler.saveStatistics(dataToExport, lastStatisticsModified, {
+                    id: 0,
+                    title: titleToExport,
+                    imagePath: ''
+                  });
                 }
               } catch (error) {
                 exportLimiter.clearQueue();

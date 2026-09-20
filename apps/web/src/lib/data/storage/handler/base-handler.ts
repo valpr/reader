@@ -70,9 +70,9 @@ export abstract class BaseStorageHandler {
 
   abstract clearData(clearAll?: boolean): void;
 
-  abstract prepareBookForReading(): Promise<number>;
+  abstract prepareBookForReading(context: ReplicationContext): Promise<number>;
 
-  abstract updateLastRead(book: BooksDbBookData): Promise<void>;
+  abstract updateLastRead(book: BooksDbBookData, context: ReplicationContext): Promise<void>;
 
   abstract getFilenameForRecentCheck(
     fileIdentifier: string,
@@ -81,17 +81,17 @@ export abstract class BaseStorageHandler {
 
   abstract isBookPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<boolean>;
 
   abstract isProgressPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<boolean>;
 
   abstract areStatisticsPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<boolean>;
 
   abstract areReadingGoalsPresentAndUpToDate(
@@ -104,37 +104,37 @@ export abstract class BaseStorageHandler {
 
   abstract isAudioBookPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<boolean>;
 
   abstract isSubtitleDataPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<boolean>;
 
   abstract isUserBookmarksPresentAndUpToDate(
     referenceFilename: string | undefined,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<boolean>;
 
   abstract getBook(
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<Omit<BooksDbBookData, 'id'> | File | undefined>;
 
   abstract getProgress(
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<BooksDbBookmarkData | File | undefined>;
 
   abstract getUserBookmarks(
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<BooksDbUserBookmarkData[] | File | undefined>;
 
-  abstract getStatistics(context?: ReplicationContext): Promise<{
+  abstract getStatistics(context: ReplicationContext): Promise<{
     statistics: BooksDbStatistic[] | undefined;
     lastStatisticModified: number;
   }>;
 
-  abstract getCover(context?: ReplicationContext): Promise<Blob | undefined>;
+  abstract getCover(context: ReplicationContext): Promise<Blob | undefined>;
 
   abstract getReadingGoals(): Promise<{
     readingGoals: BooksDbReadingGoal[] | undefined;
@@ -154,36 +154,36 @@ export abstract class BaseStorageHandler {
     lastTagsModified: number;
   }>;
 
-  abstract getAudioBook(context?: ReplicationContext): Promise<BooksDbAudioBook | File | undefined>;
+  abstract getAudioBook(context: ReplicationContext): Promise<BooksDbAudioBook | File | undefined>;
 
   abstract getSubtitleData(
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<BooksDbSubtitleData | File | undefined>;
 
   abstract saveBook(
     data: Omit<BooksDbBookData, 'id'> | File,
-    skipTimestampFallback?: boolean,
-    removeStorageContext?: boolean,
-    context?: ReplicationContext
+    skipTimestampFallback: boolean | undefined,
+    removeStorageContext: boolean | undefined,
+    context: ReplicationContext
   ): Promise<number>;
 
   abstract saveProgress(
     data: BooksDbBookmarkData | File,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<void>;
 
   abstract saveUserBookmarks(
     data: BooksDbUserBookmarkData[] | File,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<void>;
 
   abstract saveStatistics(
     data: BooksDbStatistic[],
     lastStatisticModified: number,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<void>;
 
-  abstract saveCover(data: Blob | undefined, context?: ReplicationContext): Promise<void>;
+  abstract saveCover(data: Blob | undefined, context: ReplicationContext): Promise<void>;
 
   abstract saveReadingGoals(data: BooksDbReadingGoal[], lastGoalModified: number): Promise<void>;
 
@@ -200,14 +200,11 @@ export abstract class BaseStorageHandler {
     lastTagsModified: number
   ): Promise<void>;
 
-  abstract saveAudioBook(
-    data: BooksDbAudioBook | File,
-    context?: ReplicationContext
-  ): Promise<void>;
+  abstract saveAudioBook(data: BooksDbAudioBook | File, context: ReplicationContext): Promise<void>;
 
   abstract saveSubtitleData(
     data: BooksDbSubtitleData | File,
-    context?: ReplicationContext
+    context: ReplicationContext
   ): Promise<void>;
 
   abstract deleteBookData(
@@ -245,16 +242,6 @@ export abstract class BaseStorageHandler {
   protected profilesMergeMode = MergeMode.MERGE;
 
   protected askForStorageUnlock = true;
-
-  protected currentContext: ReplicationContext = { title: '' };
-
-  protected cancelSignal: AbortSignal | undefined;
-
-  protected currentLastProgressValue = 0;
-
-  protected currentProgressBase = 0;
-
-  protected sanitizedTitle = '';
 
   protected dataListFetched = false;
 
@@ -307,18 +294,6 @@ export abstract class BaseStorageHandler {
 
   getCurrentStorageSource() {
     return this.storageSourceName;
-  }
-
-  startContext(context: ReplicationContext, cancelSignal?: AbortSignal) {
-    this.currentContext = context;
-    this.cancelSignal = cancelSignal;
-    this.currentLastProgressValue = 0;
-    this.currentProgressBase = 0;
-    this.sanitizedTitle = BaseStorageHandler.sanitizeForFilename(this.currentContext.title);
-  }
-
-  protected resolveContext(explicitContext?: ReplicationContext): ReplicationContext {
-    return explicitContext || this.currentContext;
   }
 
   static getStatisticsMetadata(filename: string) {
@@ -472,7 +447,11 @@ export abstract class BaseStorageHandler {
     this.titleToBookCard.set(title, bookCard);
   }
 
-  protected async zipBookData(bookdata: Omit<BooksDbBookData, 'id'>, progressBase = 1) {
+  protected async zipBookData(
+    bookdata: Omit<BooksDbBookData, 'id'>,
+    progressBase = 1,
+    cancelSignal?: AbortSignal
+  ) {
     const zipWriter = new ZipWriter(new BlobWriter('application/zip'));
     const blobsToZip = [];
     const blobEntries = [...Object.entries(bookdata.blobs)];
@@ -522,7 +501,7 @@ export abstract class BaseStorageHandler {
     }
 
     for (let index = 0, { length } = staticDataToZip; index < length; index += 1) {
-      throwIfAborted(this.cancelSignal);
+      throwIfAborted(cancelSignal);
 
       const dataProperty = staticDataToZip[index];
 
@@ -547,36 +526,42 @@ export abstract class BaseStorageHandler {
     name: string,
     data: string | Blob,
     writer: ZipWriter<Blob> | undefined,
-    progressBase = 1
+    progressBase = 1,
+    cancelSignal?: AbortSignal
   ) {
-    throwIfAborted(this.cancelSignal);
+    throwIfAborted(cancelSignal);
 
     const zipWriter = writer || new ZipWriter(new BlobWriter('application/zip'));
 
-    this.currentLastProgressValue = 0;
-    this.currentProgressBase = progressBase;
+    const progressState = { lastValue: 0, base: progressBase };
 
     if (data instanceof Blob) {
       await zipWriter.add(name, new BlobReader(data), {
-        onprogress: (...args) => this.reportFunction(...args)
+        onprogress: (progress, total) =>
+          BaseStorageHandler.reportFunction(progressState, progress, total)
       });
     } else if (data) {
       await zipWriter.add(name, new TextReader(data), {
-        onprogress: (...args) => this.reportFunction(...args)
+        onprogress: (progress, total) =>
+          BaseStorageHandler.reportFunction(progressState, progress, total)
       });
     }
 
     return zipWriter;
   }
 
-  protected reportFunction(progress: number, total: number) {
-    if (this.currentProgressBase) {
+  protected static reportFunction(
+    state: { lastValue: number; base: number },
+    progress: number,
+    total: number
+  ) {
+    if (state.base) {
       const newProgress = progress / total;
-      const progressDelta = newProgress - this.currentLastProgressValue;
+      const progressDelta = newProgress - state.lastValue;
 
-      this.currentLastProgressValue = newProgress;
+      state.lastValue = newProgress;
 
-      BaseStorageHandler.reportProgress(progressDelta * this.currentProgressBase);
+      BaseStorageHandler.reportProgress(progressDelta * state.base);
     }
   }
 
@@ -598,16 +583,17 @@ export abstract class BaseStorageHandler {
     retrievedData: Entry,
     progressBase = 1
   ) {
-    this.currentLastProgressValue = 0;
-    this.currentProgressBase = progressBase;
+    const progressState = { lastValue: 0, base: progressBase };
 
     const zipData =
       writer instanceof BlobWriter
         ? await retrievedData.getData?.(writer, {
-            onprogress: (...args) => this.reportFunction(...args)
+            onprogress: (progress, total) =>
+              BaseStorageHandler.reportFunction(progressState, progress, total)
           })
         : await retrievedData.getData?.(writer, {
-            onprogress: (...args) => this.reportFunction(...args)
+            onprogress: (progress, total) =>
+              BaseStorageHandler.reportFunction(progressState, progress, total)
           });
 
     if (!zipData) {
@@ -617,7 +603,12 @@ export abstract class BaseStorageHandler {
     return zipData;
   }
 
-  protected async extractBookData(book: Blob, filename: string, progressBase = 1) {
+  protected async extractBookData(
+    book: Blob,
+    filename: string,
+    progressBase = 1,
+    cancelSignal?: AbortSignal
+  ) {
     const bookreader = new ZipReader(new BlobReader(book));
     const bookDataEntries = await bookreader.getEntries();
 
@@ -649,7 +640,7 @@ export abstract class BaseStorageHandler {
       bookObjectTransforms.push(
         limiter(async () => {
           try {
-            throwIfAborted(this.cancelSignal);
+            throwIfAborted(cancelSignal);
 
             const entry = bookDataEntries[index];
 
