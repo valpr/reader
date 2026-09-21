@@ -29,6 +29,15 @@ import type {
 import { mergeReadingGoals, readingGoalSortFunction } from '$lib/data/reading-goal';
 import type { ThemeOption } from '$lib/data/theme-option';
 import { mergeStatistics, updateStatisticToStore } from '$lib/functions/statistic-util';
+import {
+  getMigrationMarkerFileName,
+  isContributionFile,
+  isContributionFileName,
+  isMigrationMarkerFileName,
+  isStatisticMigrationMarker,
+  type StatisticContributionFile,
+  type StatisticMigrationMarker
+} from '$lib/functions/statistic-v2';
 
 import { BaseStorageHandler, FilePrefix } from '$lib/data/storage/handler/base-handler';
 import type { BookCardProps } from '$lib/components/book-card/book-card-props';
@@ -175,29 +184,10 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
   }
 
   async updateLastRead(book: BooksDbBookData, context: ReplicationContext) {
-    const { file, files, rootDirectory } = await this.getExternalFile('bookdata_', 1, context);
-
-    if (!file) {
-      return;
-    }
-
-    const bookData = await file.getFile();
-    const filename = BaseStorageHandler.getBookFileName(book);
-    const { characters, lastBookModified, lastBookOpen } =
-      BaseStorageHandler.getBookMetadata(filename);
-
-    await this.writeFile(
-      rootDirectory,
-      filename,
-      bookData,
-      files,
-      file,
-      0.4,
-      undefined,
-      context.title
-    );
-
-    this.addBookCard(context.title, { characters, lastBookModified, lastBookOpen });
+    // Recency is intentionally device-local. Updating it must not rewrite the
+    // book payload in filesystem-backed storage.
+    void book;
+    void context;
   }
 
   async getFilenameForRecentCheck(fileIdentifier: string, context?: ReplicationContext) {
@@ -231,16 +221,15 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     let isPresentAndUpToDate = false;
 
     if (file) {
-      const { lastBookModified, lastBookOpen } =
-        BaseStorageHandler.getBookMetadata(referenceFilename);
-      const { lastBookModified: existingBookModified, lastBookOpen: existingBookOpen } =
-        BaseStorageHandler.getBookMetadata(file.name);
+      const { lastBookModified } = BaseStorageHandler.getBookMetadata(referenceFilename);
+      const { lastBookModified: existingBookModified } = BaseStorageHandler.getBookMetadata(
+        file.name
+      );
 
       isPresentAndUpToDate = !!(
         existingBookModified &&
         lastBookModified &&
-        existingBookModified >= lastBookModified &&
-        (existingBookOpen || 0) >= (lastBookOpen || 0)
+        existingBookModified >= lastBookModified
       );
     }
 
@@ -621,15 +610,11 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       BaseStorageHandler.getBookMetadata(filename);
 
     if (file && this.saveBehavior === ReplicationSaveBehavior.NewOnly) {
-      const { lastBookModified: existingBookModified, lastBookOpen: existingBookOpen } =
-        BaseStorageHandler.getBookMetadata(file.name);
+      const { lastBookModified: existingBookModified } = BaseStorageHandler.getBookMetadata(
+        file.name
+      );
 
-      if (
-        existingBookModified &&
-        lastBookModified &&
-        existingBookModified >= lastBookModified &&
-        (existingBookOpen || 0) >= (lastBookOpen || 0)
-      ) {
+      if (existingBookModified && lastBookModified && existingBookModified >= lastBookModified) {
         return 0;
       }
     }
@@ -936,6 +921,98 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       0.6,
       BaseStorageHandler.bookTagsFilePrefix
     );
+  }
+
+  /**
+   * Statistics v2 filesystem side (P3/P4): contribution and marker files live
+   * at the storage root under stable names and are overwritten in place.
+   */
+  async listContributionFiles(): Promise<StatisticContributionFile[]> {
+    const rootDirectory = await this.ensureRoot();
+    const entries = (await FilesystemStorageHandler.list(rootDirectory)) as FileSystemFileHandle[];
+    const files: StatisticContributionFile[] = [];
+
+    for (const entry of entries) {
+      if (!isContributionFileName(entry.name)) continue;
+      try {
+        const payload = JSON.parse(
+          await FilesystemStorageHandler.readFileObject(await entry.getFile())
+        );
+        if (isContributionFile(payload)) files.push(payload);
+      } catch {
+        // A single unreadable file must not fail the whole pull.
+      }
+    }
+
+    return files;
+  }
+
+  async writeContributionFiles(contributionFiles: StatisticContributionFile[]): Promise<void> {
+    if (!contributionFiles.length) return;
+    const rootDirectory = await this.ensureRoot();
+
+    for (const payload of contributionFiles) {
+      if (!isContributionFile(payload)) continue;
+      await this.writeRootJson(
+        rootDirectory,
+        BaseStorageHandler.getContributionFileName(payload.deviceId, payload.year),
+        payload
+      );
+    }
+  }
+
+  async listMigrationMarkers(): Promise<StatisticMigrationMarker[]> {
+    const rootDirectory = await this.ensureRoot();
+    const entries = (await FilesystemStorageHandler.list(rootDirectory)) as FileSystemFileHandle[];
+    const markers: StatisticMigrationMarker[] = [];
+
+    for (const entry of entries) {
+      if (!isMigrationMarkerFileName(entry.name)) continue;
+      try {
+        const payload = JSON.parse(
+          await FilesystemStorageHandler.readFileObject(await entry.getFile())
+        );
+        if (isStatisticMigrationMarker(payload)) markers.push(payload);
+      } catch {
+        // Ignore unreadable markers; the tie-break uses the readable ones.
+      }
+    }
+
+    return markers;
+  }
+
+  async writeMigrationMarker(marker: StatisticMigrationMarker): Promise<void> {
+    if (!isStatisticMigrationMarker(marker)) return;
+    const rootDirectory = await this.ensureRoot();
+    await this.writeRootJson(rootDirectory, getMigrationMarkerFileName(marker.deviceId), marker);
+  }
+
+  async listLegacyStatisticSnapshots(): Promise<BooksDbStatistic[][]> {
+    const cards = await this.getBookList().catch(() => []);
+    const snapshots: BooksDbStatistic[][] = [];
+
+    for (const card of cards) {
+      try {
+        const { statistics } = await this.getStatistics({ title: card.title, imagePath: '' });
+        if (statistics?.length) snapshots.push(statistics);
+      } catch {
+        // Best-effort migration read: skip unreadable books.
+      }
+    }
+
+    return snapshots;
+  }
+
+  private async writeRootJson(
+    rootDirectory: FileSystemDirectoryHandle,
+    filename: string,
+    payload: unknown
+  ): Promise<void> {
+    const handle = await rootDirectory.getFileHandle(filename, { create: true });
+    const writer = await handle.createWritable();
+    await writer.write(JSON.stringify(payload));
+    await writer.close();
+    BaseStorageHandler.reportProgress();
   }
 
   async saveAudioBook(data: BooksDbAudioBook | File, context: ReplicationContext) {

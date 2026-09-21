@@ -12,7 +12,6 @@ import {
   getFriendlyStorageSourceName
 } from '$lib/data/storage/storage-types';
 import {
-  autoReplication$,
   cacheStorageData$,
   clearPendingCloudSync,
   database,
@@ -22,8 +21,9 @@ import {
   replicationSaveBehavior$,
   statisticsMergeMode$
 } from '$lib/data/store';
-import { AutoReplicationType } from '$lib/functions/replication/replication-options';
 import { replicateData } from '$lib/functions/replication/replicator';
+import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
+import { recordSyncRun } from '$lib/functions/replication/sync-diagnostics';
 import { ApiStorageHandler } from '$lib/data/storage/handler/api-handler';
 import { logger } from '$lib/data/logger';
 import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
@@ -101,16 +101,31 @@ export async function triggerCloudSync(
   storageSources: BooksDbStorageSource[] = [],
   requestedTypes: StorageDataType[] = SYNC_DATA_TYPES
 ): Promise<string> {
-  if (!sourceName) return 'No storage source';
+  const startedAt = Date.now();
   const dataTypes = requestedTypes?.length ? requestedTypes : SYNC_DATA_TYPES;
+  const finish = (error = '') => {
+    recordSyncRun({
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      target: sourceName,
+      attemptedTypes: dataTypes,
+      ...(error ? { error } : {})
+    });
+    return error;
+  };
+
+  if (!sourceName) return finish('No storage source');
+
   try {
+    await ensureDeviceIdentity(database);
+
     let sources = storageSources;
     if (!sources.length) {
       const db = await database.db;
       sources = await db.getAll('storageSource');
     }
     const source = resolveSource(sourceName, sources);
-    if (!source) return `No storage source with name ${sourceName} found`;
+    if (!source) return finish(`No storage source with name ${sourceName} found`);
 
     const targetHandler = getStorageHandler(
       window,
@@ -143,6 +158,19 @@ export async function triggerCloudSync(
         imagePath: b.coverImage || ''
       }));
 
+    // Always pull and merge before publishing. A sync direction preference
+    // cannot establish that aggregate records have the same members.
+    const downError = await replicateData(
+      targetHandler,
+      localStorageHandler,
+      false,
+      contexts,
+      dataTypes,
+      undefined,
+      true
+    );
+    if (downError) return finish(downError);
+
     const error = await replicateData(
       localStorageHandler,
       targetHandler,
@@ -152,23 +180,7 @@ export async function triggerCloudSync(
       undefined,
       true
     );
-    if (error) return error;
-
-    if (
-      autoReplication$.getValue() === AutoReplicationType.All ||
-      autoReplication$.getValue() === AutoReplicationType.Down
-    ) {
-      const downError = await replicateData(
-        targetHandler,
-        localStorageHandler,
-        false,
-        contexts,
-        dataTypes,
-        undefined,
-        true
-      );
-      if (downError) return downError;
-    }
+    if (error) return finish(error);
 
     markLastSync(sourceName);
     clearPendingCloudSync(sourceName);
@@ -195,10 +207,10 @@ export async function triggerCloudSync(
       database.listLoading$.next(false);
       database.dataListChanged$.next(undefined);
     }
-    return '';
+    return finish();
   } catch (err: any) {
     const message = err?.message || 'Unknown sync error';
     logger.error(`Cloud sync retry failed for ${sourceName}: ${message}`);
-    return message;
+    return finish(message);
   }
 }

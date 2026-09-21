@@ -314,6 +314,13 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     }
   }
 
+  protected async listRootFilesByPrefix(prefix: string) {
+    await this.ensureTitle();
+    const rootFiles = await this.list(this.rootId, false, true);
+
+    return rootFiles.filter((file) => file.name.startsWith(prefix));
+  }
+
   protected retrieve(
     file: OneDriveFile,
     typeToRetrieve: XMLHttpRequestResponseType,

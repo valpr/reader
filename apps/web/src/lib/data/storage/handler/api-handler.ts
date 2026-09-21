@@ -54,6 +54,15 @@ import {
   type ReplicationContext
 } from '$lib/functions/replication/replication-progress';
 import { mergeStatistics, updateStatisticToStore } from '$lib/functions/statistic-util';
+import {
+  getMigrationMarkerFileName,
+  isContributionFile,
+  isContributionFileName,
+  isMigrationMarkerFileName,
+  isStatisticMigrationMarker,
+  type StatisticContributionFile,
+  type StatisticMigrationMarker
+} from '$lib/functions/statistic-v2';
 import pLimit from 'p-limit';
 
 interface RequestOptions {
@@ -86,6 +95,8 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
   ): Promise<ExternalFile[]>;
 
   protected abstract setRootFiles(): Promise<void>;
+
+  protected abstract listRootFilesByPrefix(prefix: string): Promise<ExternalFile[]>;
 
   protected abstract retrieve(
     file: ExternalFile,
@@ -217,25 +228,10 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
   }
 
   async updateLastRead(book: BooksDbBookData, context: ReplicationContext) {
-    const { titleId, files, file } = await this.getExternalFile(
-      'bookdata_',
-      '',
-      0.2,
-      false,
-      context
-    );
-
-    if (!file) {
-      return;
-    }
-
-    const filename = BaseStorageHandler.getBookFileName(book);
-    const { characters, lastBookModified, lastBookOpen } =
-      BaseStorageHandler.getBookMetadata(filename);
-
-    await this.upload(titleId, filename, files, file, undefined, '', undefined, context.title);
-
-    this.addBookCard(context.title, { characters, lastBookModified, lastBookOpen });
+    // Recency is intentionally device-local. Updating it must not rewrite the
+    // book payload in cloud storage.
+    void book;
+    void context;
   }
 
   async getFilenameForRecentCheck(fileIdentifier: string, context?: ReplicationContext) {
@@ -272,16 +268,15 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     let isPresentAndUpToDate = false;
 
     if (file) {
-      const { lastBookModified, lastBookOpen } =
-        BaseStorageHandler.getBookMetadata(referenceFilename);
-      const { lastBookModified: existingBookModified, lastBookOpen: existingBookOpen } =
-        BaseStorageHandler.getBookMetadata(file.name);
+      const { lastBookModified } = BaseStorageHandler.getBookMetadata(referenceFilename);
+      const { lastBookModified: existingBookModified } = BaseStorageHandler.getBookMetadata(
+        file.name
+      );
 
       isPresentAndUpToDate = !!(
         existingBookModified &&
         lastBookModified &&
-        existingBookModified >= lastBookModified &&
-        (existingBookOpen || 0) >= (lastBookOpen || 0)
+        existingBookModified >= lastBookModified
       );
     }
 
@@ -616,15 +611,11 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
       BaseStorageHandler.getBookMetadata(filename);
 
     if (file && this.saveBehavior === ReplicationSaveBehavior.NewOnly) {
-      const { lastBookModified: existingBookModified, lastBookOpen: existingBookOpen } =
-        BaseStorageHandler.getBookMetadata(file.name);
+      const { lastBookModified: existingBookModified } = BaseStorageHandler.getBookMetadata(
+        file.name
+      );
 
-      if (
-        existingBookModified &&
-        lastBookModified &&
-        existingBookModified >= lastBookModified &&
-        (existingBookOpen || 0) >= (lastBookOpen || 0)
-      ) {
+      if (existingBookModified && lastBookModified && existingBookModified >= lastBookModified) {
         return 0;
       }
     }
@@ -723,6 +714,103 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     );
 
     this.addBookCard(ctx.title, {});
+  }
+
+  /**
+   * Statistics v2 remote side (P3/P4): every contribution file is overwritten
+   * in place under its stable name, so file count stays bounded and no
+   * stale-name cleanup (and its create-then-delete race) is ever needed.
+   */
+  async listContributionFiles(): Promise<StatisticContributionFile[]> {
+    await this.ensureTitle();
+    const entries = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+    const files: StatisticContributionFile[] = [];
+
+    for (const entry of entries) {
+      if (!isContributionFileName(entry.name)) continue;
+      try {
+        const payload = await this.retrieve(entry, 'json', 0.2);
+        if (isContributionFile(payload)) files.push(payload);
+      } catch {
+        // A single unreadable file must not fail the whole pull.
+      }
+    }
+
+    return files;
+  }
+
+  async writeContributionFiles(contributionFiles: StatisticContributionFile[]): Promise<void> {
+    if (!contributionFiles.length) return;
+    await this.ensureTitle();
+    const existing = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+
+    for (const payload of contributionFiles) {
+      if (!isContributionFile(payload)) continue;
+      const name = BaseStorageHandler.getContributionFileName(payload.deviceId, payload.year);
+      const match = existing.find((entry) => entry.name === name);
+      await this.upload(
+        this.rootId,
+        name,
+        existing,
+        match,
+        JSON.stringify(payload),
+        undefined,
+        undefined,
+        ''
+      );
+    }
+  }
+
+  async listMigrationMarkers(): Promise<StatisticMigrationMarker[]> {
+    await this.ensureTitle();
+    const entries = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+    const markers: StatisticMigrationMarker[] = [];
+
+    for (const entry of entries) {
+      if (!isMigrationMarkerFileName(entry.name)) continue;
+      try {
+        const payload = await this.retrieve(entry, 'json', 0.1);
+        if (isStatisticMigrationMarker(payload)) markers.push(payload);
+      } catch {
+        // Ignore unreadable markers; the tie-break uses the readable ones.
+      }
+    }
+
+    return markers;
+  }
+
+  async writeMigrationMarker(marker: StatisticMigrationMarker): Promise<void> {
+    if (!isStatisticMigrationMarker(marker)) return;
+    await this.ensureTitle();
+    const existing = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+    const name = getMigrationMarkerFileName(marker.deviceId);
+    const match = existing.find((entry) => entry.name === name);
+    await this.upload(
+      this.rootId,
+      name,
+      existing,
+      match,
+      JSON.stringify(marker),
+      undefined,
+      undefined,
+      ''
+    );
+  }
+
+  async listLegacyStatisticSnapshots(): Promise<BooksDbStatistic[][]> {
+    const cards = await this.getBookList().catch(() => []);
+    const snapshots: BooksDbStatistic[][] = [];
+
+    for (const card of cards) {
+      try {
+        const { statistics } = await this.getStatistics({ title: card.title, imagePath: '' });
+        if (statistics?.length) snapshots.push(statistics);
+      } catch {
+        // Best-effort migration read: skip unreadable books.
+      }
+    }
+
+    return snapshots;
   }
 
   async saveCover(data: Blob | undefined, context: ReplicationContext) {

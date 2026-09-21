@@ -14,6 +14,8 @@ import loadHtmlz from '$lib/functions/file-loaders/htmlz/load-htmlz';
 import loadTxt from '$lib/functions/file-loaders/txt/load-txt';
 import type { LoadData } from '$lib/functions/file-loaders/types';
 import { handleErrorDuringReplication } from '$lib/functions/replication/error-handler';
+import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
+import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
 import { throwIfAborted } from '$lib/functions/replication/replication-error';
 import {
   replicationProgress$,
@@ -209,6 +211,9 @@ export async function replicateData(
     let anyUserBookmarksChanged = false;
     let errorMessage = '';
     let processed = 0;
+    // Statistics v2 contribution files are global (per device/year), not per
+    // book: the migrate → pull+fold → publish sequence runs once per run.
+    let statisticsV2Synced = false;
 
     replicationProgress$.next({ maxProgress });
 
@@ -276,28 +281,32 @@ export async function replicateData(
             }
 
             if (processStatistics) {
-              if (
-                await targetHandler.areStatisticsPresentAndUpToDate(
-                  await sourceHandler.getFilenameForRecentCheck('statistics_', context),
-                  context
-                )
-              ) {
-                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              } else {
-                const { statistics, lastStatisticModified } =
-                  await sourceHandler.getStatistics(context);
+              // Statistics v2: aggregate data with merge semantics. A scalar
+              // timestamp may never gate the fold — always pull, reconcile,
+              // and publish the per-device contribution files.
+              if (!statisticsV2Synced) {
+                statisticsV2Synced = true;
 
                 checkCancelAndProgress(cancelSignal, !dataProcessed);
 
-                if (statistics) {
-                  await targetHandler.saveStatistics(statistics, lastStatisticModified, context);
+                const statisticsError = await replicateStatisticContributions(
+                  sourceHandler,
+                  targetHandler
+                );
 
+                if (statisticsError) {
+                  errorMessage = handleErrorDuringReplication(
+                    new Error(statisticsError),
+                    'Error Processing Statistics: ',
+                    [replicationLimiter],
+                    progressBaseForBookOperations
+                  );
+                } else {
                   dataProcessed = true;
                 }
-
-                checkCancelAndProgress(cancelSignal, !dataProcessed, !statistics);
               }
+
+              checkCancelAndProgress(cancelSignal, !dataProcessed, !dataProcessed);
             }
 
             if (processAudioBook) {
@@ -414,26 +423,15 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            if (
-              await targetHandler.areReadingGoalsPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(
-                  BaseStorageHandler.readingGoalsFilePrefix
-                )
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, true, true);
-              checkCancelAndProgress(cancelSignal, true, true);
-            } else {
-              const { readingGoals, lastGoalModified } = await sourceHandler.getReadingGoals();
+            const { readingGoals, lastGoalModified } = await sourceHandler.getReadingGoals();
 
-              checkCancelAndProgress(cancelSignal);
+            checkCancelAndProgress(cancelSignal);
 
-              if (readingGoals) {
-                await targetHandler.saveReadingGoals(readingGoals, lastGoalModified);
-              }
-
-              checkCancelAndProgress(cancelSignal, false, !readingGoals);
+            if (readingGoals) {
+              await targetHandler.saveReadingGoals(readingGoals, lastGoalModified);
             }
+
+            checkCancelAndProgress(cancelSignal, false, !readingGoals);
 
             processed += 1;
           } catch (error) {
@@ -452,30 +450,21 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            if (
-              await targetHandler.areProfilesPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.profilesFilePrefix)
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, true, true);
-              checkCancelAndProgress(cancelSignal, true, true);
-            } else {
-              const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
-                await sourceHandler.getProfiles();
+            const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
+              await sourceHandler.getProfiles();
 
-              checkCancelAndProgress(cancelSignal);
+            checkCancelAndProgress(cancelSignal);
 
-              if (profiles) {
-                await targetHandler.saveProfiles(
-                  profiles,
-                  lastProfilesModified,
-                  customThemes,
-                  statisticsSettings
-                );
-              }
-
-              checkCancelAndProgress(cancelSignal, false, !profiles);
+            if (profiles) {
+              await targetHandler.saveProfiles(
+                profiles,
+                lastProfilesModified,
+                customThemes,
+                statisticsSettings
+              );
             }
+
+            checkCancelAndProgress(cancelSignal, false, !profiles);
 
             processed += 1;
           } catch (error) {
@@ -494,24 +483,15 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            if (
-              await targetHandler.areBookTagsPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.bookTagsFilePrefix)
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, true, true);
-              checkCancelAndProgress(cancelSignal, true, true);
-            } else {
-              const { tags, titles, lastTagsModified } = await sourceHandler.getBookTags();
+            const { tags, titles, lastTagsModified } = await sourceHandler.getBookTags();
 
-              checkCancelAndProgress(cancelSignal);
+            checkCancelAndProgress(cancelSignal);
 
-              if (tags) {
-                await targetHandler.saveBookTags(tags, titles, lastTagsModified);
-              }
-
-              checkCancelAndProgress(cancelSignal, false, !tags);
+            if (tags) {
+              await targetHandler.saveBookTags(tags, titles, lastTagsModified);
             }
+
+            checkCancelAndProgress(cancelSignal, false, !tags);
 
             processed += 1;
           } catch (error) {
@@ -582,4 +562,27 @@ function checkCancelAndProgress(
   }
 
   BaseStorageHandler.completeStep();
+}
+
+/**
+ * Statistics v2 contribution sync for a replication run. The non-browser
+ * side (cloud, filesystem, or backup) is the contribution remote; browser
+ * to browser never carries statistics.
+ */
+async function replicateStatisticContributions(
+  sourceHandler: BaseStorageHandler,
+  targetHandler: BaseStorageHandler
+): Promise<string> {
+  const remote = sourceHandler.storageType === StorageKey.BROWSER ? targetHandler : sourceHandler;
+
+  if (remote.storageType === StorageKey.BROWSER) {
+    return '';
+  }
+
+  try {
+    const identity = await ensureDeviceIdentity(database);
+    return await syncStatisticContributions(database, remote, identity.deviceId);
+  } catch (error: any) {
+    return error?.message || 'Statistics sync failed';
+  }
 }

@@ -23,6 +23,10 @@ import type { ReaderProfile, StatisticsSyncSection } from '$lib/data/profiles/pr
 import type { ThemeOption } from '$lib/data/theme-option';
 import { InternalStorageSources, type StorageKey } from '$lib/data/storage/storage-types';
 import { exporterVersion } from '$lib/functions/replication/replicator';
+import type {
+  StatisticContributionFile,
+  StatisticMigrationMarker
+} from '$lib/functions/statistic-v2';
 import { throwIfAborted } from '$lib/functions/replication/replication-error';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import {
@@ -183,6 +187,33 @@ export abstract class BaseStorageHandler {
     context: ReplicationContext
   ): Promise<void>;
 
+  /**
+   * Statistics v2 (P3/P4): stable per-device/year contribution files plus the
+   * per-device migration markers. Role-dependent by handler kind:
+   * - Browser (local): list returns this device's own publish payloads;
+   *   save folds the given remote files into the display store.
+   * - Cloud/filesystem (remote): list reads every v2 file; save overwrites
+   *   each file in place under its stable name.
+   * - Backup: list reads the import zip's v2 entries; save appends v2 entries
+   *   to the export zip (no-op while importing).
+   * Legacy per-book `statistics_*` snapshots are intentionally outside this
+   * surface; see `listLegacyStatisticSnapshots` for the one-time migration read.
+   */
+  abstract listContributionFiles(): Promise<StatisticContributionFile[]>;
+
+  abstract writeContributionFiles(files: StatisticContributionFile[]): Promise<void>;
+
+  abstract listMigrationMarkers(): Promise<StatisticMigrationMarker[]>;
+
+  abstract writeMigrationMarker(marker: StatisticMigrationMarker): Promise<void>;
+
+  /**
+   * One-time migration read (P4): unattributed legacy per-book snapshots.
+   * Only consulted when the local display is empty and no migration marker
+   * exists yet — established devices already carry the merged history.
+   */
+  abstract listLegacyStatisticSnapshots(): Promise<BooksDbStatistic[][]>;
+
   abstract saveCover(data: Blob | undefined, context: ReplicationContext): Promise<void>;
 
   abstract saveReadingGoals(data: BooksDbReadingGoal[], lastGoalModified: number): Promise<void>;
@@ -223,6 +254,9 @@ export abstract class BaseStorageHandler {
 
   static bookTagsFilePrefix = 'ttu-book-tags_';
 
+  /** Statistics v2: one stable file per device per year (P3). */
+  static contributionFilePrefix = 'statistics_v2_';
+
   storageType: StorageKey;
 
   protected window: Window;
@@ -254,7 +288,8 @@ export abstract class BaseStorageHandler {
   protected validRootFiles = [
     BaseStorageHandler.readingGoalsFilePrefix,
     BaseStorageHandler.profilesFilePrefix,
-    BaseStorageHandler.bookTagsFilePrefix
+    BaseStorageHandler.bookTagsFilePrefix,
+    BaseStorageHandler.contributionFilePrefix
   ];
 
   constructor(window: Window, storageType: StorageKey) {
@@ -386,6 +421,20 @@ export abstract class BaseStorageHandler {
 
   static getBookTagsFileName(lastTagsModified: number) {
     return `${BaseStorageHandler.bookTagsFilePrefix}${exporterVersion}_${currentDbVersion}_${lastTagsModified}.json`;
+  }
+
+  /**
+   * Statistics v2 stable filename (P3): content changes in place, the name
+   * never does, so file count stays bounded at devices x years.
+   */
+  static getContributionFileName(deviceId: string, year: number) {
+    return `${BaseStorageHandler.contributionFilePrefix}${deviceId}_${year}.json`;
+  }
+
+  static parseContributionFileName(filename: string) {
+    const match = /^statistics_v2_(.+)_(\\d{4})\\.json$/.exec(filename);
+    if (!match) return undefined;
+    return { deviceId: match[1], year: Number.parseInt(match[2], 10) };
   }
 
   static getImageMimeTypeFromExtension(value: string) {
@@ -767,21 +816,18 @@ export abstract class BaseStorageHandler {
     }
 
     if (existingFilename) {
-      const { characters, lastBookModified, lastBookOpen } =
-        BaseStorageHandler.getBookMetadata(existingFilename);
+      const { characters, lastBookModified } = BaseStorageHandler.getBookMetadata(existingFilename);
 
       return `bookdata_${exporterVersion}_${currentDbVersion}_${
         characters ||
         BaseStorageHandler.getBookCharacters(book.characters || 0, book.sections || [])
-      }_${book.lastBookModified || lastBookModified || 0}_${
-        book.lastBookOpen || lastBookOpen || 0
-      }.zip`;
+      }_${book.lastBookModified || lastBookModified || 0}.zip`;
     }
 
     return `bookdata_${exporterVersion}_${currentDbVersion}_${BaseStorageHandler.getBookCharacters(
       book.characters || 0,
       book.sections || []
-    )}_${book.lastBookModified || 0}_${book.lastBookOpen || 0}.zip`;
+    )}_${book.lastBookModified || 0}.zip`;
   }
 
   protected static getProgressFileName(progress: BooksDbBookmarkData | File) {
@@ -832,7 +878,9 @@ export abstract class BaseStorageHandler {
       dbVersion: +parts[2],
       characters: +parts[3],
       lastBookModified: +parts[4],
-      lastBookOpen: +parts[5]
+      // v2 filenames deliberately omit device-local recency. Keep parsing
+      // v1 filenames so existing cloud and backup files remain readable.
+      lastBookOpen: Number.isFinite(+parts[5]) ? +parts[5] : 0
     };
   }
 

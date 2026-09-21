@@ -236,6 +236,16 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     }
   }
 
+  protected async listRootFilesByPrefix(prefix: string) {
+    await this.ensureTitle();
+    const rootFiles = await this.list(
+      `trashed=false and mimeType!='application/vnd.google-apps.folder' and '${this.rootId}' in parents`,
+      'files(id,name)'
+    );
+
+    return rootFiles.filter((file) => file.name.startsWith(prefix));
+  }
+
   protected retrieve(
     file: GDriveFile,
     typeToRetrieve: XMLHttpRequestResponseType,

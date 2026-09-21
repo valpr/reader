@@ -9,7 +9,7 @@ import { openDB } from 'idb';
 import upgradeBooksDbFromV2 from './versions/v2/upgrade';
 
 export function createBooksDb(name = 'books') {
-  return openDB<BooksDb>(name, 9, {
+  return openDB<BooksDb>(name, 12, {
     async upgrade(oldDb, oldVersion, newVersion, transaction) {
       if (oldVersion < 3 && oldVersion >= 2) {
         await upgradeBooksDbFromV2(oldDb, oldVersion, newVersion, transaction);
@@ -80,6 +80,30 @@ export function createBooksDb(name = 'books') {
 
       if (!oldDb.objectStoreNames.contains('handle')) {
         oldDb.createObjectStore('handle', { keyPath: ['title', 'dataType'] });
+      }
+
+      if (!oldDb.objectStoreNames.contains('deviceIdentity')) {
+        oldDb.createObjectStore('deviceIdentity', { keyPath: 'id' });
+      }
+
+      if (!oldDb.objectStoreNames.contains('statisticContribution')) {
+        const contributionStore = oldDb.createObjectStore('statisticContribution', {
+          keyPath: ['title', 'dateKey']
+        });
+        contributionStore.createIndex('dateKey', 'dateKey');
+        contributionStore.createIndex('year', 'year');
+      }
+
+      if (!oldDb.objectStoreNames.contains('statisticSyncState')) {
+        oldDb.createObjectStore('statisticSyncState', { keyPath: 'id' });
+      }
+
+      if (!oldDb.objectStoreNames.contains('statisticRemoteContribution')) {
+        const remoteStore = oldDb.createObjectStore('statisticRemoteContribution', {
+          keyPath: ['deviceId', 'title', 'dateKey']
+        });
+        remoteStore.createIndex('byDevice', 'deviceId');
+        remoteStore.createIndex('byBook', ['title', 'dateKey']);
       }
     }
   });
