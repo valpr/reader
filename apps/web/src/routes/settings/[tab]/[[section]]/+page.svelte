@@ -18,7 +18,6 @@
     autosaveHistoryInterval$,
     autosaveHistoryMaxCount$,
     autoPositionOnResize$,
-    autoReplication$,
     avoidPageBreak$,
     cacheStorageData$,
     confirmClose$,
@@ -50,7 +49,6 @@
     pageColumns$,
     pauseTrackerOnCustomPointChange$,
     prioritizeReaderStyles$,
-    replicationSaveBehavior$,
     restrictImportFixToAnchor$,
     secondDimensionMaxValue$,
     selectionToBookmarkEnabled$,
@@ -60,7 +58,6 @@
     showFooterChapterPercentage$,
     startDayHoursForTracker$,
     statisticsEnabled$,
-    statisticsMergeMode$,
     swipeThreshold$,
     textIndentation$,
     textMarginMode$,
@@ -76,7 +73,6 @@
     verticalTextOrientation$,
     viewMode$,
     writingMode$,
-    readingGoalsMergeMode$,
     hideSpoilerImageMode$,
     lastStatisticsSettingsModified$
   } from '$lib/data/store';
@@ -286,13 +282,9 @@
       bind:importHTMLFixMode={$importHTMLFixMode$}
       bind:restrictImportFixToAnchor={$restrictImportFixToAnchor$}
       bind:cacheStorageData={$cacheStorageData$}
-      bind:replicationSaveBehavior={$replicationSaveBehavior$}
-      bind:autoReplication={$autoReplication$}
       bind:keepLocalStatisticsOnDeletion={$keepLocalStatisticsOnDeletion$}
       bind:overwriteBookCompletion={$overwriteBookCompletion$}
       bind:startDayHoursForTracker={$startDayHoursForTracker$}
-      bind:statisticsMergeMode={$statisticsMergeMode$}
-      bind:readingGoalsMergeMode={$readingGoalsMergeMode$}
       bind:statisticsEnabled={$statisticsEnabled$}
       bind:loaderMode={$loaderMode$}
       bind:trackerAutoPause={$trackerAutoPause$}

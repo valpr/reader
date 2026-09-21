@@ -190,6 +190,26 @@ export async function seedReaderBook(
           if (!d.objectStoreNames.contains('handle')) {
             d.createObjectStore('handle', { keyPath: ['title', 'dataType'] });
           }
+          if (!d.objectStoreNames.contains('deviceIdentity')) {
+            d.createObjectStore('deviceIdentity', { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains('statisticContribution')) {
+            const contributionStore = d.createObjectStore('statisticContribution', {
+              keyPath: ['title', 'dateKey']
+            });
+            contributionStore.createIndex('dateKey', 'dateKey');
+            contributionStore.createIndex('year', 'year');
+          }
+          if (!d.objectStoreNames.contains('statisticSyncState')) {
+            d.createObjectStore('statisticSyncState', { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains('statisticRemoteContribution')) {
+            const remoteStore = d.createObjectStore('statisticRemoteContribution', {
+              keyPath: ['deviceId', 'title', 'dateKey']
+            });
+            remoteStore.createIndex('byDevice', 'deviceId');
+            remoteStore.createIndex('byBook', ['title', 'dateKey']);
+          }
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -234,6 +254,27 @@ export async function seedStatistics(page: Page, statistics: any[]): Promise<voi
             const ss = d.createObjectStore('statistic', { keyPath: ['title', 'dateKey'] });
             ss.createIndex('dateKey', 'dateKey');
             ss.createIndex('completedBook', ['completedBook', 'title']);
+          }
+          // Keep in sync with seedReaderBook above and factory.ts.
+          if (!d.objectStoreNames.contains('deviceIdentity')) {
+            d.createObjectStore('deviceIdentity', { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains('statisticContribution')) {
+            const contributionStore = d.createObjectStore('statisticContribution', {
+              keyPath: ['title', 'dateKey']
+            });
+            contributionStore.createIndex('dateKey', 'dateKey');
+            contributionStore.createIndex('year', 'year');
+          }
+          if (!d.objectStoreNames.contains('statisticSyncState')) {
+            d.createObjectStore('statisticSyncState', { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains('statisticRemoteContribution')) {
+            const remoteStore = d.createObjectStore('statisticRemoteContribution', {
+              keyPath: ['deviceId', 'title', 'dateKey']
+            });
+            remoteStore.createIndex('byDevice', 'deviceId');
+            remoteStore.createIndex('byBook', ['title', 'dateKey']);
           }
         };
         request.onsuccess = () => resolve(request.result);

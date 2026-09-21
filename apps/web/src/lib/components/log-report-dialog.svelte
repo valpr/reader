@@ -3,6 +3,7 @@
   import Ripple from '$lib/components/ripple.svelte';
   import { buttonClasses } from '$lib/css-classes';
   import { logger } from '$lib/data/logger';
+  import { getSyncRuns } from '$lib/functions/replication/sync-diagnostics';
   import { StorageSourceDefault } from '$lib/data/storage/storage-types';
   import {
     theme$,
@@ -172,7 +173,8 @@
           isOnline: isOnline$.getValue(),
           multiplier: multiplier$.getValue()
         },
-        log: logger.history
+        log: logger.history,
+        syncRuns: getSyncRuns()
       },
       null,
       2

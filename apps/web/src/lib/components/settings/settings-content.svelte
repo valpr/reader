@@ -50,7 +50,6 @@
   import { FuriganaStyle } from '$lib/data/furigana-style';
   import { ImportHTMLFixMode } from '$lib/data/import-html-fix-mode';
   import { logger } from '$lib/data/logger';
-  import { MergeMode } from '$lib/data/merge-mode';
   import { pagePath } from '$lib/data/env';
   import { isAppDefault } from '$lib/data/storage/storage-source-manager';
   import { defaultStorageSources } from '$lib/data/storage/storage-types';
@@ -66,6 +65,7 @@
     horizontalCustomReadingPosition$,
     loaderMode$,
     readerProfiles$,
+    syncTarget$,
     textMarginMode$,
     textMarginValue$,
     theme$,
@@ -79,10 +79,7 @@
   import { factoryReset } from '$lib/functions/factory-reset';
   import { secondsToMinutes } from '$lib/functions/statistic-util';
   import { dummyFn } from '$lib/functions/utils';
-  import {
-    ReplicationSaveBehavior,
-    AutoReplicationType
-  } from '$lib/functions/replication/replication-options';
+  import { runOneShotRecovery } from '$lib/functions/replication/cloud-sync';
   import { map } from 'rxjs';
   import Fa from 'svelte-fa';
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
@@ -192,19 +189,11 @@
 
   export let cacheStorageData: boolean;
 
-  export let autoReplication: string;
-
-  export let replicationSaveBehavior: string;
-
   export let keepLocalStatisticsOnDeletion: boolean;
 
   export let overwriteBookCompletion: boolean;
 
   export let startDayHoursForTracker: number;
-
-  export let statisticsMergeMode: string;
-
-  export let readingGoalsMergeMode: string;
 
   export let statisticsEnabled: boolean;
 
@@ -341,36 +330,6 @@
     }
   ];
 
-  const optionsForAutoReplicationType: ToggleOption<AutoReplicationType>[] = [
-    {
-      id: AutoReplicationType.Off,
-      text: 'Off'
-    },
-    {
-      id: AutoReplicationType.Up,
-      text: 'Up'
-    },
-    {
-      id: AutoReplicationType.Down,
-      text: 'Down'
-    },
-    {
-      id: AutoReplicationType.All,
-      text: 'All'
-    }
-  ];
-
-  const optionsForReplicationSaveBehavior: ToggleOption<ReplicationSaveBehavior>[] = [
-    {
-      id: ReplicationSaveBehavior.NewOnly,
-      text: 'New Only'
-    },
-    {
-      id: ReplicationSaveBehavior.Overwrite,
-      text: 'Overwrite'
-    }
-  ];
-
   const optionsForTrackerAutoPause: ToggleOption<TrackerAutoPause>[] = [
     {
       id: TrackerAutoPause.OFF,
@@ -394,17 +353,6 @@
     {
       id: TrackerSkipThresholdAction.PAUSE,
       text: 'Pause Tracker'
-    }
-  ];
-
-  const optionsForMergeMode: ToggleOption<MergeMode>[] = [
-    {
-      id: MergeMode.MERGE,
-      text: 'Merge'
-    },
-    {
-      id: MergeMode.REPLACE,
-      text: 'Replace'
     }
   ];
 
@@ -468,23 +416,11 @@
     value: o.id,
     label: o.text
   }));
-  const segmentsForAutoReplicationType = optionsForAutoReplicationType.map((o) => ({
-    value: o.id,
-    label: o.text
-  }));
-  const segmentsForReplicationSaveBehavior = optionsForReplicationSaveBehavior.map((o) => ({
-    value: o.id,
-    label: o.text
-  }));
   const segmentsForTrackerAutoPause = optionsForTrackerAutoPause.map((o) => ({
     value: o.id,
     label: o.text
   }));
   const segmentsForTrackerSkipThresholdAction = optionsForTrackerSkipThresholdAction.map((o) => ({
-    value: o.id,
-    label: o.text
-  }));
-  const segmentsForMergeMode = optionsForMergeMode.map((o) => ({
     value: o.id,
     label: o.text
   }));
@@ -718,6 +654,42 @@
     });
   }
 
+  let isRecovering = false;
+
+  async function runRecovery(direction: 'push' | 'pull') {
+    const target = $syncTarget$;
+    if (!target || isRecovering) return;
+
+    const wasCanceled = await confirmAction(
+      direction === 'push' ? 'Use this device as the source?' : 'Replace this device from cloud?',
+      direction === 'push'
+        ? 'Upload everything from this device to the sync target, replacing the cloud copy — including deletions. Use after cloud-side data loss.\n\nReading positions resolve newest-wins either way. This cannot be undone.'
+        : 'Download everything from the sync target, replacing this device — including deletions. Local changes that were never synced will be lost.\n\nReading positions resolve newest-wins either way. This cannot be undone.'
+    );
+    if (wasCanceled) return;
+
+    isRecovering = true;
+    try {
+      const error = await runOneShotRecovery(window, target, direction);
+      dialogManager.dialogs$.next([
+        {
+          component: MessageDialog,
+          props: error
+            ? { title: 'Recovery failed', message: `Recovery did not complete: ${error}` }
+            : {
+                title: 'Recovery complete',
+                message:
+                  direction === 'push'
+                    ? 'This device is now the cloud copy.'
+                    : 'This device now matches the cloud copy.'
+              }
+        }
+      ]);
+    } finally {
+      isRecovering = false;
+    }
+  }
+
   async function onFactoryReset() {
     const wasCanceled = await confirmAction(
       'Reset everything?',
@@ -769,7 +741,6 @@
   let showSpinner = false;
   let furiganaStyleTooltip = '';
   let importHTMLFixModeTooltip = '';
-  let autoReplicationTypeTooltip = '';
   let trackerAutoPauseTooltip = '';
 
   $: if ($textMarginMode$ === 'auto') {
@@ -819,25 +790,6 @@
   $: cacheStorageDataTooltip = cacheStorageData
     ? 'Storage data is cached. Saves network traffic/latency but requires to reload current/open a new tab to retrieve data changes. Recommended ON for the unified library.'
     : 'Storage data is refetched on every action. May consume more network traffic/latency but ensures current data';
-  $: replicationSaveBehaviorTooltip =
-    replicationSaveBehavior === ReplicationSaveBehavior.Overwrite
-      ? 'Data will always be overwritten'
-      : 'Data will only be written if none exist on target, no time data is present or if target data is older';
-  $: switch (autoReplication) {
-    case AutoReplicationType.Up:
-      autoReplicationTypeTooltip =
-        'Updated data will be exported to sync target when reading once per minute';
-      break;
-    case AutoReplicationType.Down:
-      autoReplicationTypeTooltip = 'Data will be imported from sync target when opening a book';
-      break;
-    case AutoReplicationType.All:
-      autoReplicationTypeTooltip = 'Data will be synced in both directions';
-      break;
-    default:
-      autoReplicationTypeTooltip = 'No automatic import/export of data';
-      break;
-  }
   $: startOfDayHours = `${`${startDayHoursForTracker}`.padStart(2, '0')}:00`;
 
   $: trackerIdleTimeInMin = secondsToMinutes(trackerIdleTime);
@@ -1692,38 +1644,45 @@
       </ListItem>
     </ListSection>
 
-    <!-- Section 3: Synchronization & Auto-Replication -->
-    <ListSection
-      title="Synchronization & Auto-Replication"
-      description="Automatic background syncing between reader and connected storage targets"
-    >
-      <ListItem
-        layout="stacked"
-        headline="Auto Import/Export Direction"
-        description={autoReplicationTypeTooltip}
-      >
-        <SegmentedControl
-          options={segmentsForAutoReplicationType}
-          bind:value={autoReplication}
-          size="sm"
-        />
-      </ListItem>
-
-      <ListItem
-        layout="stacked"
-        headline="Import/Export Save Behavior"
-        description={replicationSaveBehaviorTooltip}
-      >
-        <SegmentedControl
-          options={segmentsForReplicationSaveBehavior}
-          bind:value={replicationSaveBehavior}
-          size="sm"
-        />
-      </ListItem>
-    </ListSection>
-
     <!-- Section 4: Storage Sources -->
     <SettingsStorageSourceList storageSources={$storageSources$} />
+
+    <!-- Section 5: Sync Recovery (Advanced, one-shot only) -->
+    <ListSection
+      title="Sync Recovery"
+      description="One-shot directional syncs with replace semantics. Normal syncs always merge — these are the only actions that overwrite."
+    >
+      <ListItem
+        headline="Use this device as the source"
+        description="Upload everything from this device, replacing the cloud copy — including deletions."
+      >
+        <div slot="suffix">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!$syncTarget$ || isRecovering}
+            on:click={() => runRecovery('push')}
+          >
+            Push…
+          </Button>
+        </div>
+      </ListItem>
+      <ListItem
+        headline="Replace this device from cloud"
+        description="Download everything from the sync target, replacing this device — including deletions."
+      >
+        <div slot="suffix">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!$syncTarget$ || isRecovering}
+            on:click={() => runRecovery('pull')}
+          >
+            Pull…
+          </Button>
+        </div>
+      </ListItem>
+    </ListSection>
 
     <!-- Section 5: Help & Documentation -->
     <ListSection
@@ -2010,30 +1969,6 @@
             valueFormatter={(val) => `${`${val}`.padStart(2, '0')}:00`}
           />
         </div>
-      </ListItem>
-
-      <ListItem
-        layout="stacked"
-        headline="Statistics Sync Mode"
-        description="Determines whether statistics merge entry-by-entry or replace completely during remote sync"
-      >
-        <SegmentedControl
-          options={segmentsForMergeMode}
-          bind:value={statisticsMergeMode}
-          size="sm"
-        />
-      </ListItem>
-
-      <ListItem
-        layout="stacked"
-        headline="Reading Goals Sync Mode"
-        description="Determines whether reading goals merge entry-by-entry or replace completely during remote sync"
-      >
-        <SegmentedControl
-          options={segmentsForMergeMode}
-          bind:value={readingGoalsMergeMode}
-          size="sm"
-        />
       </ListItem>
 
       <ListItem

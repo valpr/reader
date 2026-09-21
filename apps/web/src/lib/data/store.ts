@@ -261,6 +261,18 @@ export const autoReplication$ = writableStringLocalStorageSubject<AutoReplicatio
   AutoReplicationType.Off
 );
 
+// M4: persistent sync direction (Up/Down) was removed from Settings — sync is
+// always two-way. Stored legacy values map to All (automatic sync on);
+// Off (manual sync only) is preserved as-is.
+try {
+  const storedDirection = autoReplication$.getValue();
+  if (storedDirection === AutoReplicationType.Up || storedDirection === AutoReplicationType.Down) {
+    autoReplication$.next(AutoReplicationType.All);
+  }
+} catch {
+  // Preference migration must never break startup (private mode quotas).
+}
+
 export const replicationSaveBehavior$ =
   writableStringLocalStorageSubject<ReplicationSaveBehavior>()(
     'replicationSaveBehavior',
@@ -337,6 +349,23 @@ export const readingGoalsMergeMode$ = writableStringLocalStorageSubject<MergeMod
   'readingGoalsMergeMode',
   MergeMode.MERGE
 );
+
+// M4: overwrite-all and replace-everything stopped being persistent modes —
+// they only exist inside explicit one-shot recovery now. Stored legacy
+// values normalize to the safe merge behavior; nothing is deleted.
+try {
+  if (replicationSaveBehavior$.getValue() !== ReplicationSaveBehavior.NewOnly) {
+    replicationSaveBehavior$.next(ReplicationSaveBehavior.NewOnly);
+  }
+  if (statisticsMergeMode$.getValue() !== MergeMode.MERGE) {
+    statisticsMergeMode$.next(MergeMode.MERGE);
+  }
+  if (readingGoalsMergeMode$.getValue() !== MergeMode.MERGE) {
+    readingGoalsMergeMode$.next(MergeMode.MERGE);
+  }
+} catch {
+  // Preference migration must never break startup (private mode quotas).
+}
 
 export const trackerAutoPause$ = writableStringLocalStorageSubject<TrackerAutoPause>()(
   'trackerAutoPause',

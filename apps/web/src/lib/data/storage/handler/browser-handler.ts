@@ -33,8 +33,13 @@ import {
   mergeProfiles
 } from '$lib/data/profiles/profile-manager';
 import type { ReaderProfile, StatisticsSyncSection } from '$lib/data/profiles/profile-types';
+import type {
+  StatisticContributionFile,
+  StatisticMigrationMarker
+} from '$lib/functions/statistic-v2';
 import type { ThemeOption } from '$lib/data/theme-option';
 import { MergeMode } from '$lib/data/merge-mode';
+import { isPositionNewerThan } from '$lib/functions/position-util';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import { StorageDataType } from '$lib/data/storage/storage-types';
 
@@ -254,15 +259,13 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     // Placeholders (no elementHtml) are metadata only and must never count
     // as up-to-date, otherwise replication skips the real DATA copy.
     if (book && book.elementHtml) {
-      const { lastBookModified, lastBookOpen } =
-        BaseStorageHandler.getBookMetadata(referenceFilename);
-      const { lastBookModified: existingBookModified, lastBookOpen: existingBookOpen } = book;
+      const { lastBookModified } = BaseStorageHandler.getBookMetadata(referenceFilename);
+      const { lastBookModified: existingBookModified } = book;
 
       isPresentAndUpToDate = !!(
         existingBookModified &&
         lastBookModified &&
-        existingBookModified >= lastBookModified &&
-        (existingBookOpen || 0) >= (lastBookOpen || 0)
+        existingBookModified >= lastBookModified
       );
     }
 
@@ -534,7 +537,13 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
       bookmarkData.dataId = dataId;
 
-      await database.putBookmark(bookmarkData);
+      // Deterministic last-write-wins (P6): only the newer
+      // (modifiedAt, deviceId) record replaces the current position, so two
+      // devices comparing the same pair always elect the same winner.
+      const existing = await database.getBookmark(dataId);
+      if (isPositionNewerThan(bookmarkData, existing)) {
+        await database.putBookmark(bookmarkData);
+      }
     }
   }
 
@@ -812,6 +821,41 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     database.dataListChanged$.next(this);
   }
 
+  /**
+   * Statistics v2 local side (P3): publish reads this device's own
+   * contribution payloads; applying remote files caches them and recomputes
+   * the display fold. Migration markers live in `statisticSyncState`, so the
+   * marker channel is intentionally empty here — the browser is never the
+   * migration remote.
+   */
+  async listContributionFiles(): Promise<StatisticContributionFile[]> {
+    const identity = await database.getDeviceIdentity();
+    if (!identity?.deviceId) return [];
+    return database.getOwnContributionFiles(identity.deviceId);
+  }
+
+  async writeContributionFiles(files: StatisticContributionFile[]): Promise<void> {
+    if (!files.length) {
+      BaseStorageHandler.reportProgress();
+      return;
+    }
+    await database.storeRemoteContributionFiles(files);
+    await database.refoldAllFromStores();
+    BaseStorageHandler.reportProgress();
+  }
+
+  async listMigrationMarkers(): Promise<StatisticMigrationMarker[]> {
+    return [];
+  }
+
+  async writeMigrationMarker(_marker: StatisticMigrationMarker): Promise<void> {
+    BaseStorageHandler.reportProgress();
+  }
+
+  async listLegacyStatisticSnapshots(): Promise<BooksDbStatistic[][]> {
+    return [];
+  }
+
   async saveAudioBook(data: BooksDbAudioBook | File, _context: ReplicationContext) {
     if (data instanceof File) {
       BaseStorageHandler.reportProgress();
@@ -821,7 +865,6 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
     await database.putAudioBook(data);
   }
-
   async saveSubtitleData(data: BooksDbSubtitleData | File, _context: ReplicationContext) {
     if (data instanceof File) {
       BaseStorageHandler.reportProgress();
@@ -879,6 +922,7 @@ export class BrowserStorageHandler extends BaseStorageHandler {
     } else {
       const db = await database.db;
       await db.delete('lastModified', [title, StorageDataType.STATISTICS]);
+      await database.clearRemoteContributionsForBook(title);
     }
 
     if (this.titleToBookCard.has(title)) {

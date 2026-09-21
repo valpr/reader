@@ -425,11 +425,13 @@
     dataId: number,
     bookmark: BooksDbUserBookmarkData
   ): BooksDbBookmarkData {
+    // Restores are explicit user intent: stamp now so the restored position
+    // wins the next last-write-wins comparison deterministically (P6).
     return {
       dataId,
       exploredCharCount: bookmark.exploredCharCount,
       progress: bookmark.progress,
-      lastBookmarkModified: Math.max(bookmark.lastModified || 0, bookmark.createdAt || 0)
+      lastBookmarkModified: Date.now()
     };
   }
 
@@ -441,7 +443,7 @@
       dataId,
       exploredCharCount: autosave.exploredCharCount,
       progress: autosave.progress,
-      lastBookmarkModified: autosave.createdAt
+      lastBookmarkModified: Date.now()
     };
   }
 
@@ -1609,6 +1611,18 @@
       },
       customReadingPointScrollOffset
     );
+
+    // An explicit checkpoint restore is user intent: persist it immediately
+    // as a newer position record so the restore itself wins later
+    // last-write-wins comparisons instead of flip-flopping (P6).
+    void database
+      .putBookmark({
+        dataId: item.dataId,
+        exploredCharCount: Math.max(1, item.exploredCharCount),
+        progress: item.progress,
+        lastBookmarkModified: Date.now()
+      })
+      .catch(() => undefined);
   }
 
   async function handleDeleteUserBookmark(item: BooksDbUserBookmarkData) {

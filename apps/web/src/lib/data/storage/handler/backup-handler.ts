@@ -21,6 +21,16 @@ import type {
 } from '$lib/data/profiles/profile-types';
 import type { BookTagsDict, BookTagsSyncPayload } from '$lib/data/book-tags';
 import { readingGoalSortFunction } from '$lib/data/reading-goal';
+import {
+  getContributionFileName,
+  getMigrationMarkerFileName,
+  isContributionFile,
+  isContributionFileName,
+  isMigrationMarkerFileName,
+  isStatisticMigrationMarker,
+  type StatisticContributionFile,
+  type StatisticMigrationMarker
+} from '$lib/functions/statistic-v2';
 import { BaseStorageHandler, FilePrefix } from '$lib/data/storage/handler/base-handler';
 import type { ThemeOption } from '$lib/data/theme-option';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
@@ -33,6 +43,9 @@ export class BackupStorageHandler extends BaseStorageHandler {
   private importReader: ZipReader<Blob> | undefined;
 
   private importEntries: Entry[] = [];
+
+  /** Stable v2 names already appended to the in-progress export zip. */
+  private exportedV2Names = new Set<string>();
 
   getBookList() {
     return Promise.resolve([]);
@@ -137,6 +150,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
       this.exportZipWriter = undefined;
       this.importReader = undefined;
       this.importEntries = [];
+      this.exportedV2Names.clear();
     }
   }
 
@@ -569,6 +583,92 @@ export class BackupStorageHandler extends BaseStorageHandler {
     }
   }
 
+  /**
+   * Statistics v2 backup side (P3/P4): contribution and marker files live at
+   * the zip root under stable names. While importing, lists read the import
+   * zip and writes are no-ops; while exporting, writes append entries.
+   */
+  private get isImportMode(): boolean {
+    return !!this.importReader && !this.exportZipWriter;
+  }
+
+  async listContributionFiles(): Promise<StatisticContributionFile[]> {
+    const files: StatisticContributionFile[] = [];
+
+    for (const entry of this.importEntries) {
+      if (!isContributionFileName(entry.filename)) continue;
+      try {
+        const payload = await this.extractAsJSON(entry, 'Unable to read contribution file');
+        if (isContributionFile(payload)) files.push(payload);
+      } catch {
+        // A single unreadable entry must not fail the whole restore.
+      }
+    }
+
+    return files;
+  }
+
+  async writeContributionFiles(contributionFiles: StatisticContributionFile[]): Promise<void> {
+    if (this.isImportMode) return;
+
+    for (const payload of contributionFiles) {
+      if (!isContributionFile(payload)) continue;
+      const name = getContributionFileName(payload.deviceId, payload.year);
+      if (this.exportedV2Names.has(name)) continue;
+      this.exportedV2Names.add(name);
+      this.exportZipWriter = await this.addDataToZip(
+        name,
+        JSON.stringify(payload),
+        this.exportZipWriter
+      );
+    }
+  }
+
+  async listMigrationMarkers(): Promise<StatisticMigrationMarker[]> {
+    const markers: StatisticMigrationMarker[] = [];
+
+    for (const entry of this.importEntries) {
+      if (!isMigrationMarkerFileName(entry.filename)) continue;
+      try {
+        const payload = await this.extractAsJSON(entry, 'Unable to read migration marker');
+        if (isStatisticMigrationMarker(payload)) markers.push(payload);
+      } catch {
+        // Ignore unreadable markers; the tie-break uses the readable ones.
+      }
+    }
+
+    return markers;
+  }
+
+  async writeMigrationMarker(marker: StatisticMigrationMarker): Promise<void> {
+    if (this.isImportMode || !isStatisticMigrationMarker(marker)) return;
+    const name = getMigrationMarkerFileName(marker.deviceId);
+    if (this.exportedV2Names.has(name)) return;
+    this.exportedV2Names.add(name);
+    this.exportZipWriter = await this.addDataToZip(
+      name,
+      JSON.stringify(marker),
+      this.exportZipWriter
+    );
+  }
+
+  async listLegacyStatisticSnapshots(): Promise<BooksDbStatistic[][]> {
+    const snapshots: BooksDbStatistic[][] = [];
+
+    for (const entry of this.importEntries) {
+      const slash = entry.filename.indexOf('/');
+      if (slash < 0 || !entry.filename.slice(slash + 1).startsWith('statistics_')) continue;
+      try {
+        const rows = await this.extractAsJSON(entry, 'Unable to read statistics');
+        if (Array.isArray(rows) && rows.length) snapshots.push(rows);
+      } catch {
+        // Best-effort migration read: skip unreadable entries.
+      }
+    }
+
+    return snapshots;
+  }
+
   async createExportZip(document: Document, resetOnly: boolean) {
     if (!resetOnly && this.exportZipWriter) {
       const a = document.createElement('a');
@@ -598,7 +698,6 @@ export class BackupStorageHandler extends BaseStorageHandler {
       this.clearData();
     }
   }
-
   private findEntry(filePrefix: string, progressBase = 0.1, context: ReplicationContext) {
     const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);
