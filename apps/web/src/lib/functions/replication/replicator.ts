@@ -27,6 +27,36 @@ export const exporterVersion = 1;
 
 const globalReplicationQueue = pLimit(1);
 
+/**
+ * Cross-tab sync serialization (M3): same-origin tabs take turns through
+ * `navigator.locks` where available, with the in-context queue as fallback.
+ * The lock name is origin-scoped by the platform. `locks` is injectable for
+ * tests; pass `undefined` explicitly to exercise the fallback.
+ */
+export function runSerialized<T>(
+  task: () => Promise<T>,
+  locks?: Navigator['locks'] | undefined | null
+): Promise<T> {
+  const available = locks === undefined ? getNavigatorLocks() : locks;
+  if (available) {
+    return available.request('ttu-reader-sync', { mode: 'exclusive' }, () =>
+      globalReplicationQueue(task)
+    );
+  }
+  return globalReplicationQueue(task);
+}
+
+function getNavigatorLocks(): Navigator['locks'] | undefined {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      return navigator.locks;
+    }
+  } catch {
+    // Non-DOM runtimes fall through to the in-context queue.
+  }
+  return undefined;
+}
+
 export async function importData(
   document: Document,
   targetHandler: BaseStorageHandler,
@@ -34,7 +64,7 @@ export async function importData(
   cancelSignal: AbortSignal,
   fileCountData?: Record<string, number>
 ) {
-  return globalReplicationQueue(async () => {
+  return runSerialized(async () => {
     const dataIds: number[] = [];
     const tasks: Promise<void>[] = [];
     const lastBookModified = new Date().getTime();
@@ -180,7 +210,7 @@ export async function replicateData(
   cancelSignal?: AbortSignal,
   skipTimestamp = false
 ) {
-  return globalReplicationQueue(async () => {
+  return runSerialized(async () => {
     const nonBookOperations = [
       StorageDataType.READING_GOALS,
       StorageDataType.PROFILES,

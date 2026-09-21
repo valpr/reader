@@ -21,14 +21,17 @@ import {
   replicationSaveBehavior$,
   statisticsMergeMode$
 } from '$lib/data/store';
+import { MergeMode } from '$lib/data/merge-mode';
 import { replicateData } from '$lib/functions/replication/replicator';
 import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
 import { recordSyncRun } from '$lib/functions/replication/sync-diagnostics';
+import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
+import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import { ApiStorageHandler } from '$lib/data/storage/handler/api-handler';
 import { logger } from '$lib/data/logger';
 import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
 
-const SYNC_DATA_TYPES = [
+export const SYNC_DATA_TYPES = [
   StorageDataType.PROGRESS,
   StorageDataType.STATISTICS,
   StorageDataType.READING_GOALS,
@@ -211,6 +214,107 @@ export async function triggerCloudSync(
   } catch (err: any) {
     const message = err?.message || 'Unknown sync error';
     logger.error(`Cloud sync retry failed for ${sourceName}: ${message}`);
+    return finish(message);
+  }
+}
+
+export type RecoveryDirection = 'push' | 'pull';
+
+/**
+ * One-shot recovery (M4, Advanced only, behind confirmation): a single
+ * directional sync with Overwrite + Replace semantics, so deletions and
+ * long-diverged state propagate explicitly. Normal syncs never use these
+ * modes — they always merge. Returns an error message (empty on success).
+ */
+export async function runOneShotRecovery(
+  window: Window,
+  sourceName: string,
+  direction: RecoveryDirection,
+  storageSources: BooksDbStorageSource[] = []
+): Promise<string> {
+  const startedAt = Date.now();
+  const finish = (error = '') => {
+    recordSyncRun({
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      target: sourceName,
+      attemptedTypes: SYNC_DATA_TYPES,
+      ...(error ? { error: `recovery(${direction}): ${error}` } : {})
+    });
+    return error;
+  };
+
+  if (!sourceName) return finish('No storage source');
+
+  try {
+    const identity = await ensureDeviceIdentity(database);
+
+    let sources = storageSources;
+    if (!sources.length) {
+      const db = await database.db;
+      sources = await db.getAll('storageSource');
+    }
+    const source = resolveSource(sourceName, sources);
+    if (!source) return finish(`No storage source with name ${sourceName} found`);
+
+    const targetHandler = getStorageHandler(
+      window,
+      source.type,
+      source.name,
+      true,
+      cacheStorageData$.getValue(),
+      ReplicationSaveBehavior.Overwrite,
+      MergeMode.REPLACE,
+      MergeMode.REPLACE
+    );
+    const localStorageHandler = getStorageHandler(
+      window,
+      StorageKey.BROWSER,
+      '',
+      true,
+      cacheStorageData$.getValue(),
+      ReplicationSaveBehavior.Overwrite,
+      MergeMode.REPLACE,
+      MergeMode.REPLACE
+    );
+
+    const db = await database.db;
+    const books = await db.getAll('data');
+    const contexts = books
+      .filter((b) => b && typeof b.title === 'string' && b.title.trim().length > 0)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        imagePath: b.coverImage || ''
+      }));
+
+    const from = direction === 'push' ? localStorageHandler : targetHandler;
+    const to = direction === 'push' ? targetHandler : localStorageHandler;
+    const error = await replicateData(from, to, false, contexts, SYNC_DATA_TYPES, undefined, true);
+    if (error) return finish(error);
+
+    const contributionsError = await syncStatisticContributions(
+      database,
+      targetHandler,
+      identity.deviceId
+    );
+    if (contributionsError) return finish(contributionsError);
+
+    try {
+      if (targetHandler instanceof ApiStorageHandler) {
+        targetHandler.invalidateBookListCache();
+        await targetHandler.getBookList();
+      }
+    } catch (listError: any) {
+      logger.warn(`Cloud book list refresh failed for ${sourceName}: ${listError?.message}`);
+    } finally {
+      database.listLoading$.next(false);
+      database.dataListChanged$.next(undefined);
+    }
+    return finish();
+  } catch (err: any) {
+    const message = err?.message || 'Unknown sync error';
+    logger.error(`One-shot recovery failed for ${sourceName}: ${message}`);
     return finish(message);
   }
 }

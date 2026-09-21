@@ -71,7 +71,7 @@ function writeStoredIdentity(identity: BooksDbDeviceIdentity): void {
   }
 }
 
-function createDeviceId(): string {
+export function createDeviceId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }

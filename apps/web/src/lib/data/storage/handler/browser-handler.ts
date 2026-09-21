@@ -39,6 +39,7 @@ import type {
 } from '$lib/functions/statistic-v2';
 import type { ThemeOption } from '$lib/data/theme-option';
 import { MergeMode } from '$lib/data/merge-mode';
+import { isPositionNewerThan } from '$lib/functions/position-util';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import { StorageDataType } from '$lib/data/storage/storage-types';
 
@@ -536,7 +537,13 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
       bookmarkData.dataId = dataId;
 
-      await database.putBookmark(bookmarkData);
+      // Deterministic last-write-wins (P6): only the newer
+      // (modifiedAt, deviceId) record replaces the current position, so two
+      // devices comparing the same pair always elect the same winner.
+      const existing = await database.getBookmark(dataId);
+      if (isPositionNewerThan(bookmarkData, existing)) {
+        await database.putBookmark(bookmarkData);
+      }
     }
   }
 

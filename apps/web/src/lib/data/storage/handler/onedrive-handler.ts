@@ -22,6 +22,8 @@ interface OneDriveFile extends ExternalFile {
   thumbnails?: ExternalThumbnail[];
   file: Record<string, string>;
   folder: Record<string, string>;
+  cTag?: string;
+  eTag?: string;
 }
 
 interface BatchRequest {
@@ -54,6 +56,12 @@ interface ExternalThumbnailData {
   height: number;
   width: number;
   url: string;
+}
+
+/** Content tag first (changes with every byte change), metadata tag as fallback. */
+function withRevision<T extends OneDriveFile>(file: T): T & { revision?: string } {
+  const revision = file.cTag || file.eTag;
+  return revision ? { ...file, revision } : file;
 }
 
 export class OneDriveStorageHandler extends ApiStorageHandler {
@@ -307,7 +315,7 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
       for (let index = 0, { length } = rootFiles; index < length; index += 1) {
         const rootFile = rootFiles[index];
 
-        this.setRootFile(rootFile.name, rootFile);
+        this.setRootFile(rootFile.name, withRevision(rootFile));
       }
 
       this.rootFileListFetched = true;
@@ -318,7 +326,9 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     await this.ensureTitle();
     const rootFiles = await this.list(this.rootId, false, true);
 
-    return rootFiles.filter((file) => file.name.startsWith(prefix));
+    return rootFiles
+      .filter((file) => file.name.startsWith(prefix))
+      .map((file) => withRevision(file));
   }
 
   protected retrieve(
@@ -344,6 +354,23 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     progressBase = 0.8,
     title: string
   ) {
+    // Conditional fast path (M3): small root singleton writes with a known
+    // etag go through If-Match instead of an upload session, so a concurrent
+    // writer gets a real 412 instead of a silent overwrite. Book-folder
+    // blobs keep the resumable session path. When Graph ignores the
+    // precondition, the post-write reconcile still repairs the loss.
+    if (body !== undefined && remoteFile?.revision && rootFilePrefix) {
+      return this.conditionalRootUpdate(
+        name,
+        remoteFile,
+        body,
+        files,
+        rootFilePrefix,
+        title,
+        progressBase
+      );
+    }
+
     const params = new URLSearchParams();
     params.append('select', `id,name`);
 
@@ -375,7 +402,7 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
         params.append(paramName, paramValue);
       }
 
-      params.append('select', `id,name`);
+      params.append('select', `id,name,cTag,eTag`);
 
       if (!uploadUrl) {
         throw new Error('Upload url was not returned');
@@ -415,7 +442,8 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
           files,
           remoteFile,
           {
-            thumbnails: response.thumbnails
+            thumbnails: response.thumbnails,
+            revision: response.cTag || response.eTag
           },
           rootFilePrefix,
           title
@@ -450,6 +478,63 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
     return this.request(`${this.baseEndpoint}/${id}`, { method: 'DELETE' });
   }
 
+  private async conditionalRootUpdate(
+    name: string,
+    remoteFile: OneDriveFile,
+    body: Blob | string,
+    files: OneDriveFile[],
+    rootFilePrefix: string,
+    title: string,
+    progressBase: number
+  ): Promise<OneDriveFile> {
+    const updated = await this.request(
+      `${this.baseEndpoint}/${remoteFile.id}/content`,
+      {
+        method: 'PUT',
+        headers: { 'If-Match': remoteFile.revision as string },
+        body,
+        trackUpload: true
+      },
+      'json',
+      progressBase
+    );
+
+    let finalId: string = updated.id;
+    let finalName: string = updated.name;
+    let revision: string | undefined = updated.cTag || updated.eTag;
+
+    if (name !== updated.name) {
+      const renamed = await this.request(
+        `${this.baseEndpoint}/${remoteFile.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(revision ? { 'If-Match': revision } : {})
+          },
+          body: JSON.stringify({ name })
+        },
+        'json',
+        0.2
+      );
+      finalId = renamed.id;
+      finalName = renamed.name;
+      revision = renamed.cTag || renamed.eTag || revision;
+    }
+
+    this.updateAfterUpload(
+      finalId,
+      finalName,
+      files,
+      remoteFile,
+      { thumbnails: updated.thumbnails, revision },
+      rootFilePrefix,
+      title
+    );
+
+    return { ...updated, id: finalId, name: finalName };
+  }
+
   private async list(
     parent = 'root',
     withThumbnail = false,
@@ -465,7 +550,7 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
       const targetParent = parent === 'root' && this.rootId ? this.rootId : parent;
       const params = new URLSearchParams();
 
-      params.append('select', `id,name,file,folder`);
+      params.append('select', `id,name,cTag,eTag,file,folder`);
 
       if (!listFiles) {
         params.append('filter', 'folder ne null');

@@ -44,6 +44,9 @@ export class BackupStorageHandler extends BaseStorageHandler {
 
   private importEntries: Entry[] = [];
 
+  /** Stable v2 names already appended to the in-progress export zip. */
+  private exportedV2Names = new Set<string>();
+
   getBookList() {
     return Promise.resolve([]);
   }
@@ -147,6 +150,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
       this.exportZipWriter = undefined;
       this.importReader = undefined;
       this.importEntries = [];
+      this.exportedV2Names.clear();
     }
   }
 
@@ -609,8 +613,11 @@ export class BackupStorageHandler extends BaseStorageHandler {
 
     for (const payload of contributionFiles) {
       if (!isContributionFile(payload)) continue;
+      const name = getContributionFileName(payload.deviceId, payload.year);
+      if (this.exportedV2Names.has(name)) continue;
+      this.exportedV2Names.add(name);
       this.exportZipWriter = await this.addDataToZip(
-        getContributionFileName(payload.deviceId, payload.year),
+        name,
         JSON.stringify(payload),
         this.exportZipWriter
       );
@@ -635,8 +642,11 @@ export class BackupStorageHandler extends BaseStorageHandler {
 
   async writeMigrationMarker(marker: StatisticMigrationMarker): Promise<void> {
     if (this.isImportMode || !isStatisticMigrationMarker(marker)) return;
+    const name = getMigrationMarkerFileName(marker.deviceId);
+    if (this.exportedV2Names.has(name)) return;
+    this.exportedV2Names.add(name);
     this.exportZipWriter = await this.addDataToZip(
-      getMigrationMarkerFileName(marker.deviceId),
+      name,
       JSON.stringify(marker),
       this.exportZipWriter
     );
@@ -688,7 +698,6 @@ export class BackupStorageHandler extends BaseStorageHandler {
       this.clearData();
     }
   }
-
   private findEntry(filePrefix: string, progressBase = 0.1, context: ReplicationContext) {
     const ctx = context;
     const sanitizedTitle = BaseStorageHandler.sanitizeForFilename(ctx.title);

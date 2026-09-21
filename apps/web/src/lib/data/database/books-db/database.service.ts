@@ -502,6 +502,16 @@ export class DatabaseService {
     ) {
       return;
     }
+    // Stamp the authoring device when absent so position conflicts resolve
+    // deterministically (P6). Incoming sync records already carry their
+    // origin device and are never restamped here.
+    if (!bookmarkData.deviceId) {
+      const db = await this.db;
+      const identity = await db.get('deviceIdentity', 0).catch(() => undefined);
+      if (identity?.deviceId) {
+        bookmarkData = { ...bookmarkData, deviceId: identity.deviceId };
+      }
+    }
     const db = await this.db;
 
     return db.put('bookmark', bookmarkData);
@@ -675,6 +685,16 @@ export class DatabaseService {
     this.userBookmarksChanged$.next();
   }
 
+  /**
+   * User-bookmark sync (P6): union by stable bookmark identity
+   * `(exploredCharCount, createdAt)` — local auto-increment ids are NOT
+   * stable across devices, so they are never used for matching. Newer
+   * `lastModified` wins per bookmark. Bookmark *deletion* does not propagate:
+   * deletion sync (and its tombstones) is intentionally not built until the
+   * feature exists — a locally deleted bookmark reappears on the next merge
+   * from a device that still holds it. Overwrite mode (one-shot recovery
+   * only) replaces the manual set so deletions propagate explicitly.
+   */
   async storeUserBookmarks(
     title: string,
     bookmarks: BooksDbUserBookmarkData[],

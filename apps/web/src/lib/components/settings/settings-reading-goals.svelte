@@ -312,7 +312,7 @@
     }
 
     dialogMessage +=
-      '\n\nExecute an one time Sync with an export behavior of "overwrite" and/or reading goals merge mode of "replace" to apply deletions to other devices';
+      '\n\nDeletions stay on this device. To apply them to other devices, use Sync Recovery in Settings → Data (“Use this device as the source”).';
 
     const wasCanceled = await new Promise((resolver) => {
       dialogManager.dialogs$.next([

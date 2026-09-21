@@ -4,9 +4,9 @@
  * All rights reserved.
  */
 
-import type BooksDbV12 from '$lib/data/database/books-db/versions/v12/books-db-v12';
+import type BooksDbV13 from '$lib/data/database/books-db/versions/v13/books-db-v13';
 
-type BooksDb = BooksDbV12;
+type BooksDb = BooksDbV13;
 
 export type BooksDbBookData = BooksDb['data']['value'];
 export type BooksDbBookmarkData = BooksDb['bookmark']['value'];
@@ -23,6 +23,6 @@ export type BooksDbStatisticContribution = BooksDb['statisticContribution']['val
 export type BooksDbRemoteStatisticContribution = BooksDb['statisticRemoteContribution']['value'];
 export type BooksDbStatisticSyncState = BooksDb['statisticSyncState']['value'];
 export type { BookmarkColor } from '$lib/data/database/books-db/versions/v7/books-db-v7';
-export const currentDbVersion = 12;
+export const currentDbVersion = 13;
 
 export type { BooksDb as default };

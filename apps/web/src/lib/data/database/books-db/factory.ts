@@ -9,7 +9,7 @@ import { openDB } from 'idb';
 import upgradeBooksDbFromV2 from './versions/v2/upgrade';
 
 export function createBooksDb(name = 'books') {
-  return openDB<BooksDb>(name, 12, {
+  return openDB<BooksDb>(name, 13, {
     async upgrade(oldDb, oldVersion, newVersion, transaction) {
       if (oldVersion < 3 && oldVersion >= 2) {
         await upgradeBooksDbFromV2(oldDb, oldVersion, newVersion, transaction);

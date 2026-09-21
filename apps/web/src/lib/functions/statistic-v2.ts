@@ -8,6 +8,7 @@ import type {
   BooksDbStatistic,
   BooksDbStatisticContribution
 } from '$lib/data/database/books-db/versions/books-db';
+import { mergeStatistics } from '$lib/functions/statistic-util';
 
 /**
  * Statistics v2 (sync-redesign P3/P4): per-device contribution model.
@@ -293,8 +294,9 @@ function sumByKey(
   return result;
 }
 
-/** A contribution row carries real reading worth publishing. */
-export function isPublishableContributionRow(row: BooksDbStatistic): boolean {
+/** A contribution row carries real reading worth publishing. */ export function isPublishableContributionRow(
+  row: BooksDbStatistic
+): boolean {
   return (
     (row.readingTime || 0) > 0 ||
     (row.charactersRead || 0) > 0 ||
@@ -333,4 +335,62 @@ export function groupContributionsByYear(
       yearRows
     )
   );
+}
+
+/**
+ * Old non-additive legacy merge, applied per title (the legacy merge keys on
+ * date only). Used for migration baselines and duplicate repair — never for
+ * summing attributed contributions.
+ */ export function mergeLegacySnapshotRows(snapshots: BooksDbStatistic[][]): BooksDbStatistic[] {
+  const byTitle = new Map<string, BooksDbStatistic[]>();
+  for (const rows of snapshots || []) {
+    for (const row of rows || []) {
+      if (!row?.title || !row?.dateKey) continue;
+      const list = byTitle.get(row.title);
+      if (list) list.push(row);
+      else byTitle.set(row.title, [row]);
+    }
+  }
+
+  const merged: BooksDbStatistic[] = [];
+  for (const rows of byTitle.values()) {
+    merged.push(...mergeStatistics(rows, [], false));
+  }
+  return merged;
+}
+
+/**
+ * Stable content hash for clone detection: fixed field order, rows sorted by
+ * key. Two tabs on one device always agree; a second device reusing our
+ * deviceId produces a different hash (or a higher revision) and is held.
+ */
+export function hashContributionRows(rows: BooksDbStatisticContribution[]): string {
+  const normalized = (rows || [])
+    .filter((row) => row?.title && row?.dateKey)
+    .map((row) => [
+      row.title,
+      row.dateKey,
+      row.charactersRead || 0,
+      row.readingTime || 0,
+      row.lookupCount || 0,
+      row.sessionCount || 0,
+      row.longestSessionSeconds || 0,
+      row.maxProgress || 0,
+      row.minReadingSpeed || 0,
+      row.altMinReadingSpeed || 0,
+      row.lastReadingSpeed || 0,
+      row.maxReadingSpeed || 0,
+      row.lastStatisticModified || 0,
+      row.readingTimeByHour || 0,
+      row.charactersByHour || 0,
+      row.lookupsByHour || 0,
+      row.readingTimeByProfile || 0,
+      row.completedBook || 0,
+      row.completedData || 0,
+      row.revision || 0
+    ])
+    .sort((a, b) =>
+      a[0] === b[0] ? (a[1] > b[1] ? 1 : -1) : (a[0] as string) > (b[0] as string) ? 1 : -1
+    );
+  return JSON.stringify(normalized);
 }

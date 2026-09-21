@@ -11,7 +11,7 @@
     "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
     "lint": "eslint --fix .",
     "test:e2e": "playwright test",
-    "test:smoke": "playwright test app.spec.ts library-filters.spec.ts book-tags.spec.ts book-card-menu.spec.ts reader-header.spec.ts tooltips.spec.ts manage-storage-sources.spec.ts sync-diagnostics.spec.ts device-identity.spec.ts statistics-v2.spec.ts statistics-v2-sync.spec.ts --project=chromium && playwright test mobile/manage-cards.spec.ts mobile/manage-dialog.spec.ts mobile/manage-header.spec.ts mobile/reader-header.spec.ts --project=mobile"
+    "test:smoke": "playwright test app.spec.ts library-filters.spec.ts book-tags.spec.ts book-card-menu.spec.ts reader-header.spec.ts tooltips.spec.ts manage-storage-sources.spec.ts sync-diagnostics.spec.ts device-identity.spec.ts statistics-v2.spec.ts statistics-v2-sync.spec.ts sync-conflicts.spec.ts position-behavior.spec.ts sync-preferences.spec.ts --project=chromium && playwright test mobile/manage-cards.spec.ts mobile/manage-dialog.spec.ts mobile/manage-header.spec.ts mobile/reader-header.spec.ts mobile/sync-recovery.spec.ts --project=mobile"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -29,6 +29,7 @@ import type {
 import { mergeReadingGoals, readingGoalSortFunction } from '$lib/data/reading-goal';
 import type { ThemeOption } from '$lib/data/theme-option';
 import { mergeStatistics, updateStatisticToStore } from '$lib/functions/statistic-util';
+import { isPositionNewerThan } from '$lib/functions/position-util';
 import {
   getMigrationMarkerFileName,
   isContributionFile,
@@ -396,7 +397,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
   }
 
   async getProgress(context: ReplicationContext) {
-    const { file } = await this.getExternalFile(
+    const { file, files } = await this.getExternalFile(
       'progress_',
       this.isForBrowser ? 0.6 : 0.8,
       context
@@ -406,16 +407,34 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       return undefined;
     }
 
-    const progressFile = await file.getFile();
-
-    if (this.isForBrowser) {
-      const progress = JSON.parse(await FilesystemStorageHandler.readFileObject(progressFile));
-
-      BaseStorageHandler.reportProgress(0.4);
-      return progress;
+    // Duplicate-aware (M4): resolve concurrent progress_ files to the
+    // deterministic (modifiedAt, deviceId) winner instead of first-match.
+    let winner = await this.readJsonFile(file);
+    let winnerHandle = file;
+    for (const dupe of (files || []).filter(
+      (entry) => entry.name.startsWith('progress_') && entry.name !== file.name
+    )) {
+      try {
+        const candidate = await this.readJsonFile(dupe);
+        if (isPositionNewerThan(candidate, winner)) {
+          winner = candidate;
+          winnerHandle = dupe;
+        }
+      } catch {
+        // Unreadable duplicates lose by default.
+      }
     }
 
-    return progressFile;
+    if (this.isForBrowser) {
+      BaseStorageHandler.reportProgress(0.4);
+      return winner;
+    }
+
+    return winnerHandle.getFile();
+  }
+
+  private async readJsonFile(handle: FileSystemFileHandle): Promise<any> {
+    return JSON.parse(await FilesystemStorageHandler.readFileObject(await handle.getFile()));
   }
 
   async getStatistics(context: ReplicationContext) {
@@ -571,7 +590,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
   }
 
   async getUserBookmarks(context: ReplicationContext) {
-    const { file } = await this.getExternalFile(
+    const { file, files } = await this.getExternalFile(
       FilePrefix.USER_BOOKMARKS,
       this.isForBrowser ? 0.6 : 0.8,
       context
@@ -581,16 +600,32 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       return undefined;
     }
 
-    const ubFile = await file.getFile();
-
-    if (this.isForBrowser) {
-      const ub = JSON.parse(await FilesystemStorageHandler.readFileObject(ubFile));
-
-      BaseStorageHandler.reportProgress(0.4);
-      return ub;
+    // Union across duplicate files (P6): every file's rows participate in
+    // the downstream stable-id merge rather than first-match winning.
+    let combined: BooksDbUserBookmarkData[] = [];
+    const sources = [
+      file,
+      ...(files || []).filter(
+        (entry) => entry.name.startsWith(FilePrefix.USER_BOOKMARKS) && entry.name !== file.name
+      )
+    ];
+    for (const source of sources) {
+      try {
+        const rows = await this.readJsonFile(source);
+        if (Array.isArray(rows) && rows.length) combined = [...combined, ...rows];
+      } catch {
+        // Unreadable duplicates are skipped.
+      }
     }
 
-    return ubFile;
+    if (this.isForBrowser) {
+      BaseStorageHandler.reportProgress(0.4);
+      return combined;
+    }
+
+    return new File([new Blob([JSON.stringify(combined)])], file.name, {
+      type: 'application/json'
+    });
   }
 
   async saveBook(

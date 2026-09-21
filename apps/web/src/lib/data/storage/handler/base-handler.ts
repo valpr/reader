@@ -54,6 +54,12 @@ export enum FilePrefix {
 export interface ExternalFile {
   id: string;
   name: string;
+  /**
+   * Opaque provider revision (Drive/Graph etag) for conditional writes (M3).
+   * Absent where the provider exposes none — those paths use
+   * list-and-reconcile instead of preconditions.
+   */
+  revision?: string;
 }
 
 export abstract class BaseStorageHandler {

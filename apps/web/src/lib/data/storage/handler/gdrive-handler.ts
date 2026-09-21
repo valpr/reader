@@ -21,6 +21,7 @@ import pLimit from 'p-limit';
 interface GDriveFile extends ExternalFile {
   thumbnailLink?: string;
   parents: string[];
+  etag?: string;
 }
 
 export class GDriveStorageHandler extends ApiStorageHandler {
@@ -223,13 +224,13 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     if ((!this.cacheStorageData || !this.rootFileListFetched) && !this.rootFiles.size) {
       const rootFiles = await this.list(
         `trashed=false and mimeType!='application/vnd.google-apps.folder' and '${this.rootId}' in parents`,
-        'files(id,name)'
+        'files(id,name,etag)'
       );
 
       for (let index = 0, { length } = rootFiles; index < length; index += 1) {
         const rootFile = rootFiles[index];
 
-        this.setRootFile(rootFile.name, rootFile);
+        this.setRootFile(rootFile.name, { ...rootFile, revision: rootFile.etag });
       }
 
       this.rootFileListFetched = true;
@@ -240,10 +241,12 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     await this.ensureTitle();
     const rootFiles = await this.list(
       `trashed=false and mimeType!='application/vnd.google-apps.folder' and '${this.rootId}' in parents`,
-      'files(id,name)'
+      'files(id,name,etag)'
     );
 
-    return rootFiles.filter((file) => file.name.startsWith(prefix));
+    return rootFiles
+      .filter((file) => file.name.startsWith(prefix))
+      .map((file) => ({ ...file, revision: file.etag }));
   }
 
   protected retrieve(
@@ -314,7 +317,8 @@ export class GDriveStorageHandler extends ApiStorageHandler {
       files,
       externalFile,
       {
-        parents: [folderId]
+        parents: [folderId],
+        revision: response.etag
       },
       rootFilePrefix,
       title

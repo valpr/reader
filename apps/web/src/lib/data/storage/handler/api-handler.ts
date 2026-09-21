@@ -10,6 +10,7 @@ import type {
   BooksDbBookmarkData,
   BooksDbReadingGoal,
   BooksDbStatistic,
+  BooksDbStatisticContribution,
   BooksDbSubtitleData,
   BooksDbUserBookmarkData
 } from '$lib/data/database/books-db/versions/books-db';
@@ -45,7 +46,9 @@ import { StorageKey } from '$lib/data/storage/storage-types';
 import { database, markPendingCloudSync } from '$lib/data/store';
 import {
   convertAuthErrorResponse,
-  handleErrorDuringReplication
+  ConflictError,
+  handleErrorDuringReplication,
+  withConflictRetry
 } from '$lib/functions/replication/error-handler';
 import { AbortError, throwIfAborted } from '$lib/functions/replication/replication-error';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
@@ -54,12 +57,16 @@ import {
   type ReplicationContext
 } from '$lib/functions/replication/replication-progress';
 import { mergeStatistics, updateStatisticToStore } from '$lib/functions/statistic-util';
+import { isPositionNewerThan } from '$lib/functions/position-util';
 import {
   getMigrationMarkerFileName,
   isContributionFile,
   isContributionFileName,
   isMigrationMarkerFileName,
   isStatisticMigrationMarker,
+  mergeLegacySnapshotRows,
+  parseContributionFileName,
+  parseMigrationMarkerFileName,
   type StatisticContributionFile,
   type StatisticMigrationMarker
 } from '$lib/functions/statistic-v2';
@@ -78,6 +85,44 @@ interface RequestOptions {
    * via a pre-opened window instead (see StorageOAuthManager.reconnect).
    */
   allowInteractiveAuth?: boolean;
+}
+
+function isProfilesPayload(value: unknown): value is ReaderProfilesSyncPayload {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Array.isArray((value as ReaderProfilesSyncPayload).profiles)
+  );
+}
+
+function isBookTagsPayload(value: unknown): value is BookTagsSyncPayload {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as BookTagsSyncPayload).tagsByTitle === 'object'
+  );
+}
+
+function mergeProfilesPayloads(payloads: ReaderProfilesSyncPayload[]): ReaderProfilesSyncPayload {
+  let profiles: ReaderProfile[] = [];
+  let lastModified = 0;
+  let customThemes: Record<string, ThemeOption> | undefined;
+  let statisticsSettings: StatisticsSyncSection | undefined;
+
+  for (const payload of payloads) {
+    const result = mergeProfiles(profiles, payload.profiles || [], false, lastModified);
+    profiles = result.mergedProfiles;
+    lastModified = Math.max(lastModified, result.newLastModified, payload.lastModified || 0);
+    if (payload.customThemes) {
+      customThemes = { ...(customThemes || {}), ...payload.customThemes };
+    }
+    statisticsSettings = newerStatisticsSettingsSection(
+      statisticsSettings,
+      payload.statisticsSettings
+    );
+  }
+
+  return { version: 1, lastModified, profiles, customThemes, statisticsSettings };
 }
 
 export abstract class ApiStorageHandler extends BaseStorageHandler {
@@ -450,19 +495,39 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
   }
 
   async getProgress(context: ReplicationContext) {
-    const { file, data } = await this.getExternalFile('progress_', 'json', 1, true, context);
+    const { file, files, data } = await this.getExternalFile('progress_', 'json', 1, true, context);
 
     if (!file) {
       return undefined;
     }
 
+    // Duplicate-aware (M4): concurrent uploads can leave several progress_
+    // files behind one name race; resolve to the deterministic
+    // (modifiedAt, deviceId) winner instead of first-match.
+    let winner = data;
+    let winnerName = file.name;
+    const dupes = (files || []).filter(
+      (entry) => entry.name.startsWith('progress_') && entry.id !== file.id
+    );
+    for (const dupe of dupes) {
+      try {
+        const candidate = await this.retrieve(dupe, 'json', 0.2);
+        if (isPositionNewerThan(candidate, winner)) {
+          winner = candidate;
+          winnerName = dupe.name;
+        }
+      } catch {
+        // Unreadable duplicates lose by default.
+      }
+    }
+
     return this.isForBrowser
-      ? data
-      : new File([new Blob([JSON.stringify(data)])], file.name, { type: 'application/json' });
+      ? winner
+      : new File([new Blob([JSON.stringify(winner)])], winnerName, { type: 'application/json' });
   }
 
   async getUserBookmarks(context: ReplicationContext) {
-    const { file, data } = await this.getExternalFile(
+    const { file, files, data } = await this.getExternalFile(
       FilePrefix.USER_BOOKMARKS,
       'json',
       1,
@@ -474,9 +539,30 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
       return undefined;
     }
 
+    // Union across duplicate files (P6): bookmarks merge by stable identity
+    // downstream, so every file's rows participate rather than first-match.
+    let combined = Array.isArray(data) ? data : [];
+    let winnerName = file.name;
+    const dupes = (files || []).filter(
+      (entry) => entry.name.startsWith(FilePrefix.USER_BOOKMARKS) && entry.id !== file.id
+    );
+    for (const dupe of dupes) {
+      try {
+        const candidate = await this.retrieve(dupe, 'json', 0.2);
+        if (Array.isArray(candidate) && candidate.length) {
+          combined = [...combined, ...candidate];
+          winnerName = dupe.name;
+        }
+      } catch {
+        // Unreadable duplicates are skipped.
+      }
+    }
+
     return this.isForBrowser
-      ? data
-      : new File([new Blob([JSON.stringify(data)])], file.name, { type: 'application/json' });
+      ? combined
+      : new File([new Blob([JSON.stringify(combined)])], winnerName, {
+          type: 'application/json'
+        });
   }
 
   async getStatistics(context: ReplicationContext) {
@@ -741,24 +827,30 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
 
   async writeContributionFiles(contributionFiles: StatisticContributionFile[]): Promise<void> {
     if (!contributionFiles.length) return;
-    await this.ensureTitle();
-    const existing = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+    await withConflictRetry('Statistic contributions', async () => {
+      await this.ensureTitle();
+      const existing = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
 
-    for (const payload of contributionFiles) {
-      if (!isContributionFile(payload)) continue;
-      const name = BaseStorageHandler.getContributionFileName(payload.deviceId, payload.year);
-      const match = existing.find((entry) => entry.name === name);
-      await this.upload(
-        this.rootId,
-        name,
-        existing,
-        match,
-        JSON.stringify(payload),
-        undefined,
-        undefined,
-        ''
-      );
-    }
+      for (const payload of contributionFiles) {
+        if (!isContributionFile(payload)) continue;
+        const name = BaseStorageHandler.getContributionFileName(payload.deviceId, payload.year);
+        const match = existing.find((entry) => entry.name === name);
+        await this.upload(
+          this.rootId,
+          name,
+          existing,
+          match,
+          JSON.stringify(payload),
+          BaseStorageHandler.contributionFilePrefix,
+          undefined,
+          ''
+        );
+      }
+    });
+
+    await this.reconcileContributionFiles().catch((error: unknown) => {
+      logger.warn(`Contribution files reconcile deferred: ${(error as Error)?.message}`);
+    });
   }
 
   async listMigrationMarkers(): Promise<StatisticMigrationMarker[]> {
@@ -781,20 +873,26 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
 
   async writeMigrationMarker(marker: StatisticMigrationMarker): Promise<void> {
     if (!isStatisticMigrationMarker(marker)) return;
-    await this.ensureTitle();
-    const existing = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
-    const name = getMigrationMarkerFileName(marker.deviceId);
-    const match = existing.find((entry) => entry.name === name);
-    await this.upload(
-      this.rootId,
-      name,
-      existing,
-      match,
-      JSON.stringify(marker),
-      undefined,
-      undefined,
-      ''
-    );
+    await withConflictRetry('Migration marker', async () => {
+      await this.ensureTitle();
+      const existing = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+      const name = getMigrationMarkerFileName(marker.deviceId);
+      const match = existing.find((entry) => entry.name === name);
+      await this.upload(
+        this.rootId,
+        name,
+        existing,
+        match,
+        JSON.stringify(marker),
+        BaseStorageHandler.contributionFilePrefix,
+        undefined,
+        ''
+      );
+    });
+
+    await this.reconcileContributionFiles().catch((error: unknown) => {
+      logger.warn(`Migration marker reconcile deferred: ${(error as Error)?.message}`);
+    });
   }
 
   async listLegacyStatisticSnapshots(): Promise<BooksDbStatistic[][]> {
@@ -834,39 +932,63 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
   }
 
   async saveReadingGoals(readingGoals: BooksDbReadingGoal[], lastGoalModified: number) {
-    const isMerge = this.readingGoalsMergeMode === MergeMode.MERGE;
-    const { file, data: existingData } = await this.getRootFile(
+    await withConflictRetry('Reading goals', async (attemptNumber) => {
+      if (attemptNumber > 1) await this.refreshRootFiles();
+      const isMerge = this.readingGoalsMergeMode === MergeMode.MERGE;
+      const { file, data: existingData } = await this.getRootFile(
+        BaseStorageHandler.readingGoalsFilePrefix,
+        isMerge ? 'json' : '',
+        0.2
+      );
+
+      let readingGoalsToStore: BooksDbReadingGoal[] = readingGoals;
+      let newReadingGoalModified = lastGoalModified;
+
+      if (isMerge) {
+        ({ readingGoalsToStore, newReadingGoalModified } = mergeReadingGoals(
+          readingGoals,
+          existingData,
+          this.saveBehavior === ReplicationSaveBehavior.NewOnly,
+          lastGoalModified
+        ));
+      }
+
+      const filename = BaseStorageHandler.getReadingGoalsFileName(newReadingGoalModified);
+
+      readingGoalsToStore.sort(readingGoalSortFunction);
+
+      await this.upload(
+        this.rootId,
+        filename,
+        [],
+        file,
+        JSON.stringify(readingGoalsToStore),
+        BaseStorageHandler.readingGoalsFilePrefix,
+        undefined,
+        ''
+      );
+    });
+
+    await this.reconcileSingletonRootFile(
       BaseStorageHandler.readingGoalsFilePrefix,
-      isMerge ? 'json' : '',
-      0.2
-    );
-
-    let readingGoalsToStore: BooksDbReadingGoal[] = readingGoals;
-    let newReadingGoalModified = lastGoalModified;
-
-    if (isMerge) {
-      ({ readingGoalsToStore, newReadingGoalModified } = mergeReadingGoals(
-        readingGoals,
-        existingData,
-        this.saveBehavior === ReplicationSaveBehavior.NewOnly,
-        lastGoalModified
-      ));
-    }
-
-    const filename = BaseStorageHandler.getReadingGoalsFileName(newReadingGoalModified);
-
-    readingGoalsToStore.sort(readingGoalSortFunction);
-
-    await this.upload(
-      this.rootId,
-      filename,
-      [],
-      file,
-      JSON.stringify(readingGoalsToStore),
-      BaseStorageHandler.readingGoalsFilePrefix,
-      undefined,
-      ''
-    );
+      (raw) => (Array.isArray(raw) ? (raw as BooksDbReadingGoal[]) : undefined),
+      (goalLists) => {
+        let merged: BooksDbReadingGoal[] = [];
+        let modified = 0;
+        for (const goals of goalLists) {
+          const result = mergeReadingGoals(goals, merged, false, modified);
+          merged = result.readingGoalsToStore;
+          modified = result.newReadingGoalModified;
+        }
+        merged.sort(readingGoalSortFunction);
+        return {
+          name: BaseStorageHandler.getReadingGoalsFileName(modified),
+          body: JSON.stringify(merged)
+        };
+      }
+    ).catch((error: unknown) => {
+      logger.warn(`Reading-goals reconcile deferred: ${(error as Error)?.message}`);
+    });
   }
 
   async saveProfiles(
@@ -875,59 +997,83 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     customThemes?: Record<string, ThemeOption>,
     statisticsSettings?: StatisticsSyncSection
   ) {
-    const isMerge = this.profilesMergeMode === MergeMode.MERGE;
-    const { file, data: existingData } = await this.getRootFile(
-      BaseStorageHandler.profilesFilePrefix,
-      isMerge ? 'json' : '',
-      0.2
-    );
-
-    let profilesToStore: ReaderProfile[] = profiles;
-    let newProfilesModified = lastProfilesModified;
-    let customThemesToStore = customThemes;
-    let statisticsSettingsToStore = statisticsSettings;
-
-    if (isMerge && existingData) {
-      const existingPayload = existingData as ReaderProfilesSyncPayload;
-      const result = mergeProfiles(
-        existingPayload.profiles || [],
-        profiles,
-        this.saveBehavior === ReplicationSaveBehavior.NewOnly,
-        lastProfilesModified
+    await withConflictRetry('Reader profiles', async (attemptNumber) => {
+      if (attemptNumber > 1) await this.refreshRootFiles();
+      const isMerge = this.profilesMergeMode === MergeMode.MERGE;
+      const { file, data: existingData } = await this.getRootFile(
+        BaseStorageHandler.profilesFilePrefix,
+        isMerge ? 'json' : '',
+        0.2
       );
-      profilesToStore = result.mergedProfiles;
-      newProfilesModified = result.newLastModified;
-      if (existingPayload.customThemes) {
-        customThemesToStore = {
-          ...existingPayload.customThemes,
-          ...(customThemes || {})
+
+      let profilesToStore: ReaderProfile[] = profiles;
+      let newProfilesModified = lastProfilesModified;
+      let customThemesToStore = customThemes;
+      let statisticsSettingsToStore = statisticsSettings;
+
+      if (isMerge && existingData) {
+        const existingPayload = existingData as ReaderProfilesSyncPayload;
+        const result = mergeProfiles(
+          existingPayload.profiles || [],
+          profiles,
+          this.saveBehavior === ReplicationSaveBehavior.NewOnly,
+          lastProfilesModified
+        );
+        profilesToStore = result.mergedProfiles;
+        newProfilesModified = result.newLastModified;
+        if (existingPayload.customThemes) {
+          customThemesToStore = {
+            ...existingPayload.customThemes,
+            ...(customThemes || {})
+          };
+        }
+        statisticsSettingsToStore = newerStatisticsSettingsSection(
+          existingPayload.statisticsSettings,
+          statisticsSettings
+        );
+      }
+
+      const filename = BaseStorageHandler.getProfilesFileName(newProfilesModified);
+      const payload: ReaderProfilesSyncPayload = {
+        version: 1,
+        lastModified: newProfilesModified,
+        profiles: profilesToStore,
+        customThemes: customThemesToStore,
+        statisticsSettings: statisticsSettingsToStore
+      };
+
+      await this.upload(
+        this.rootId,
+        filename,
+        [],
+        file,
+        JSON.stringify(payload),
+        BaseStorageHandler.profilesFilePrefix,
+        undefined,
+        ''
+      );
+    });
+
+    await this.reconcileSingletonRootFile(
+      BaseStorageHandler.profilesFilePrefix,
+      (raw) => (isProfilesPayload(raw) ? raw : undefined),
+      (payloads) => {
+        const merged = mergeProfilesPayloads(payloads);
+        const payload: ReaderProfilesSyncPayload = {
+          version: 1,
+          lastModified: merged.lastModified,
+          profiles: merged.profiles,
+          customThemes: merged.customThemes,
+          statisticsSettings: merged.statisticsSettings
+        };
+        return {
+          name: BaseStorageHandler.getProfilesFileName(merged.lastModified),
+          body: JSON.stringify(payload)
         };
       }
-      statisticsSettingsToStore = newerStatisticsSettingsSection(
-        existingPayload.statisticsSettings,
-        statisticsSettings
-      );
-    }
-
-    const filename = BaseStorageHandler.getProfilesFileName(newProfilesModified);
-    const payload: ReaderProfilesSyncPayload = {
-      version: 1,
-      lastModified: newProfilesModified,
-      profiles: profilesToStore,
-      customThemes: customThemesToStore,
-      statisticsSettings: statisticsSettingsToStore
-    };
-
-    await this.upload(
-      this.rootId,
-      filename,
-      [],
-      file,
-      JSON.stringify(payload),
-      BaseStorageHandler.profilesFilePrefix,
-      undefined,
-      ''
-    );
+    ).catch((error: unknown) => {
+      logger.warn(`Profiles reconcile deferred: ${(error as Error)?.message}`);
+    });
   }
 
   async saveBookTags(
@@ -935,46 +1081,76 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     titles: Record<string, string> | undefined,
     lastTagsModified: number
   ) {
-    const isOverwrite = this.saveBehavior === ReplicationSaveBehavior.Overwrite;
-    const { file, data: existingData } = await this.getRootFile(
-      BaseStorageHandler.bookTagsFilePrefix,
-      isOverwrite ? '' : 'json',
-      0.2
-    );
-
-    let tagsToStore: BookTagsDict = tags instanceof File ? {} : tags;
-    let titlesToStore = titles;
-    let newTagsModified = lastTagsModified;
-
-    if (!isOverwrite && existingData) {
-      const existingPayload = existingData as BookTagsSyncPayload;
-      tagsToStore = mergeTagsDicts(existingPayload.tagsByTitle, tagsToStore);
-      titlesToStore = mergeTagsTitles(existingPayload.titles, titlesToStore);
-      newTagsModified = Math.max(
-        existingPayload.lastModified || 0,
-        lastTagsModified || 0,
-        Date.now()
+    await withConflictRetry('Book tags', async (attemptNumber) => {
+      if (attemptNumber > 1) await this.refreshRootFiles();
+      const isOverwrite = this.saveBehavior === ReplicationSaveBehavior.Overwrite;
+      const { file, data: existingData } = await this.getRootFile(
+        BaseStorageHandler.bookTagsFilePrefix,
+        isOverwrite ? '' : 'json',
+        0.2
       );
-    }
 
-    const filename = BaseStorageHandler.getBookTagsFileName(newTagsModified || Date.now());
-    const payload: BookTagsSyncPayload = {
-      version: 1,
-      lastModified: newTagsModified || Date.now(),
-      tagsByTitle: tagsToStore,
-      titles: titlesToStore
-    };
+      let tagsToStore: BookTagsDict = tags instanceof File ? {} : tags;
+      let titlesToStore = titles;
+      let newTagsModified = lastTagsModified;
 
-    await this.upload(
-      this.rootId,
-      filename,
-      [],
-      file,
-      JSON.stringify(payload),
+      if (!isOverwrite && existingData) {
+        const existingPayload = existingData as BookTagsSyncPayload;
+        tagsToStore = mergeTagsDicts(existingPayload.tagsByTitle, tagsToStore);
+        titlesToStore = mergeTagsTitles(existingPayload.titles, titlesToStore);
+        newTagsModified = Math.max(
+          existingPayload.lastModified || 0,
+          lastTagsModified || 0,
+          Date.now()
+        );
+      }
+
+      const filename = BaseStorageHandler.getBookTagsFileName(newTagsModified || Date.now());
+      const payload: BookTagsSyncPayload = {
+        version: 1,
+        lastModified: newTagsModified || Date.now(),
+        tagsByTitle: tagsToStore,
+        titles: titlesToStore
+      };
+
+      await this.upload(
+        this.rootId,
+        filename,
+        [],
+        file,
+        JSON.stringify(payload),
+        BaseStorageHandler.bookTagsFilePrefix,
+        undefined,
+        ''
+      );
+    });
+
+    await this.reconcileSingletonRootFile(
       BaseStorageHandler.bookTagsFilePrefix,
-      undefined,
-      ''
-    );
+      (raw) => (isBookTagsPayload(raw) ? raw : undefined),
+      (payloads) => {
+        let tagsByTitle: BookTagsDict = {};
+        let titles: Record<string, string> | undefined;
+        let lastModified = 0;
+        for (const payload of payloads) {
+          tagsByTitle = mergeTagsDicts(tagsByTitle, payload.tagsByTitle);
+          titles = mergeTagsTitles(titles, payload.titles);
+          lastModified = Math.max(lastModified, payload.lastModified || 0);
+        }
+        const merged: BookTagsSyncPayload = {
+          version: 1,
+          lastModified,
+          tagsByTitle,
+          titles
+        };
+        return {
+          name: BaseStorageHandler.getBookTagsFileName(lastModified || Date.now()),
+          body: JSON.stringify(merged)
+        };
+      }
+    ).catch((error: unknown) => {
+      logger.warn(`Book-tags reconcile deferred: ${(error as Error)?.message}`);
+    });
   }
 
   async saveAudioBook(data: BooksDbAudioBook | File, context: ReplicationContext) {
@@ -1216,6 +1392,13 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
               } else if (this.status === 404) {
                 logger.error(errorMessage);
                 reject(new Error('Resource not found. Refresh your current tab and try again'));
+              } else if (this.status === 412) {
+                logger.warn(`Write conflict for "${self.storageSourceName}": ${errorMessage}`);
+                reject(
+                  new ConflictError(
+                    `Cloud file changed during sync (${errorMessage || 'precondition failed'}).`
+                  )
+                );
               } else {
                 reject(new Error(errorMessage));
               }
@@ -1315,6 +1498,210 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     return { file, data };
   }
 
+  /**
+   * Drop the cached singleton root entry so the next read re-lists from the
+   * provider. Used before conflict-retry attempts: retrying against a stale
+   * etag would 412 forever instead of converging.
+   */
+  protected async refreshRootFiles(): Promise<void> {
+    this.rootFiles.clear();
+    this.rootFileListFetched = false;
+    await this.setRootFiles();
+  }
+
+  /**
+   * List-and-reconcile fallback (M3): providers without enforced write
+   * preconditions (Drive v3 documents none) can end up with two live files
+   * for a should-be-singleton root type after concurrent creates. Merge every
+   * same-prefix file deterministically, keep the lowest id, delete the rest.
+   * Also runs where preconditions exist, as repair for races the fast path
+   * can't see (e.g. create/create with different timestamp names).
+   */
+  protected async reconcileSingletonRootFile<T>(
+    prefix: string,
+    parse: (raw: unknown) => T | undefined,
+    mergeAll: (items: T[]) => { name: string; body: string }
+  ): Promise<void> {
+    await this.ensureTitle();
+    const files = await this.listRootFilesByPrefix(prefix);
+    if (files.length < 2) return;
+
+    const parsed: { file: ExternalFile; item: T }[] = [];
+    for (const file of files) {
+      try {
+        const item = parse(await this.retrieve(file, 'json', 0.1));
+        if (item !== undefined) parsed.push({ file, item });
+      } catch {
+        // Unreadable duplicates are left for the next pass.
+      }
+    }
+    if (parsed.length < 2) return;
+
+    const merged = mergeAll(parsed.map((entry) => entry.item));
+    const winner = [...parsed].sort((a, b) => (a.file.id < b.file.id ? -1 : 1))[0];
+    await this.upload(
+      this.rootId,
+      merged.name,
+      files,
+      winner.file,
+      merged.body,
+      prefix,
+      undefined,
+      ''
+    );
+    for (const entry of parsed) {
+      if (entry.file.id === winner.file.id) continue;
+      await this.executeDelete(entry.file.id).catch(() => {});
+    }
+    this.rootFiles.set(prefix, { id: winner.file.id, name: merged.name });
+  }
+
+  /**
+   * Repair duplicate v2/marker files sharing one stable name or device.
+   * Contribution rows are unioned by key (never summed — same-device rows
+   * are one device's data seen twice); marker baselines merge with the old
+   * non-additive legacy merge.
+   */
+  protected async reconcileContributionFiles(): Promise<void> {
+    await this.ensureTitle();
+    const files = await this.listRootFilesByPrefix(BaseStorageHandler.contributionFilePrefix);
+    const byName = new Map<string, ExternalFile[]>();
+    for (const file of files) {
+      const list = byName.get(file.name);
+      if (list) list.push(file);
+      else byName.set(file.name, [file]);
+    }
+
+    for (const [name, dupes] of byName) {
+      if (dupes.length < 2) continue;
+      if (isContributionFileName(name)) {
+        await this.reconcileContributionGroup(name, dupes, files);
+      } else if (isMigrationMarkerFileName(name)) {
+        await this.reconcileMarkerGroup(dupes, files);
+      }
+    }
+
+    // Same-device markers under different names: keep the lowest id per
+    // device so the migration tie-break sees one claim each.
+    const markersByDevice = new Map<
+      string,
+      { file: ExternalFile; item: StatisticMigrationMarker }[]
+    >();
+    for (const file of files) {
+      const deviceId = parseMigrationMarkerFileName(file.name);
+      if (!deviceId) continue;
+      try {
+        const item = await this.retrieve(file, 'json', 0.1);
+        if (!isStatisticMigrationMarker(item)) continue;
+        const list = markersByDevice.get(deviceId);
+        if (list) list.push({ file, item });
+        else markersByDevice.set(deviceId, [{ file, item }]);
+      } catch {
+        // Skip unreadable markers.
+      }
+    }
+    for (const [, group] of markersByDevice) {
+      if (group.length < 2) continue;
+      const winner = [...group].sort((a, b) => (a.file.id < b.file.id ? -1 : 1))[0];
+      for (const entry of group) {
+        if (entry.file.id === winner.file.id) continue;
+        await this.executeDelete(entry.file.id).catch(() => {});
+      }
+    }
+  }
+
+  private async reconcileContributionGroup(
+    name: string,
+    dupes: ExternalFile[],
+    files: ExternalFile[]
+  ): Promise<void> {
+    const parsed = parseContributionFileName(name);
+    if (!parsed) return;
+    const payloads: StatisticContributionFile[] = [];
+    for (const file of dupes) {
+      try {
+        const payload = await this.retrieve(file, 'json', 0.1);
+        if (isContributionFile(payload)) payloads.push(payload);
+      } catch {
+        // Skip unreadable duplicates.
+      }
+    }
+    if (payloads.length < 2) return;
+
+    const byKey = new Map<string, BooksDbStatisticContribution>();
+    for (const payload of payloads) {
+      for (const row of payload.rows) {
+        if (!row?.title || !row?.dateKey) continue;
+        const key = `${row.title}::${row.dateKey}`;
+        const current = byKey.get(key);
+        if (!current || (row.revision || 0) > (current.revision || 0)) {
+          byKey.set(key, row);
+        }
+      }
+    }
+    const rows = [...byKey.values()];
+    const merged: StatisticContributionFile = {
+      format: payloads[0].format,
+      version: payloads[0].version,
+      deviceId: parsed.deviceId,
+      year: parsed.year,
+      revision: Math.max(0, ...payloads.map((payload) => payload.revision || 0)),
+      rows
+    };
+    const winner = [...dupes].sort((a, b) => (a.id < b.id ? -1 : 1))[0];
+    await this.upload(
+      this.rootId,
+      name,
+      files,
+      winner,
+      JSON.stringify(merged),
+      BaseStorageHandler.contributionFilePrefix,
+      undefined,
+      ''
+    );
+    for (const file of dupes) {
+      if (file.id === winner.id) continue;
+      await this.executeDelete(file.id).catch(() => {});
+    }
+  }
+
+  private async reconcileMarkerGroup(dupes: ExternalFile[], files: ExternalFile[]): Promise<void> {
+    const payloads: StatisticMigrationMarker[] = [];
+    for (const file of dupes) {
+      try {
+        const payload = await this.retrieve(file, 'json', 0.1);
+        if (isStatisticMigrationMarker(payload)) payloads.push(payload);
+      } catch {
+        // Skip unreadable duplicates.
+      }
+    }
+    if (payloads.length < 2) return;
+
+    const deviceId = payloads[0].deviceId;
+    const merged: StatisticMigrationMarker = {
+      format: payloads[0].format,
+      version: payloads[0].version,
+      deviceId,
+      completedAt: Math.min(...payloads.map((payload) => payload.completedAt)),
+      baselineRows: mergeLegacySnapshotRows(payloads.map((payload) => payload.baselineRows))
+    };
+    const winner = [...dupes].sort((a, b) => (a.id < b.id ? -1 : 1))[0];
+    await this.upload(
+      this.rootId,
+      getMigrationMarkerFileName(deviceId),
+      files,
+      winner,
+      JSON.stringify(merged),
+      BaseStorageHandler.contributionFilePrefix,
+      undefined,
+      ''
+    );
+    for (const file of dupes) {
+      if (file.id === winner.id) continue;
+      await this.executeDelete(file.id).catch(() => {});
+    }
+  }
+
   protected updateAfterUpload(
     id: string,
     name: string,
@@ -1325,12 +1712,18 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     title: string
   ) {
     if (rootFilePrefix) {
-      this.rootFiles.set(rootFilePrefix, { id, name });
+      const { revision } = extraData as { revision?: string };
+      this.rootFiles.set(
+        rootFilePrefix,
+        revision === undefined ? { id, name } : { id, name, revision }
+      );
     } else if (remoteFile) {
+      const { revision } = extraData as { revision?: string };
       const titleFiles = files.map((file) => {
         const updatedFile = file;
         if (file.name === remoteFile.name) {
           updatedFile.name = name;
+          if (revision !== undefined) updatedFile.revision = revision;
         }
 
         return updatedFile;
