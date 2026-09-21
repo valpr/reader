@@ -23,8 +23,66 @@ async function seedStorageSources(page: Page, sources: SeedSource[]) {
         const request = indexedDB.open('books', version);
         request.onupgradeneeded = () => {
           const d = request.result;
+          // Full schema: this may be the first open at the current version,
+          // and the app never upgrades a DB already at version (see
+          // factory.ts). A partial schema here would leave stores missing.
+          if (!d.objectStoreNames.contains('data')) {
+            const ds = d.createObjectStore('data', { keyPath: 'id', autoIncrement: true });
+            ds.createIndex('title', 'title');
+          }
+          if (!d.objectStoreNames.contains('bookmark')) {
+            d.createObjectStore('bookmark', { keyPath: 'dataId' });
+          }
+          if (!d.objectStoreNames.contains('userBookmark')) {
+            const us = d.createObjectStore('userBookmark', { keyPath: 'id', autoIncrement: true });
+            us.createIndex('dataId', 'dataId');
+          }
+          if (!d.objectStoreNames.contains('lastItem')) {
+            d.createObjectStore('lastItem');
+          }
           if (!d.objectStoreNames.contains('storageSource')) {
             d.createObjectStore('storageSource', { keyPath: 'name' });
+          }
+          if (!d.objectStoreNames.contains('statistic')) {
+            const ss = d.createObjectStore('statistic', { keyPath: ['title', 'dateKey'] });
+            ss.createIndex('dateKey', 'dateKey');
+            ss.createIndex('completedBook', ['completedBook', 'title']);
+          }
+          if (!d.objectStoreNames.contains('readingGoal')) {
+            const rs = d.createObjectStore('readingGoal', { keyPath: 'goalStartDate' });
+            rs.createIndex('goalEndDate', 'goalEndDate');
+          }
+          if (!d.objectStoreNames.contains('lastModified')) {
+            d.createObjectStore('lastModified', { keyPath: ['title', 'dataType'] });
+          }
+          if (!d.objectStoreNames.contains('audioBook')) {
+            d.createObjectStore('audioBook', { keyPath: 'title' });
+          }
+          if (!d.objectStoreNames.contains('subtitle')) {
+            d.createObjectStore('subtitle', { keyPath: 'title' });
+          }
+          if (!d.objectStoreNames.contains('handle')) {
+            d.createObjectStore('handle', { keyPath: ['title', 'dataType'] });
+          }
+          if (!d.objectStoreNames.contains('deviceIdentity')) {
+            d.createObjectStore('deviceIdentity', { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains('statisticContribution')) {
+            const cs = d.createObjectStore('statisticContribution', {
+              keyPath: ['title', 'dateKey']
+            });
+            cs.createIndex('dateKey', 'dateKey');
+            cs.createIndex('year', 'year');
+          }
+          if (!d.objectStoreNames.contains('statisticSyncState')) {
+            d.createObjectStore('statisticSyncState', { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains('statisticRemoteContribution')) {
+            const rs = d.createObjectStore('statisticRemoteContribution', {
+              keyPath: ['deviceId', 'title', 'dateKey']
+            });
+            rs.createIndex('byDevice', 'deviceId');
+            rs.createIndex('byBook', ['title', 'dateKey']);
           }
         };
         request.onsuccess = () => resolve(request.result);
