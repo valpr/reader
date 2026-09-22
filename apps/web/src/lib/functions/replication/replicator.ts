@@ -388,27 +388,25 @@ export async function replicateData(
             }
 
             if (processUserBookmarks) {
-              if (
-                await targetHandler.isUserBookmarksPresentAndUpToDate(
-                  await sourceHandler.getFilenameForRecentCheck(FilePrefix.USER_BOOKMARKS, context),
-                  context
-                )
-              ) {
-                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
-              } else {
-                const ubData = await sourceHandler.getUserBookmarks(context);
+              // Bookmarks are merged, not replaced (per-syncId LWW, deletions
+              // are just a field on the row) — same reasoning as statistics
+              // v2 above. A scalar freshness marker must never gate this
+              // read: skipping the fetch because *some* row on the source
+              // looks older is exactly how a deletion fails to propagate to
+              // a device that has a newer, unrelated edit. Always pull,
+              // merge, and let saveUserBookmarks's own write-skip (not a
+              // pre-fetch read-skip) absorb the no-op case.
+              const ubData = await sourceHandler.getUserBookmarks(context);
 
-                checkCancelAndProgress(cancelSignal, !dataProcessed);
+              checkCancelAndProgress(cancelSignal, !dataProcessed);
 
-                if (ubData) {
-                  await targetHandler.saveUserBookmarks(ubData, context);
+              if (ubData) {
+                await targetHandler.saveUserBookmarks(ubData, context);
 
-                  dataProcessed = true;
-                }
-
-                checkCancelAndProgress(cancelSignal, !dataProcessed, !ubData);
+                dataProcessed = true;
               }
+
+              checkCancelAndProgress(cancelSignal, !dataProcessed, !ubData);
             }
 
             if (dataProcessed) {
@@ -513,12 +511,12 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            const { tags, titles, lastTagsModified } = await sourceHandler.getBookTags();
+            const { tags, titles, lastTagsModified, entries } = await sourceHandler.getBookTags();
 
             checkCancelAndProgress(cancelSignal);
 
             if (tags) {
-              await targetHandler.saveBookTags(tags, titles, lastTagsModified);
+              await targetHandler.saveBookTags(tags, titles, lastTagsModified, entries);
             }
 
             checkCancelAndProgress(cancelSignal, false, !tags);

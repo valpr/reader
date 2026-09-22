@@ -5,7 +5,7 @@
  */
 
 import type { BookCardProps } from '$lib/components/book-card/book-card-props';
-import type { BookTagsDict } from '$lib/data/book-tags';
+import type { BookTagEntries, BookTagsDict } from '$lib/data/book-tags';
 import {
   currentDbVersion,
   type BooksDbBookData,
@@ -162,6 +162,7 @@ export abstract class BaseStorageHandler {
     tags: BookTagsDict | undefined;
     titles: Record<string, string> | undefined;
     lastTagsModified: number;
+    entries?: BookTagEntries;
   }>;
 
   abstract getAudioBook(context: ReplicationContext): Promise<BooksDbAudioBook | File | undefined>;
@@ -234,7 +235,8 @@ export abstract class BaseStorageHandler {
   abstract saveBookTags(
     tags: BookTagsDict | File,
     titles: Record<string, string> | undefined,
-    lastTagsModified: number
+    lastTagsModified: number,
+    entries?: BookTagEntries
   ): Promise<void>;
 
   abstract saveAudioBook(data: BooksDbAudioBook | File, context: ReplicationContext): Promise<void>;
@@ -864,8 +866,13 @@ export abstract class BaseStorageHandler {
       return userBookmarks.name;
     }
 
-    const modified =
-      lastModified || Math.max(...userBookmarks.map((b) => b.lastModified || 0), Date.now());
+    // `Date.now()` must only be a last-resort fallback (no bookmark in the
+    // array carries a timestamp at all) — it was previously an unconditional
+    // Math.max() candidate, which is always >= any historical lastModified,
+    // so the filename (and therefore the upload) changed on every single
+    // sync regardless of whether anything actually changed.
+    const latestFromData = Math.max(0, ...userBookmarks.map((b) => b.lastModified || 0));
+    const modified = lastModified || latestFromData || Date.now();
 
     return `${FilePrefix.USER_BOOKMARKS}${exporterVersion}_${currentDbVersion}_${modified}_${userBookmarks.length}.json`;
   }

@@ -106,13 +106,15 @@ export async function triggerCloudSync(
 ): Promise<string> {
   const startedAt = Date.now();
   const dataTypes = requestedTypes?.length ? requestedTypes : SYNC_DATA_TYPES;
+  let deletionCounts: { deletedBookmarks: number; removedTagTitles: number } | undefined;
   const finish = (error = '') => {
     recordSyncRun({
       startedAt,
       durationMs: Date.now() - startedAt,
       target: sourceName,
       attemptedTypes: dataTypes,
-      ...(error ? { error } : {})
+      ...(error ? { error } : {}),
+      ...(deletionCounts || {})
     });
     return error;
   };
@@ -185,6 +187,9 @@ export async function triggerCloudSync(
     );
     if (error) return finish(error);
 
+    // Deletion-state census for diagnostics: best-effort, never fails sync.
+    deletionCounts = await database.getDeletionCounts().catch(() => undefined);
+
     markLastSync(sourceName);
     clearPendingCloudSync(sourceName);
 
@@ -233,13 +238,15 @@ export async function runOneShotRecovery(
   storageSources: BooksDbStorageSource[] = []
 ): Promise<string> {
   const startedAt = Date.now();
+  let deletionCounts: { deletedBookmarks: number; removedTagTitles: number } | undefined;
   const finish = (error = '') => {
     recordSyncRun({
       startedAt,
       durationMs: Date.now() - startedAt,
       target: sourceName,
       attemptedTypes: SYNC_DATA_TYPES,
-      ...(error ? { error: `recovery(${direction}): ${error}` } : {})
+      ...(error ? { error: `recovery(${direction}): ${error}` } : {}),
+      ...(deletionCounts || {})
     });
     return error;
   };
@@ -299,6 +306,10 @@ export async function runOneShotRecovery(
       identity.deviceId
     );
     if (contributionsError) return finish(contributionsError);
+
+    // Post-recovery census: Overwrite replaces the manual set wholesale, so
+    // this also confirms recovery cleared deletion state in its scope.
+    deletionCounts = await database.getDeletionCounts().catch(() => undefined);
 
     try {
       if (targetHandler instanceof ApiStorageHandler) {

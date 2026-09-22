@@ -19,7 +19,13 @@ import type {
   ReaderProfilesSyncPayload,
   StatisticsSyncSection
 } from '$lib/data/profiles/profile-types';
-import type { BookTagsDict, BookTagsSyncPayload } from '$lib/data/book-tags';
+import {
+  dictFromEntries,
+  entriesFromDict,
+  type BookTagEntries,
+  type BookTagsDict,
+  type BookTagsSyncPayload
+} from '$lib/data/book-tags';
 import { readingGoalSortFunction } from '$lib/data/reading-goal';
 import {
   getContributionFileName,
@@ -347,7 +353,7 @@ export class BackupStorageHandler extends BaseStorageHandler {
     const { zipEntry, filename } = this.getRootFile(BaseStorageHandler.bookTagsFilePrefix);
 
     if (!zipEntry) {
-      return { tags: undefined, titles: undefined, lastTagsModified: 0 };
+      return { tags: undefined, titles: undefined, lastTagsModified: 0, entries: undefined };
     }
 
     const payload = (await this.extractAsJSON(
@@ -355,10 +361,14 @@ export class BackupStorageHandler extends BaseStorageHandler {
       'Unable to read book tags'
     )) as BookTagsSyncPayload;
 
+    // v1 backups stay dict-only downstream (see ApiStorageHandler.getBookTags).
+    const entries = payload?.entries;
+
     return {
-      tags: payload?.tagsByTitle,
+      tags: payload?.tagsByTitle || dictFromEntries(entries),
       titles: payload?.titles,
-      lastTagsModified: BaseStorageHandler.getBookTagsMetadata(filename).lastTagsModified
+      lastTagsModified: BaseStorageHandler.getBookTagsMetadata(filename).lastTagsModified,
+      entries
     };
   }
 
@@ -534,13 +544,20 @@ export class BackupStorageHandler extends BaseStorageHandler {
   async saveBookTags(
     tags: BookTagsDict | File,
     titles: Record<string, string> | undefined,
-    lastTagsModified: number
+    lastTagsModified: number,
+    entries?: BookTagEntries
   ) {
+    // Backup export carries the v2 entries alongside the mirror so a
+    // restore preserves deletion state; v1 backups (no entries) import
+    // through the dict-only path on the browser side.
+    const resolvedEntries =
+      entries || entriesFromDict(tags instanceof File ? {} : tags, lastTagsModified, '');
     const filename = `${BaseStorageHandler.getBookTagsFileName(lastTagsModified || Date.now())}`;
     const payload: BookTagsSyncPayload = {
-      version: 1,
+      version: 2,
       lastModified: lastTagsModified || Date.now(),
-      tagsByTitle: tags instanceof File ? {} : tags,
+      entries: resolvedEntries,
+      tagsByTitle: tags instanceof File ? dictFromEntries(resolvedEntries) : (tags as BookTagsDict),
       titles
     };
 

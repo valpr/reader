@@ -54,6 +54,8 @@ import {
   readingGoal$,
   syncTarget$
 } from '$lib/data/store';
+import { adoptConvergentSyncId, isSameBookmark } from '$lib/data/user-bookmarks-merge';
+import { computeBookmarkSyncId, isLiveUserBookmark } from '$lib/data/user-bookmark-ids';
 
 import type { BaseStorageHandler } from '$lib/data/storage/handler/base-handler';
 import type { BookStatistic } from '$lib/components/statistics/statistics-types';
@@ -447,6 +449,10 @@ export class DatabaseService {
    * Replace the tag list of a single book. Tags are normalized
    * (lowercase, deduped, capped). Touches `lastBookModified` and the DATA
    * sync timestamp so the change replicates, plus the book-tags dict marker.
+   * Also stamps per-title tag attribution (`[title, BOOK_TAGS]` with the
+   * authoring deviceId) — the publish path turns it into
+   * `entries[key].{modifiedAt, deviceId}` for per-title last-write-wins, so
+   * removals propagate instead of being re-added by the next union merge.
    * Callers must refresh the handler card cache (see manage page).
    */
   async updateBookTags(dataId: number, tags: string[]) {
@@ -462,6 +468,7 @@ export class DatabaseService {
 
     const normalized = normalizeTagList(tags);
     const now = Date.now();
+    const identity = await db.get('deviceIdentity', 0).catch(() => undefined);
 
     await db.put('data', {
       ...book,
@@ -473,11 +480,57 @@ export class DatabaseService {
       dataType: StorageDataType.DATA,
       lastModifiedValue: now
     });
+    await db.put('lastModified', {
+      title: book.title,
+      dataType: StorageDataType.BOOK_TAGS,
+      lastModifiedValue: now,
+      deviceId: identity?.deviceId
+    });
 
     lastBookTagsModified$.next(now);
     this.dataListChanged$.next(undefined);
 
     return normalized;
+  }
+
+  /**
+   * Per-title tag attribution for the publish path: normalized-title key ->
+   * `{ modifiedAt, deviceId }` from the `[title, BOOK_TAGS]` lastModified
+   * rows written by `updateBookTags` (and by the sync apply path when a
+   * remote entry wins). Titles without a row fall back to
+   * `{ modifiedAt: 0, deviceId: '' }` and lose any LWW race — they carry no
+   * observed edit, so they must not outrank a real timestamp.
+   */
+  async getTagAttribution(): Promise<Record<string, { modifiedAt: number; deviceId: string }>> {
+    const db = await this.db;
+    const attribution: Record<string, { modifiedAt: number; deviceId: string }> = {};
+    const rows = await db.getAll('lastModified').catch(() => []);
+
+    for (const row of rows || []) {
+      if (row?.dataType !== StorageDataType.BOOK_TAGS || !row?.title) continue;
+      attribution[normalizeTagTitle(row.title)] = {
+        modifiedAt: row.lastModifiedValue || 0,
+        deviceId: row.deviceId || ''
+      };
+    }
+
+    return attribution;
+  }
+
+  /**
+   * Persist a winning remote tag entry's attribution locally so the next
+   * publish carries it forward. Stored under the book's actual title (not
+   * the normalized key) to match `updateBookTags`' row shape.
+   */
+  async putTagAttribution(title: string, modifiedAt: number, deviceId: string): Promise<void> {
+    if (!title) return;
+    const db = await this.db;
+    await db.put('lastModified', {
+      title,
+      dataType: StorageDataType.BOOK_TAGS,
+      lastModifiedValue: modifiedAt,
+      deviceId: deviceId || undefined
+    });
   }
 
   /** Every tag used by any local book, unique and sorted. Feeds suggestions. */
@@ -537,13 +590,74 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Live (non-deleted) rows for display, resume, and editor paths. The single
+   * funnel for the shared deleted-filtering rule — callers never check
+   * `row.deleted` themselves.
+   */
   async getUserBookmarks(dataId: number): Promise<BooksDbUserBookmarkData[]> {
     if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
       return [];
     }
     const db = await this.db;
     const all = await db.getAllFromIndex('userBookmark', 'dataId', dataId);
-    return all.sort((a, b) => a.exploredCharCount - b.exploredCharCount);
+    return all.filter(isLiveUserBookmark).sort((a, b) => a.exploredCharCount - b.exploredCharCount);
+  }
+
+  /**
+   * Deletion-state census for `SyncRun` diagnostics: soft-deleted bookmark
+   * rows plus tagless titles that still carry tag attribution (i.e. local
+   * tag removals waiting to propagate). Best-effort — diagnostics must never
+   * fail a sync, so callers swallow errors.
+   */
+  async getDeletionCounts(): Promise<{ deletedBookmarks: number; removedTagTitles: number }> {
+    const db = await this.db;
+    const emptyAttribution: Record<string, { modifiedAt: number; deviceId: string }> = {};
+    const [rows, books, attribution] = await Promise.all([
+      db.getAll('userBookmark').catch(() => []),
+      db.getAll('data').catch(() => []),
+      this.getTagAttribution().catch(() => emptyAttribution)
+    ]);
+    const deletedBookmarks = (rows || []).filter((r) => r?.deleted).length;
+    let removedTagTitles = 0;
+    for (const book of books || []) {
+      if (!book?.title) continue;
+      if (normalizeTagList(book.tags).length) continue;
+      if (attribution[normalizeTagTitle(book.title)]) removedTagTitles += 1;
+    }
+    return { deletedBookmarks, removedTagTitles };
+  }
+
+  /**
+   * Sync-publish read: manual rows *including* soft-deleted ones (deletions
+   * are ordinary rows that must travel), autosaves excluded as today.
+   */
+  async getUserBookmarksForSync(dataId: number): Promise<BooksDbUserBookmarkData[]> {
+    if (typeof dataId !== 'number' || Number.isNaN(dataId)) {
+      return [];
+    }
+    const db = await this.db;
+    const all = await db.getAllFromIndex('userBookmark', 'dataId', dataId);
+    const syncable = all.filter((b) => !b.isAutosave);
+    // Opportunistic backfill: stamp missing syncIds so every published row
+    // carries stable identity. Idempotent — stamped rows are skipped.
+    const book = await db.get('data', dataId).catch(() => undefined);
+    let changed = false;
+    if (book?.title) {
+      for (const row of syncable) {
+        if (!row.syncId && row.id !== undefined) {
+          row.syncId = await computeBookmarkSyncId(
+            book.title,
+            row.exploredCharCount,
+            row.createdAt
+          );
+          await db.put('userBookmark', row);
+          changed = true;
+        }
+      }
+      if (changed) this.userBookmarksChanged$.next();
+    }
+    return syncable.sort((a, b) => a.exploredCharCount - b.exploredCharCount);
   }
 
   async putUserBookmark(data: BooksDbUserBookmarkData): Promise<number> {
@@ -551,14 +665,42 @@ export class DatabaseService {
       throw new Error('Invalid user bookmark data');
     }
     const db = await this.db;
-    let dataToStore = data;
+    const book = await db.get('data', data.dataId).catch(() => undefined);
+    let dataToStore: BooksDbUserBookmarkData = data;
+    if (!dataToStore.isAutosave && book?.title && !dataToStore.syncId) {
+      dataToStore = {
+        ...dataToStore,
+        syncId: await computeBookmarkSyncId(
+          book.title,
+          dataToStore.exploredCharCount,
+          dataToStore.createdAt
+        )
+      };
+    }
     if (dataToStore.id === undefined) {
       const { id: _ignored, ...withoutId } = dataToStore;
       dataToStore = withoutId as BooksDbUserBookmarkData;
     }
+    // Defensive un-delete: a fresh write colliding with a soft-deleted row's
+    // seed (same position + createdAt) revives that row instead of forking
+    // a duplicate. UI recreation always mints a new createdAt, so this path
+    // is rare — but deterministic when it happens.
+    if (!dataToStore.isAutosave && dataToStore.syncId) {
+      const siblings = await db
+        .getAllFromIndex('userBookmark', 'dataId', dataToStore.dataId)
+        .catch(() => []);
+      const tombstoned = siblings.find((s) => s.syncId === dataToStore.syncId && s.deleted);
+      if (tombstoned?.id !== undefined) {
+        dataToStore = {
+          ...dataToStore,
+          id: tombstoned.id,
+          deleted: false,
+          deletedAt: undefined
+        };
+      }
+    }
     const id = (await db.put('userBookmark', dataToStore)) as number;
     if (!data.isAutosave) {
-      const book = await db.get('data', data.dataId);
       if (book?.title) {
         await db.put('lastModified', {
           title: book.title,
@@ -653,6 +795,15 @@ export class DatabaseService {
       lastModified: Date.now()
     };
 
+    const promotedBook = await db.get('data', bookmark.dataId).catch(() => undefined);
+    if (promotedBook?.title && !updated.syncId) {
+      updated.syncId = await computeBookmarkSyncId(
+        promotedBook.title,
+        updated.exploredCharCount,
+        updated.createdAt
+      );
+    }
+
     await db.put('userBookmark', updated);
 
     const book = await db.get('data', bookmark.dataId);
@@ -667,33 +818,59 @@ export class DatabaseService {
     this.userBookmarksChanged$.next();
   }
 
+  /**
+   * Delete a bookmark. Manual rows are soft-deleted (`deleted`/`deletedAt`
+   * with a fresh `lastModified`) so the removal propagates as an ordinary
+   * LWW value instead of resurrecting on the next merge; display paths
+   * already exclude deleted rows via `getUserBookmarks`, so the row vanishes
+   * immediately locally. Autosaves stay local-only and are hard-deleted.
+   */
   async deleteUserBookmark(id: number): Promise<void> {
     if (typeof id !== 'number' || Number.isNaN(id)) return;
     const db = await this.db;
     const bookmark = await db.get('userBookmark', id);
-    await db.delete('userBookmark', id);
-    if (bookmark?.dataId && !bookmark.isAutosave) {
-      const book = await db.get('data', bookmark.dataId);
-      if (book?.title) {
-        await db.put('lastModified', {
-          title: book.title,
-          dataType: StorageDataType.USER_BOOKMARKS,
-          lastModifiedValue: Date.now()
-        });
-      }
+    if (!bookmark) return;
+    if (bookmark.isAutosave) {
+      await db.delete('userBookmark', id);
+      this.userBookmarksChanged$.next();
+      return;
+    }
+    const book = bookmark.dataId ? await db.get('data', bookmark.dataId) : undefined;
+    let syncId = bookmark.syncId;
+    if (!syncId && book?.title) {
+      syncId = await computeBookmarkSyncId(
+        book.title,
+        bookmark.exploredCharCount,
+        bookmark.createdAt
+      );
+    }
+    const now = Date.now();
+    await db.put('userBookmark', {
+      ...bookmark,
+      syncId,
+      deleted: true,
+      deletedAt: now,
+      lastModified: now
+    });
+    if (book?.title) {
+      await db.put('lastModified', {
+        title: book.title,
+        dataType: StorageDataType.USER_BOOKMARKS,
+        lastModifiedValue: now
+      });
     }
     this.userBookmarksChanged$.next();
   }
 
   /**
-   * User-bookmark sync (P6): union by stable bookmark identity
-   * `(exploredCharCount, createdAt)` — local auto-increment ids are NOT
-   * stable across devices, so they are never used for matching. Newer
-   * `lastModified` wins per bookmark. Bookmark *deletion* does not propagate:
-   * deletion sync (and its tombstones) is intentionally not built until the
-   * feature exists — a locally deleted bookmark reappears on the next merge
-   * from a device that still holds it. Overwrite mode (one-shot recovery
-   * only) replaces the manual set so deletions propagate explicitly.
+   * User-bookmark sync: per-`syncId` last-write-wins over the *whole* row,
+   * including `deleted`/`deletedAt` — deletion is an ordinary field value,
+   * not a special branch, so removals converge fleet-wide (including to a
+   * device that was dormant for weeks) instead of resurrecting. Rows without
+   * `syncId` fall back to the legacy fuzzy match until backfill completes,
+   * converging on the lexicographically-smaller ID on cross-match. Local
+   * auto-increment ids are never used for matching. Overwrite mode (one-shot
+   * recovery only) replaces the manual set wholesale.
    */
   async storeUserBookmarks(
     title: string,
@@ -707,6 +884,34 @@ export class DatabaseService {
 
     const dataId = book.id;
     const db = await this.db;
+
+    // All async crypto (deterministic ID derivation) happens ahead of the
+    // transaction: awaiting non-IDB promises inside an IDB transaction risks
+    // autocommit. Both sides are stamped here; the tx below is pure IDB.
+    const stamped = await Promise.all(
+      bookmarks.map(async (bm) => {
+        if (bm.syncId || bm.isAutosave) return bm;
+        return {
+          ...bm,
+          syncId: await computeBookmarkSyncId(title, bm.exploredCharCount, bm.createdAt)
+        };
+      })
+    );
+    const existingList = await db.getAllFromIndex('userBookmark', 'dataId', dataId).catch(() => []);
+    // Backfill existing rows missing syncIds (same deterministic derivation
+    // — converges without coordination).
+    const backfilledIds = new Set<number>();
+    for (const existing of existingList) {
+      if (!existing.syncId && !existing.isAutosave && existing.id !== undefined) {
+        existing.syncId = await computeBookmarkSyncId(
+          title,
+          existing.exploredCharCount,
+          existing.createdAt
+        );
+        backfilledIds.add(existing.id);
+      }
+    }
+
     const tx = db.transaction(['userBookmark', 'lastModified'], 'readwrite');
 
     try {
@@ -724,7 +929,7 @@ export class DatabaseService {
           cursor = await cursor.continue();
         }
 
-        for (const bm of bookmarks) {
+        for (const bm of stamped) {
           const { id: _ignored, ...bmWithoutId } = bm;
           await ubStore.add({
             ...bmWithoutId,
@@ -732,23 +937,31 @@ export class DatabaseService {
           });
         }
       } else {
-        const index = ubStore.index('dataId');
-        const existingList = await index.getAll(dataId);
+        // Persist backfills first so the merge below matches by syncId.
+        // Only rows actually assigned an ID above are rewritten.
+        for (const existing of existingList) {
+          if (existing.id !== undefined && backfilledIds.has(existing.id)) {
+            await ubStore.put(existing);
+          }
+        }
 
-        for (const incoming of bookmarks) {
-          const match = existingList.find(
-            (e) =>
-              e.exploredCharCount === incoming.exploredCharCount &&
-              (e.createdAt === incoming.createdAt || e.label === incoming.label)
-          );
+        for (const incoming of stamped) {
+          const match = existingList.find((e) => isSameBookmark(e, incoming));
 
           if (match && match.id !== undefined) {
+            const convergent = adoptConvergentSyncId(match, incoming);
             if ((incoming.lastModified || 0) > (match.lastModified || 0)) {
               await ubStore.put({
                 ...incoming,
+                syncId: convergent || incoming.syncId,
                 id: match.id,
                 dataId
               });
+            } else if (convergent && convergent !== match.syncId) {
+              // Same timestamp, divergent IDs from a legacy cross-match:
+              // adopt the smaller ID and republish once so both sides
+              // converge on one identity.
+              await ubStore.put({ ...match, syncId: convergent });
             }
           } else {
             const { id: _ignored, ...incomingWithoutId } = incoming;
@@ -846,7 +1059,7 @@ export class DatabaseService {
       | 'audioBook'
       | 'subtitle'
       | 'handle'
-    )[] = ['data', 'userBookmark', 'audioBook', 'subtitle', 'handle'];
+    )[] = ['data', 'userBookmark', 'audioBook', 'subtitle', 'handle', 'lastModified'];
     const shouldDeleteLastItem = cachedData.lastItem === dataId;
     const shouldDeleteBookmark = cachedData.bookmarkIds.has(dataId);
 
@@ -864,7 +1077,6 @@ export class DatabaseService {
       storeNames.push('statistic');
       storeNames.push('statisticContribution');
       storeNames.push('statisticRemoteContribution');
-      storeNames.push('lastModified');
     }
 
     const tx = db.transaction(storeNames, 'readwrite');
@@ -903,6 +1115,10 @@ export class DatabaseService {
         await tx.objectStore('audioBook').delete(bookTitle);
         await tx.objectStore('subtitle').delete(bookTitle);
         await tx.objectStore('handle').delete(IDBKeyRange.bound([bookTitle], [bookTitle, []]));
+        // Removing a book from one device must not delete its tags
+        // fleet-wide: drop the local tag attribution so future publishes
+        // carry no entry for it, and never publish an empty-list removal.
+        await tx.objectStore('lastModified').delete([bookTitle, StorageDataType.BOOK_TAGS]);
       }
 
       await tx.objectStore('data').delete(dataId);

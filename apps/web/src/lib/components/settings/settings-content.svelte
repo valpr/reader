@@ -1650,7 +1650,7 @@
     <!-- Section 5: Sync Recovery (Advanced, one-shot only) -->
     <ListSection
       title="Sync Recovery"
-      description="One-shot directional syncs with replace semantics. Normal syncs always merge — these are the only actions that overwrite."
+      description="One-shot directional syncs with replace semantics. Normal syncs always merge — tag and bookmark removals propagate on their own, even to devices that were offline for weeks; these actions are the only ones that overwrite."
     >
       <ListItem
         headline="Use this device as the source"
