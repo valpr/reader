@@ -6,7 +6,15 @@
 
 import { BaseStorageHandler, FilePrefix } from '$lib/data/storage/handler/base-handler';
 import type { ReplicationContext } from '$lib/functions/replication/replication-progress';
-import { normalizeTagList, normalizeTagTitle, type BookTagsDict } from '$lib/data/book-tags';
+import {
+  mergeTagEntries,
+  mergeTagEntriesWithDict,
+  normalizeTagList,
+  normalizeTagTitle,
+  type BookTagEntries,
+  type BookTagEntry,
+  type BookTagsDict
+} from '$lib/data/book-tags';
 import type {
   BooksDbAudioBook,
   BooksDbBookData,
@@ -435,9 +443,10 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
     BaseStorageHandler.reportProgress(0.5);
 
-    const bookmarks = dataId ? await database.getUserBookmarks(dataId) : [];
-
-    return bookmarks.filter((b) => !b.isAutosave);
+    // Publish read: manual rows *including* soft-deleted ones — deletions
+    // propagate as ordinary LWW values. Display paths use
+    // `database.getUserBookmarks`, which excludes deleted rows.
+    return dataId ? database.getUserBookmarksForSync(dataId) : [];
   }
 
   async getStatistics(context: ReplicationContext) {
@@ -752,21 +761,48 @@ export class BrowserStorageHandler extends BaseStorageHandler {
   async getBookTags() {
     const db = await database.db;
     const books = await db.getAll('data');
+    const attribution: Record<string, { modifiedAt: number; deviceId: string }> = await database
+      .getTagAttribution()
+      .catch(() => ({}));
+    const localDeviceId =
+      (await db.get('deviceIdentity', 0).catch(() => undefined))?.deviceId || '';
     const tagsByTitle: BookTagsDict = {};
     const titles: Record<string, string> = {};
+    const entries: BookTagEntries = {};
 
     for (const book of books) {
       const tags = normalizeTagList(book.tags);
-      if (!tags.length) continue;
       const key = normalizeTagTitle(book.title);
-      tagsByTitle[key] = normalizeTagList([...(tagsByTitle[key] || []), ...tags]);
-      if (!titles[key]) titles[key] = book.title;
+      if (tags.length) {
+        tagsByTitle[key] = normalizeTagList([...(tagsByTitle[key] || []), ...tags]);
+        if (!titles[key]) titles[key] = book.title;
+      }
+      // Tagless titles with no attribution carry no information and publish
+      // nothing; tagless titles WITH attribution are removals and must
+      // publish their empty-list entry.
+      if (!tags.length && !attribution[key]) continue;
+      // Every locally-known title publishes an entry — including empty lists,
+      // which is how removals propagate. No fallback to the global
+      // `lastBookTagsModified$` marker here: that would stamp every title
+      // with the same timestamp and collapse per-title granularity into a
+      // whole-library verdict. Unattributed titles publish `{0, deviceId}`
+      // and lose any LWW race until a real edit stamps them.
+      const attr = attribution[key] || { modifiedAt: 0, deviceId: '' };
+      const candidate: BookTagEntry = {
+        tags,
+        modifiedAt: attr.modifiedAt || 0,
+        deviceId: attr.deviceId || localDeviceId
+      };
+      const prev = entries[key];
+      if (!prev || candidate.modifiedAt > prev.modifiedAt) {
+        entries[key] = candidate;
+      }
     }
 
     BaseStorageHandler.reportProgress();
 
-    if (!Object.keys(tagsByTitle).length) {
-      return { tags: undefined, titles: undefined, lastTagsModified: 0 };
+    if (!Object.keys(tagsByTitle).length && !Object.keys(entries).length) {
+      return { tags: undefined, titles: undefined, lastTagsModified: 0, entries: undefined };
     }
 
     let lastTagsModified = lastBookTagsModified$.getValue();
@@ -775,13 +811,14 @@ export class BrowserStorageHandler extends BaseStorageHandler {
       lastBookTagsModified$.next(lastTagsModified);
     }
 
-    return { tags: tagsByTitle, titles, lastTagsModified };
+    return { tags: tagsByTitle, titles, lastTagsModified, entries };
   }
 
   async saveBookTags(
     data: BookTagsDict | File,
     _titles: Record<string, string> | undefined,
-    lastTagsModified: number
+    lastTagsModified: number,
+    entries?: BookTagEntries
   ) {
     if (data instanceof File) {
       BaseStorageHandler.reportProgress();
@@ -790,31 +827,71 @@ export class BrowserStorageHandler extends BaseStorageHandler {
 
     BaseStorageHandler.reportProgress(0.5);
 
-    // Tags are additive sets: union per title, unless the save behavior is
-    // Overwrite (export "replace"), in which case the incoming dict wins so
-    // tag deletions propagate.
+    // Per-title last-write-wins when entries travel with the payload;
+    // legacy union per title otherwise (v1-shape sources), unless the save
+    // behavior is Overwrite (export "replace"), in which case the incoming
+    // dict wins so tag deletions propagate.
     const isOverwrite = this.saveBehavior === ReplicationSaveBehavior.Overwrite;
     const db = await database.db;
     const books = await db.getAll('data');
+    const attribution: Record<string, { modifiedAt: number; deviceId: string }> = await database
+      .getTagAttribution()
+      .catch(() => ({}));
+    const localDeviceId =
+      (await db.get('deviceIdentity', 0).catch(() => undefined))?.deviceId || '';
+
+    // Local entries mirror getBookTags so the merge compares like with like.
+    const localEntries: BookTagEntries = {};
+    for (const book of books) {
+      const key = normalizeTagTitle(book.title);
+      const attr = attribution[key] || { modifiedAt: 0, deviceId: '' };
+      localEntries[key] = {
+        tags: normalizeTagList(book.tags),
+        modifiedAt: attr.modifiedAt,
+        deviceId: attr.deviceId || localDeviceId
+      };
+    }
+
+    // Dict-only sources (v1 payloads, File passthrough already returned
+    // above) fold in via the non-corrupting rule: unknown keys are adopted,
+    // existing entries keep their tags and timestamps.
+    const incomingEntries: BookTagEntries = isOverwrite
+      ? {}
+      : entries ||
+        mergeTagEntriesWithDict(undefined, data, lastTagsModified || Date.now(), localDeviceId);
+    const merged = isOverwrite ? incomingEntries : mergeTagEntries(localEntries, incomingEntries);
 
     for (const book of books) {
-      const incoming = normalizeTagList(data[normalizeTagTitle(book.title)]);
+      const key = normalizeTagTitle(book.title);
       const current = normalizeTagList(book.tags);
 
-      if (!incoming.length) {
-        if (isOverwrite && current.length) {
-          await db.put('data', { ...book, tags: [] });
-          this.addBookCard(book.title, { tags: [] });
+      if (isOverwrite) {
+        const incoming = normalizeTagList(data[key]);
+        if (JSON.stringify(incoming) !== JSON.stringify(current)) {
+          await db.put('data', { ...book, tags: incoming });
+          this.addBookCard(book.title, { tags: incoming });
         }
         continue;
       }
 
-      const merged = isOverwrite ? incoming : normalizeTagList([...current, ...incoming]);
-
-      if (JSON.stringify(merged) !== JSON.stringify(current)) {
-        await db.put('data', { ...book, tags: merged });
-        this.addBookCard(book.title, { tags: merged });
+      // `merged` already encodes the LWW verdict per title: when the local
+      // side won, `winner.tags` equals `current` and nothing happens; when
+      // the remote side won, adopt its list — possibly empty (a removal).
+      const winner = merged[key];
+      // No entry on either side: nothing was ever said about this title.
+      if (!winner) continue;
+      const attr = attribution[key];
+      if (JSON.stringify(winner.tags) === JSON.stringify(current)) {
+        // Still persist attribution when the remote side won with identical
+        // tags but a newer timestamp, so the next publish carries it.
+        if (winner.modifiedAt !== (attr?.modifiedAt || 0)) {
+          await database.putTagAttribution(book.title, winner.modifiedAt, winner.deviceId);
+        }
+        continue;
       }
+      await db.put('data', { ...book, tags: winner.tags });
+      this.addBookCard(book.title, { tags: winner.tags });
+      await database.putTagAttribution(book.title, winner.modifiedAt, winner.deviceId);
     }
 
     lastBookTagsModified$.next(lastTagsModified || Date.now());

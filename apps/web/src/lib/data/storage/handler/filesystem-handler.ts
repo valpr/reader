@@ -15,8 +15,14 @@ import type {
 } from '$lib/data/database/books-db/versions/books-db';
 import { database, fsStorageSource$ } from '$lib/data/store';
 import {
-  mergeTagsDicts,
+  dictFromEntries,
+  entriesFromDict,
+  isBookTagsPayloadUnchanged,
+  maxEntryModifiedAt,
+  mergeTagEntries,
+  mergeTagEntriesWithDict,
   mergeTagsTitles,
+  type BookTagEntries,
   type BookTagsDict,
   type BookTagsSyncPayload
 } from '$lib/data/book-tags';
@@ -28,6 +34,10 @@ import type {
 } from '$lib/data/profiles/profile-types';
 import { mergeReadingGoals, readingGoalSortFunction } from '$lib/data/reading-goal';
 import type { ThemeOption } from '$lib/data/theme-option';
+import {
+  areUserBookmarkArraysEqual,
+  mergeUserBookmarkArrays
+} from '$lib/data/user-bookmarks-merge';
 import { mergeStatistics, updateStatisticToStore } from '$lib/functions/statistic-util';
 import { isPositionNewerThan } from '$lib/functions/position-util';
 import {
@@ -525,7 +535,7 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     const { file } = await this.getRootFile(BaseStorageHandler.bookTagsFilePrefix, 0.6);
 
     if (!file) {
-      return { tags: undefined, titles: undefined, lastTagsModified: 0 };
+      return { tags: undefined, titles: undefined, lastTagsModified: 0, entries: undefined };
     }
 
     const tagsFile = await file.getFile();
@@ -534,10 +544,14 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
 
     BaseStorageHandler.reportProgress(0.4);
 
+    // v1 files stay dict-only downstream (see ApiStorageHandler.getBookTags).
+    const entries = payload?.entries;
+
     return {
-      tags: payload?.tagsByTitle,
+      tags: payload?.tagsByTitle || dictFromEntries(entries),
       titles: payload?.titles,
-      lastTagsModified: BaseStorageHandler.getBookTagsMetadata(file.name).lastTagsModified
+      lastTagsModified: BaseStorageHandler.getBookTagsMetadata(file.name).lastTagsModified,
+      entries
     };
   }
 
@@ -700,17 +714,50 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
   }
 
   async saveUserBookmarks(data: BooksDbUserBookmarkData[] | File, context: ReplicationContext) {
-    const filename = BaseStorageHandler.getUserBookmarksFileName(data);
+    const isOverwrite = this.saveBehavior === ReplicationSaveBehavior.Overwrite;
+    const incoming = data instanceof File ? undefined : data;
+
     const { file, files, rootDirectory } = await this.getExternalFile(
       FilePrefix.USER_BOOKMARKS,
       0.4,
       context
     );
 
+    // Phase 0 fix (tag/bookmark deletion-sync plan): read-merge-write
+    // instead of a blind overwrite — see the identical fix and rationale in
+    // ApiStorageHandler.saveUserBookmarks.
+    let toStore: BooksDbUserBookmarkData[] | File = data;
+    let existingRows: BooksDbUserBookmarkData[] | undefined;
+    if (!isOverwrite && incoming && file) {
+      try {
+        const existing = await this.readJsonFile(file);
+        if (Array.isArray(existing)) {
+          existingRows = existing as BooksDbUserBookmarkData[];
+          toStore = mergeUserBookmarkArrays(incoming, existingRows);
+        }
+      } catch {
+        // Unreadable existing file: fall back to publishing the local set
+        // rather than blocking the sync.
+      }
+    }
+
+    // Canonical write-skip: merged array identical to the file on disk means
+    // a no-op sync. Skip the rewrite so filenames stay stable.
+    if (
+      !isOverwrite &&
+      !(toStore instanceof File) &&
+      existingRows &&
+      areUserBookmarkArraysEqual(toStore, existingRows)
+    ) {
+      return;
+    }
+
+    const filename = BaseStorageHandler.getUserBookmarksFileName(toStore);
+
     await this.writeFile(
       rootDirectory,
       filename,
-      data instanceof File ? data : JSON.stringify(data),
+      toStore instanceof File ? toStore : JSON.stringify(toStore),
       files,
       file,
       0.6,
@@ -912,7 +959,8 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
   async saveBookTags(
     tags: BookTagsDict | File,
     titles: Record<string, string> | undefined,
-    lastTagsModified: number
+    lastTagsModified: number,
+    entries?: BookTagEntries
   ) {
     const isOverwrite = this.saveBehavior === ReplicationSaveBehavior.Overwrite;
     const { file, rootDirectory } = await this.getRootFile(
@@ -920,29 +968,78 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
       0.4
     );
 
-    let tagsToStore: BookTagsDict = tags instanceof File ? {} : tags;
-    let titlesToStore = titles;
-    let newTagsModified = lastTagsModified;
-
+    // Filesystem mirror of ApiStorageHandler.saveBookTags: per-title
+    // last-write-wins over `entries`, dict-only fallback preserves existing
+    // entries, Overwrite replaces wholesale. See that method for rationale.
+    let existingPayload: BookTagsSyncPayload | undefined;
     if (!isOverwrite && file) {
       const existingDataFile = await file.getFile();
-      const existingPayload = JSON.parse(
+      existingPayload = JSON.parse(
         await FilesystemStorageHandler.readFileObject(existingDataFile)
       ) as BookTagsSyncPayload;
+    }
 
-      tagsToStore = mergeTagsDicts(existingPayload?.tagsByTitle, tagsToStore);
-      titlesToStore = mergeTagsTitles(existingPayload?.titles, titlesToStore);
-      newTagsModified = Math.max(
-        existingPayload?.lastModified || 0,
+    let entriesToStore: BookTagEntries;
+    let titlesToStore = titles;
+    if (isOverwrite) {
+      entriesToStore =
+        entries || entriesFromDict(tags instanceof File ? {} : tags, lastTagsModified, '');
+    } else if (tags instanceof File) {
+      entriesToStore = existingPayload?.entries
+        ? { ...existingPayload.entries }
+        : entriesFromDict(existingPayload?.tagsByTitle, existingPayload?.lastModified || 0, '');
+    } else if (entries) {
+      entriesToStore = existingPayload
+        ? mergeTagEntries(
+            existingPayload.entries ||
+              entriesFromDict(existingPayload.tagsByTitle, existingPayload.lastModified || 0, ''),
+            entries
+          )
+        : { ...entries };
+    } else {
+      entriesToStore = existingPayload
+        ? mergeTagEntriesWithDict(
+            existingPayload.entries ||
+              entriesFromDict(existingPayload.tagsByTitle, existingPayload.lastModified || 0, ''),
+            tags,
+            lastTagsModified || existingPayload.lastModified || 0,
+            ''
+          )
+        : entriesFromDict(tags, lastTagsModified, '');
+    }
+    if (!isOverwrite && existingPayload) {
+      titlesToStore = mergeTagsTitles(existingPayload.titles, titlesToStore);
+    }
+
+    const newTagsModified =
+      Math.max(
+        maxEntryModifiedAt(entriesToStore),
         lastTagsModified || 0,
-        Date.now()
-      );
+        existingPayload?.lastModified || 0
+      ) || Date.now();
+
+    const tagsToStore = dictFromEntries(entriesToStore);
+
+    if (!isOverwrite && existingPayload) {
+      // Canonical write-skip: identical merge output means a no-op sync.
+      if (
+        isBookTagsPayloadUnchanged(
+          existingPayload,
+          tagsToStore,
+          titlesToStore,
+          newTagsModified,
+          entriesToStore
+        )
+      ) {
+        return;
+      }
     }
 
     const filename = BaseStorageHandler.getBookTagsFileName(newTagsModified || Date.now());
     const payload: BookTagsSyncPayload = {
-      version: 1,
+      version: 2,
       lastModified: newTagsModified || Date.now(),
+      entries: entriesToStore,
       tagsByTitle: tagsToStore,
       titles: titlesToStore
     };

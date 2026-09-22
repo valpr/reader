@@ -15,6 +15,16 @@ export interface SyncRun {
   target: string;
   attemptedTypes: StorageDataType[];
   error?: string;
+  /**
+   * Deletion-state census (tag/bookmark deletion sync): soft-deleted
+   * bookmark rows and locally-removed tag titles held at the end of the run.
+   * Deleted rows live indefinitely by design (no tombstone GC — a dormant
+   * device is a normal case), so these counts are the visibility into that
+   * growth. Absent on runs that ended before counting (errors) and on runs
+   * recorded by older builds.
+   */
+  deletedBookmarks?: number;
+  removedTagTitles?: number;
 }
 
 /**
@@ -53,6 +63,8 @@ function isSyncRun(value: unknown): value is SyncRun {
     typeof run.durationMs === 'number' &&
     typeof run.target === 'string' &&
     Array.isArray(run.attemptedTypes) &&
-    (run.error === undefined || typeof run.error === 'string')
+    (run.error === undefined || typeof run.error === 'string') &&
+    (run.deletedBookmarks === undefined || typeof run.deletedBookmarks === 'number') &&
+    (run.removedTagTitles === undefined || typeof run.removedTagTitles === 'number')
   );
 }

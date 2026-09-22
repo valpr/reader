@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { SAMPLE_BOOK, seedReaderBook } from './fixtures/book-fixture';
+import { currentDbVersion } from '../src/lib/data/database/books-db/versions/books-db';
 
 test.describe('Book Tags', () => {
   test('tags render on the card without overlapping the delete X', async ({ page }) => {
@@ -88,5 +89,44 @@ test.describe('Book Tags', () => {
     await suggestion.click();
 
     await expect(page.getByTestId('book-tags-editor')).toContainText('fantasy');
+  });
+
+  test('removing a tag stamps per-title sync attribution', async ({ page }) => {
+    await seedReaderBook(page, { tags: ['fantasy'] });
+    await page.goto('/manage');
+
+    const bookCard = page.locator('.aspect-w-2').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    await page.getByRole('button', { name: 'View details' }).click();
+
+    const editor = page.getByTestId('book-tags-editor');
+    await expect(editor).toBeVisible();
+
+    // Remove the tag and save: the removal must record per-title
+    // attribution (lastModified BOOK_TAGS row) so it propagates as
+    // last-write-wins instead of being re-added by the next union merge.
+    await page.getByTestId('remove-tag-fantasy').click();
+    await page.getByRole('button', { name: 'Save tags' }).click();
+    await expect(page.getByTestId('book-details-dialog')).not.toBeVisible();
+
+    const attribution = await page.evaluate(async (version) => {
+      return new Promise<any[]>((resolve, reject) => {
+        const req = indexedDB.open('books', version);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('lastModified', 'readonly');
+          const getAllReq = tx.objectStore('lastModified').getAll();
+          getAllReq.onsuccess = () => resolve(getAllReq.result);
+          getAllReq.onerror = () => reject(getAllReq.error);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    }, currentDbVersion);
+
+    const row = attribution.find((r) => r.dataType === 'bookTags');
+    expect(row).toBeDefined();
+    expect(row.lastModifiedValue).toBeGreaterThan(0);
   });
 });

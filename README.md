@@ -45,6 +45,7 @@ This repository is a personalized fork of the excellent [ttu-ttu/ebook-reader](h
 
 - **Silent Multi-Cloud Replication**: Automatic background synchronization via Google Drive and Microsoft OneDrive.
 - **Progress-Safe Downloads**: Cloud book downloads merge cleanly without overwriting local progress.
+- **Deletion-Safe Sync**: Removed tags and deleted bookmarks stay deleted on every device, even one that was offline for weeks. No-op syncs upload nothing. Devices on older builds keep working but can't produce deletions others will see.
 
 ### Settings & Hardware Profiles
 

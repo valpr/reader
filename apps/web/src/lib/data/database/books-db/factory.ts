@@ -9,7 +9,7 @@ import { openDB } from 'idb';
 import upgradeBooksDbFromV2 from './versions/v2/upgrade';
 
 export function createBooksDb(name = 'books') {
-  return openDB<BooksDb>(name, 13, {
+  return openDB<BooksDb>(name, 15, {
     async upgrade(oldDb, oldVersion, newVersion, transaction) {
       if (oldVersion < 3 && oldVersion >= 2) {
         await upgradeBooksDbFromV2(oldDb, oldVersion, newVersion, transaction);
@@ -104,6 +104,16 @@ export function createBooksDb(name = 'books') {
         });
         remoteStore.createIndex('byDevice', 'deviceId');
         remoteStore.createIndex('byBook', ['title', 'dateKey']);
+      }
+
+      // v15: index for the per-syncId bookmark merge lookup. Runs after the
+      // creation guards so `userBookmark` always exists here — including for
+      // fresh installs (oldVersion 0), which need the index as well.
+      if (oldDb.objectStoreNames.contains('userBookmark')) {
+        const userBookmarkStore = transaction.objectStore('userBookmark');
+        if (!userBookmarkStore.indexNames.contains('syncId')) {
+          userBookmarkStore.createIndex('syncId', 'syncId');
+        }
       }
     }
   });
