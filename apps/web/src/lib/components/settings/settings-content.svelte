@@ -159,6 +159,8 @@
 
   export let enableTapEdgeToFlip: boolean;
 
+  export let keepReaderHeaderVisible: boolean;
+
   export let pageColumns: number;
 
   export let storageQuota: string;
@@ -619,6 +621,7 @@
     verticalTextOrientation = s.verticalTextOrientation;
     swipeThreshold = s.swipeThreshold;
     enableTapEdgeToFlip = s.enableTapEdgeToFlip;
+    keepReaderHeaderVisible = s.keepReaderHeaderVisible ?? false;
     avoidPageBreak = s.avoidPageBreak;
     selectionToBookmarkEnabled = s.selectionToBookmarkEnabled;
     autoPositionOnResize = s.autoPositionOnResize;
@@ -1392,6 +1395,13 @@
                   <span slot="suffix" class="text-xs text-zinc-500">px</span>
                 </Input>
               </div>
+            </ListItem>
+
+            <ListItem
+              headline="Keep Reader Header Visible"
+              description="Pins the top bar in place instead of auto-hiding it, so it never overlaps the text"
+            >
+              <Switch slot="suffix" bind:checked={keepReaderHeaderVisible} />
             </ListItem>
 
             {#if viewMode === ViewMode.Paginated}

@@ -75,6 +75,7 @@
     hideFurigana$,
     hideSpoilerImage$,
     hideSpoilerImageMode$,
+    keepReaderHeaderVisible$,
     lineHeight$,
     manualBookmark$,
     pageColumns$,
@@ -150,6 +151,7 @@
     $secondDimensionMaxValue$;
     $swipeThreshold$;
     $enableTapEdgeToFlip$;
+    $keepReaderHeaderVisible$;
     $textIndentation$;
     $textMarginValue$;
     $textMarginMode$;

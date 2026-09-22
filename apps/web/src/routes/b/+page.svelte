@@ -54,6 +54,7 @@
     furiganaStyle$,
     hideFurigana$,
     hideSpoilerImage$,
+    keepReaderHeaderVisible$,
     multiplier$,
     pageColumns$,
     prioritizeReaderStyles$,
@@ -209,6 +210,7 @@
   let showSpinner = true;
   let loaderStage = 'Opening local book…';
   let showHeader = false;
+  let headerHeight = 0;
   let isBookmarkScreen = false;
   let showFooter = true;
   let exploredCharCount = 0;
@@ -729,6 +731,13 @@
 
   $: isPaginated = $viewMode$ === ViewMode.Paginated;
 
+  // Pinned header mode (E-Reader default): the top bar stays visible and
+  // reserves its own space instead of floating over the book text.
+  $: isHeaderPinned = $keepReaderHeaderVisible$;
+  $: if (isHeaderPinned) {
+    showHeader = true;
+  }
+
   $: firstDimensionMargin =
     browser && $enableTapEdgeToFlip$ && isPaginated && $verticalMode$
       ? limitToRange(convertRemToPixels(window, 0.5), window.innerWidth, $firstDimensionMargin$)
@@ -737,6 +746,10 @@
   $: tapButtonHeight = `calc(100% - ${showHeader ? 5 : 4}rem)`;
 
   $: tapButtonTop = `${showHeader ? 3 : 2}rem`;
+
+  // In pinned mode the reader viewport shrinks by the measured header height
+  // (matching the top padding below) so the last line still fits on screen.
+  $: readerViewportHeight = ($containerViewportHeight$ ?? 0) - (isHeaderPinned ? headerHeight : 0);
 
   $: footerChapterProgress = getCurrentChapterProgress($sectionData$);
 
@@ -2218,16 +2231,21 @@
 {$handleUpdateImageGalleryPictureSpoilers$ ?? ''}
 {$initBookmarkData$ ?? ''}
 {$initUserBookmarks$ ?? ''}
-<button
-  aria-label="Show reader header"
-  class="fixed inset-x-0 top-0 z-10 h-8 w-full"
-  on:click={() => (showHeader = true)}
-></button>
+{#if !isHeaderPinned}
+  <button
+    aria-label="Show reader header"
+    class="fixed inset-x-0 top-0 z-10 h-8 w-full"
+    on:click={() => (showHeader = true)}
+  ></button>
+{/if}
 {#if showHeader}
   <div
+    bind:clientHeight={headerHeight}
     class="elevation-4 writing-horizontal-tb fixed inset-x-0 top-0 z-10 w-full"
     transition:fly|local={{ y: -300, easing: quintInOut }}
-    use:clickOutside={() => (showHeader = false)}
+    use:clickOutside={() => {
+      if (!isHeaderPinned) showHeader = false;
+    }}
   >
     <BookReaderHeader
       hasChapterData={!!$sectionData$?.length}
@@ -2346,54 +2364,62 @@
     />
   {/if}
   <StyleSheetRenderer styleSheet={$bookData$.styleSheet} />
-  <BookReader
-    htmlContent={$bookData$.htmlContent}
-    width={$containerViewportWidth$ ?? 0}
-    height={$containerViewportHeight$ ?? 0}
-    {fontFeatureSettings}
-    {verticalTextOrientation}
-    prioritizeReaderStyles={$prioritizeReaderStyles$}
-    enableTextJustification={$enableTextJustification$}
-    enableTextWrapPretty={$enableTextWrapPretty$}
-    verticalMode={$verticalMode$}
-    fontColor={$themeOption$?.fontColor}
-    backgroundColor={$backgroundColor$}
-    hintFuriganaFontColor={$themeOption$?.hintFuriganaFontColor}
-    hintFuriganaShadowColor={$themeOption$?.hintFuriganaShadowColor}
-    fontFamilyGroupOne={$fontFamilyGroupOne$}
-    fontFamilyGroupTwo={$fontFamilyGroupTwo$}
-    fontWeight={$fontWeight$}
-    fontSize={$fontSize$}
-    lineHeight={$lineHeight$}
-    textIndentation={$textIndentation$}
-    textMarginMode={$textMarginMode$}
-    textMarginValue={$textMarginValue$}
-    hideSpoilerImage={$hideSpoilerImage$}
-    hideFurigana={$hideFurigana$}
-    furiganaStyle={$furiganaStyle$}
-    viewMode={$viewMode$}
-    secondDimensionMaxValue={$secondDimensionMaxValue$}
-    {firstDimensionMargin}
-    autoPositionOnResize={$autoPositionOnResize$}
-    avoidPageBreak={$avoidPageBreak$}
-    pageColumns={$pageColumns$}
-    multiplier={$multiplier$}
-    {userBookmarks}
-    bind:exploredCharCount
-    bind:bookCharCount
-    bind:isBookmarkScreen
-    bind:bookmarkData
-    bind:autoScroller
-    bind:bookmarkManager
-    bind:pageManager
-    bind:customReadingPoint
-    bind:customReadingPointTop
-    bind:customReadingPointLeft
-    bind:customReadingPointScrollOffset
-    bind:customReadingPointRange
-    bind:showCustomReadingPoint
-    on:trackerPause={() => pauseTracker(true)}
-  />
+  <!-- Pinned header mode reserves the measured header height as physical top
+    padding (physical properties are writing-mode agnostic, unlike in-flow
+    spacers on a vertical-rl page) so book text starts below the fixed bar. -->
+  <div
+    data-testid="pinned-reader-header-offset"
+    style:padding-top={isHeaderPinned && headerHeight ? `${headerHeight}px` : undefined}
+  >
+    <BookReader
+      htmlContent={$bookData$.htmlContent}
+      width={$containerViewportWidth$ ?? 0}
+      height={readerViewportHeight}
+      {fontFeatureSettings}
+      {verticalTextOrientation}
+      prioritizeReaderStyles={$prioritizeReaderStyles$}
+      enableTextJustification={$enableTextJustification$}
+      enableTextWrapPretty={$enableTextWrapPretty$}
+      verticalMode={$verticalMode$}
+      fontColor={$themeOption$?.fontColor}
+      backgroundColor={$backgroundColor$}
+      hintFuriganaFontColor={$themeOption$?.hintFuriganaFontColor}
+      hintFuriganaShadowColor={$themeOption$?.hintFuriganaShadowColor}
+      fontFamilyGroupOne={$fontFamilyGroupOne$}
+      fontFamilyGroupTwo={$fontFamilyGroupTwo$}
+      fontWeight={$fontWeight$}
+      fontSize={$fontSize$}
+      lineHeight={$lineHeight$}
+      textIndentation={$textIndentation$}
+      textMarginMode={$textMarginMode$}
+      textMarginValue={$textMarginValue$}
+      hideSpoilerImage={$hideSpoilerImage$}
+      hideFurigana={$hideFurigana$}
+      furiganaStyle={$furiganaStyle$}
+      viewMode={$viewMode$}
+      secondDimensionMaxValue={$secondDimensionMaxValue$}
+      {firstDimensionMargin}
+      autoPositionOnResize={$autoPositionOnResize$}
+      avoidPageBreak={$avoidPageBreak$}
+      pageColumns={$pageColumns$}
+      multiplier={$multiplier$}
+      {userBookmarks}
+      bind:exploredCharCount
+      bind:bookCharCount
+      bind:isBookmarkScreen
+      bind:bookmarkData
+      bind:autoScroller
+      bind:bookmarkManager
+      bind:pageManager
+      bind:customReadingPoint
+      bind:customReadingPointTop
+      bind:customReadingPointLeft
+      bind:customReadingPointScrollOffset
+      bind:customReadingPointRange
+      bind:showCustomReadingPoint
+      on:trackerPause={() => pauseTracker(true)}
+    />
+  </div>
   {$setBackgroundColor$ ?? ''}
   {$setWritingMode$ ?? ''}
   {$textSelector$ ?? ''}

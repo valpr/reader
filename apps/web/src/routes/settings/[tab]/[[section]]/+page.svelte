@@ -39,6 +39,7 @@
     hideFurigana$,
     hideSpoilerImage$,
     importHTMLFixMode$,
+    keepReaderHeaderVisible$,
     lastProfilesModified$,
     lineHeight$,
     loaderMode$,
@@ -271,6 +272,7 @@
       bind:customReadingPointEnabled={$customReadingPointEnabled$}
       bind:selectionToBookmarkEnabled={$selectionToBookmarkEnabled$}
       bind:enableTapEdgeToFlip={$enableTapEdgeToFlip$}
+      bind:keepReaderHeaderVisible={$keepReaderHeaderVisible$}
       bind:pageColumns={$pageColumns$}
       bind:persistentStorage={$persistentStorage$}
       bind:externalReadAction={$externalReadAction$}

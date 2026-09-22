@@ -190,6 +190,11 @@ export const enableTapEdgeToFlip$ = writableBooleanLocalStorageSubject()(
   false
 );
 
+export const keepReaderHeaderVisible$ = writableBooleanLocalStorageSubject()(
+  'keepReaderHeaderVisible',
+  false
+);
+
 export const confirmClose$ = writableBooleanLocalStorageSubject()('confirmClose', false);
 
 export const manualBookmark$ = writableBooleanLocalStorageSubject()('manualBookmark', false);

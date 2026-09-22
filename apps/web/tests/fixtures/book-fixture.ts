@@ -90,6 +90,7 @@ export interface ReaderSettingsOptions {
   fontSize?: number;
   theme?: string;
   enableTapEdgeToFlip?: boolean;
+  keepReaderHeaderVisible?: boolean;
   showCharacterCounter?: boolean;
   showPercentage?: boolean;
 }
@@ -113,6 +114,9 @@ export async function setReaderSettings(page: Page, settings: ReaderSettingsOpti
     }
     if (s.enableTapEdgeToFlip !== undefined) {
       localStorage.setItem('enableTapEdgeToFlip', s.enableTapEdgeToFlip ? '1' : '0');
+    }
+    if (s.keepReaderHeaderVisible !== undefined) {
+      localStorage.setItem('keepReaderHeaderVisible', s.keepReaderHeaderVisible ? '1' : '0');
     }
     if (s.showCharacterCounter !== undefined) {
       localStorage.setItem('showCharacterCounter', s.showCharacterCounter ? '1' : '0');
