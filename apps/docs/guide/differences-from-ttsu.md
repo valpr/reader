@@ -13,7 +13,7 @@ Here is a comprehensive summary of what has been added or redesigned compared to
   - **Desktop / PC** (`default-desktop`): Auto columns, 20px font, 1.65 line height, wake lock off.
   - **Phone / Mobile** (`default-mobile`): Single column, 17px font, 1.55 line height, 15px swipe threshold, wake lock on.
   - **Tablet** (`default-tablet`): Single column, 22px font, 1.70 line height, 24px margin, 900px column height restraint (~42 characters to replicate traditional bunkobon line lengths).
-  - **E-Reader / E-Ink** (`default-ereader`): Medium font weight (`fontWeight: 500`) stroke boost for reflective 15:1 contrast Carta panels, 10px margins, 20px swipe threshold to prevent ghost streaks.
+  - **E-Reader / E-Ink** (`default-ereader`): Medium font weight (`fontWeight: 500`) stroke boost for reflective 15:1 contrast Carta panels, 10px margins, 20px swipe threshold to prevent ghost streaks, permanently pinned header bar, no tap-edge zones (physical page buttons instead), no mid-sentence page breaks.
 - **Self-Saving & Management:** You can create, rename, duplicate, and delete custom profiles. Profiles save automatically as you adjust sliders.
 - **Cloud Sync:** Profiles automatically synchronize across your devices via cloud storage.
 - **Factory Reset:** Start fresh with a one-click reset that clears local state and restores defaults without deleting cloud files.

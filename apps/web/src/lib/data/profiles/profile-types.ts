@@ -57,6 +57,7 @@ export interface ReaderProfileSettings {
   // Navigation, Gestures & Page Turns
   swipeThreshold: number;
   enableTapEdgeToFlip: boolean;
+  keepReaderHeaderVisible: boolean;
   avoidPageBreak: boolean;
   selectionToBookmarkEnabled: boolean;
   autoPositionOnResize: boolean;
@@ -153,6 +154,7 @@ export const defaultDesktopSettings: ReaderProfileSettings = {
   furiganaStyle: FuriganaStyle.Partial,
   swipeThreshold: 10,
   enableTapEdgeToFlip: false,
+  keepReaderHeaderVisible: false,
   avoidPageBreak: false,
   selectionToBookmarkEnabled: false,
   autoPositionOnResize: true,
@@ -201,7 +203,9 @@ export const defaultEReaderSettings: ReaderProfileSettings = {
   firstDimensionMargin: 10,
   secondDimensionMaxValue: 0,
   swipeThreshold: 20,
-  enableTapEdgeToFlip: true,
+  enableTapEdgeToFlip: false,
+  keepReaderHeaderVisible: true,
+  avoidPageBreak: true,
   enableReaderWakeLock: true,
   appThemeMode: 'light',
   theme: 'light-theme'
@@ -239,7 +243,8 @@ export const defaultReaderProfiles: ReaderProfile[] = [
     id: 'default-ereader',
     name: 'E-Reader / E-Ink',
     icon: 'ereader',
-    description: 'High contrast & medium font weight for E-Ink devices (20px font, 500 weight)',
+    description:
+      'High contrast & medium font weight for E-Ink devices (20px font, 500 weight, pinned header)',
     updatedAt: 1,
     isDefault: true,
     settings: defaultEReaderSettings

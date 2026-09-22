@@ -8,12 +8,12 @@ Valpr Reader features a **Device Profiles engine**. Unlike conventional readers 
 
 Valpr Reader ships with **four distinct hardware profiles**. These are intentionally separate because display physics, viewing distance, and ergonomic grip differ fundamentally across device classes:
 
-| Profile              | ID                | Font Size | Line Height | Columns  | Margin | Key Differences                                                                  |
-| :------------------- | :---------------- | :-------- | :---------- | :------- | :----- | :------------------------------------------------------------------------------- |
-| **PC / Desktop**     | `default-desktop` | 20px      | 1.65        | Auto (0) | 16px   | Mouse/keyboard navigation, no tap-edge paging, wake lock off                     |
-| **Mobile / Phone**   | `default-mobile`  | 17px      | 1.55        | 1        | 16px   | Closest viewing distance, smaller font, 15px swipe threshold, wake lock on       |
-| **Tablet**           | `default-tablet`  | 22px      | 1.70        | 1        | 24px   | High-DPI LCD, wider 24px thumb bezel margin, wake lock on, 900px column ceiling  |
-| **E-Reader / E-Ink** | `default-ereader` | 20px      | 1.60        | 1        | 10px   | E-Ink contrast boost (font weight 500), 20px swipe threshold, forced light theme |
+| Profile              | ID                | Font Size | Line Height | Columns  | Margin | Key Differences                                                                                                                      |
+| :------------------- | :---------------- | :-------- | :---------- | :------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| **PC / Desktop**     | `default-desktop` | 20px      | 1.65        | Auto (0) | 16px   | Mouse/keyboard navigation, no tap-edge paging, wake lock off                                                                         |
+| **Mobile / Phone**   | `default-mobile`  | 17px      | 1.55        | 1        | 16px   | Closest viewing distance, smaller font, 15px swipe threshold, wake lock on                                                           |
+| **Tablet**           | `default-tablet`  | 22px      | 1.70        | 1        | 24px   | High-DPI LCD, wider 24px thumb bezel margin, wake lock on, 900px column ceiling                                                      |
+| **E-Reader / E-Ink** | `default-ereader` | 20px      | 1.60        | 1        | 10px   | E-Ink contrast boost (font weight 500), 20px swipe threshold, forced light theme, pinned header, no tap edge, no mid-sentence breaks |
 
 ---
 
@@ -59,6 +59,12 @@ Reading an intensive page of Japanese literature (300–500 characters plus mult
 ### 7. Column Height Limit (900px on Tablet)
 
 Without a constraint, full-screen vertical text on a 12.9" tablet would result in lines exceeding 60–70 characters. The `secondDimensionMaxValue: 900px` setting caps column height to approximately **42 characters**, faithfully matching the standard line length of traditional Japanese _bunkobon_ (文庫本) paperbacks.
+
+### 8. Pinned Header, No Tap Edge, No Mid-Sentence Breaks (E-Reader)
+
+- **Pinned header (`keepReaderHeaderVisible: true`):** The auto-hiding top bar floats over the first lines of text, which is especially disruptive on slow-refreshing E-Ink. Pinning keeps the bar permanently visible in its own reserved space so it never overlaps the text. Every full-screen refresh on E-Ink costs a visible flash; a stable header avoids re-compositing surprises. Available per-profile under **Settings > Reader > Navigation & Gestures > Keep Reader Header Visible**.
+- **Tap edge off (`enableTapEdgeToFlip: false`):** E-Readers ship with physical page-turn buttons, so the screen-edge tap zones only steal margin space and cause accidental turns.
+- **Mid-sentence breaks avoided (`avoidPageBreak: true`):** Page turns on E-Ink are expensive full refreshes, so each page should end at a clean sentence boundary rather than stranding half a sentence.
 
 ---
 

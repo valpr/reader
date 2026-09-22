@@ -75,12 +75,12 @@ Dialog content must contain its text at 360–412px widths without spilling past
 
 There are **four distinct built-in device profiles** in [`profile-types.ts`](apps/web/src/lib/data/profiles/profile-types.ts). They are intentionally separate because display physics, viewing distance, and input ergonomics differ fundamentally across device classes.
 
-| Profile          | ID                | Font | Line Height | Columns  | Key differences                                                                                      |
-| ---------------- | ----------------- | ---- | ----------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| PC / Desktop     | `default-desktop` | 20px | 1.65        | 0 (auto) | Mouse/keyboard, no tap-edge, wake lock off                                                           |
-| Mobile / Phone   | `default-mobile`  | 17px | 1.55        | 1        | Closest viewing distance → smaller font, swipe threshold 15px, wake lock on                          |
-| Tablet           | `default-tablet`  | 22px | 1.70        | 1        | High-DPI LCD, wide bezel → 24px margin, swipe threshold 15px, wake lock on                           |
-| E-Reader / E-Ink | `default-ereader` | 20px | 1.60        | 1        | E-Ink physics → fontWeight 500 (stroke boost), 10px margin, swipe threshold 20px, forced light theme |
+| Profile          | ID                | Font | Line Height | Columns  | Key differences                                                                                                                                             |
+| ---------------- | ----------------- | ---- | ----------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC / Desktop     | `default-desktop` | 20px | 1.65        | 0 (auto) | Mouse/keyboard, no tap-edge, wake lock off                                                                                                                  |
+| Mobile / Phone   | `default-mobile`  | 17px | 1.55        | 1        | Closest viewing distance → smaller font, swipe threshold 15px, wake lock on                                                                                 |
+| Tablet           | `default-tablet`  | 22px | 1.70        | 1        | High-DPI LCD, wide bezel → 24px margin, swipe threshold 15px, wake lock on                                                                                  |
+| E-Reader / E-Ink | `default-ereader` | 20px | 1.60        | 1        | E-Ink physics → fontWeight 500 (stroke boost), 10px margin, swipe threshold 20px, forced light theme, pinned header, no tap-edge, avoid mid-sentence breaks |
 
 **Rationale for key values:**
 
@@ -91,6 +91,7 @@ There are **four distinct built-in device profiles** in [`profile-types.ts`](app
 - **swipeThreshold 20px on E-Reader:** Low-refresh E-Ink (~10 Hz) shows ghost streaks on drag; a higher threshold forces deliberate taps rather than accidental swipes.
 - **firstDimensionMargin 24px on Tablet, 10px on E-Reader:** Slim-bezel tablets need digital breathing room for thumb grip; E-Ink devices have wide physical plastic borders that already provide clearance.
 - **secondDimensionMaxValue 900px on Tablet:** Prevents column height from exceeding ~42 characters on large-screen tablets, matching traditional bunkobon paperback line lengths.
+- **keepReaderHeaderVisible: true, enableTapEdgeToFlip: false, avoidPageBreak: true on E-Reader:** The auto-hiding top bar floats over the first lines of text; pinning reserves its own space (no overlap, no auto-hide). E-Readers have physical page-turn buttons so edge tap zones only waste margin space. Page turns are expensive full E-Ink refreshes, so pages end at sentence boundaries.
 
 **Adding or changing a default profile value:**
 

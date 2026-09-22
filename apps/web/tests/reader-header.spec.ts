@@ -78,3 +78,56 @@ test.describe('Reader Header & Core Bar Controls', () => {
     await expect(page).toHaveURL(/\/settings/);
   });
 });
+
+test.describe('Pinned Reader Header (Keep Header Visible)', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedReaderBook(page, {}, { keepReaderHeaderVisible: true });
+  });
+
+  test('header is visible without tapping and has no show-header trigger', async ({ page }) => {
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+
+    // Pinned header controls are visible immediately, no trigger tap needed
+    await expect(page.locator('button[aria-label="Go to Book Manager"]')).toBeVisible({
+      timeout: 5000
+    });
+    await expect(page.locator('button[aria-label="Show reader header"]')).toHaveCount(0);
+  });
+
+  test('header survives outside clicks instead of auto-hiding', async ({ page }) => {
+    await page.goto('/b?id=1');
+    const managerBtn = page.locator('button[aria-label="Go to Book Manager"]');
+    await expect(managerBtn).toBeVisible({ timeout: 5000 });
+
+    // Clicking book content must not dismiss the pinned header
+    await page.locator('.book-content').click({ position: { x: 50, y: 200 } });
+    await expect(managerBtn).toBeVisible({ timeout: 5000 });
+  });
+
+  test('book content starts below the pinned header without overlap', async ({ page }) => {
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('button[aria-label="Go to Book Manager"]')).toBeVisible({
+      timeout: 5000
+    });
+
+    // The offset wrapper reserves the measured header height as top padding
+    const paddingTop = await page
+      .locator('[data-testid="pinned-reader-header-offset"]')
+      .evaluate((el) => parseFloat(getComputedStyle(el).paddingTop));
+    expect(paddingTop).toBeGreaterThan(0);
+
+    // True no-overlap check: first content line starts below the fixed bar
+    const headerBox = await page.locator('button[aria-label="Go to Book Manager"]').boundingBox();
+    const contentBox = await page.locator('.book-content').boundingBox();
+    expect(headerBox).not.toBeNull();
+    expect(contentBox).not.toBeNull();
+    expect(contentBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
+  });
+
+  test('navigation settings exposes the Keep Reader Header Visible toggle', async ({ page }) => {
+    await page.goto('/settings/reader/navigation');
+    await expect(page.locator('text=Keep Reader Header Visible')).toBeVisible();
+  });
+});

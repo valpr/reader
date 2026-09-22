@@ -152,6 +152,45 @@ test.describe('Reader Profiles System', () => {
     await expect(page.locator('text=Profile To Delete')).not.toBeVisible();
   });
 
+  test('e-reader profile pins the header and disables tap edge', async ({ page }) => {
+    const keepSwitch = () =>
+      page
+        .locator('li.astryx-list-item', { hasText: 'Keep Reader Header Visible' })
+        .getByRole('switch');
+    const tapSwitch = () =>
+      page.locator('li.astryx-list-item', { hasText: 'Tap Edge to Flip' }).getByRole('switch');
+    const breakSwitch = () =>
+      page
+        .locator('li.astryx-list-item', { hasText: 'Avoid Mid-Sentence Page Breaks' })
+        .getByRole('switch');
+
+    async function selectProfileAndOpenNavigation(name: string, id: string) {
+      await page.locator(`[role="button"]:has-text("${name}")`).click();
+      // Wait for the switch to flush to localStorage before navigating away
+      await expect
+        .poll(async () => page.evaluate(() => localStorage.getItem('activeProfileId')), {
+          timeout: 5000
+        })
+        .toBe(id);
+      await page.goto('/settings/reader/navigation');
+      await expect(page.locator('text=Keep Reader Header Visible')).toBeVisible();
+    }
+
+    // E-Reader / E-Ink preset: pinned header ON, tap edge OFF, no mid-sentence breaks
+    await selectProfileAndOpenNavigation('E-Reader / E-Ink', 'default-ereader');
+    await expect(keepSwitch()).toHaveAttribute('aria-checked', 'true');
+    await expect(tapSwitch()).toHaveAttribute('aria-checked', 'false');
+    await expect(breakSwitch()).toHaveAttribute('aria-checked', 'true');
+
+    // PC / Desktop preset: pinned header OFF (auto-hide overlay)
+    await page.goto('/settings/reader/profiles');
+    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Active').first()).toBeVisible({ timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+    await selectProfileAndOpenNavigation('PC / Desktop', 'default-desktop');
+    await expect(keepSwitch()).toHaveAttribute('aria-checked', 'false');
+  });
+
   test('mobile responsive layout does not crush description into vertical line', async ({
     page
   }) => {

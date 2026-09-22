@@ -39,6 +39,7 @@ import {
   hideSpoilerImageMode$,
   isOnline$,
   keepLocalStatisticsOnDeletion$,
+  keepReaderHeaderVisible$,
   lastProfilesModified$,
   lastStatisticsSettingsModified$,
   lineHeight$,
@@ -127,6 +128,7 @@ export function getCurrentReaderSettings(): ReaderProfileSettings {
     furiganaStyle: furiganaStyle$.getValue(),
     swipeThreshold: swipeThreshold$.getValue(),
     enableTapEdgeToFlip: enableTapEdgeToFlip$.getValue(),
+    keepReaderHeaderVisible: keepReaderHeaderVisible$.getValue(),
     avoidPageBreak: avoidPageBreak$.getValue(),
     selectionToBookmarkEnabled: selectionToBookmarkEnabled$.getValue(),
     autoPositionOnResize: autoPositionOnResize$.getValue(),
@@ -182,6 +184,8 @@ export function applyProfile(profile: ReaderProfile): void {
   if (s.furiganaStyle !== undefined) furiganaStyle$.next(s.furiganaStyle);
   if (s.swipeThreshold !== undefined) swipeThreshold$.next(s.swipeThreshold);
   if (s.enableTapEdgeToFlip !== undefined) enableTapEdgeToFlip$.next(s.enableTapEdgeToFlip);
+  if (s.keepReaderHeaderVisible !== undefined)
+    keepReaderHeaderVisible$.next(s.keepReaderHeaderVisible);
   if (s.avoidPageBreak !== undefined) avoidPageBreak$.next(s.avoidPageBreak);
   if (s.selectionToBookmarkEnabled !== undefined)
     selectionToBookmarkEnabled$.next(s.selectionToBookmarkEnabled);
@@ -612,7 +616,10 @@ export async function syncProfilesToCloudTarget(): Promise<string | undefined> {
   }
 }
 
-export const PROFILES_SCHEMA_VERSION = 2;
+export const PROFILES_SCHEMA_VERSION = 3;
+
+const EREADER_PRE_V3_DESCRIPTION =
+  'High contrast & medium font weight for E-Ink devices (20px font, 500 weight)';
 
 export function ensureDefaultProfiles(): void {
   if (!browser) return;
@@ -640,6 +647,56 @@ export function ensureDefaultProfiles(): void {
     if (ereaderProfile) {
       updated.push(ereaderProfile);
       modified = true;
+    }
+  }
+
+  // 3. v3: pinned reader header setting + e-reader navigation defaults.
+  //    keepReaderHeaderVisible is new, so stored profiles get the per-profile
+  //    default (ON for E-Reader, OFF elsewhere). Tap-edge/page-break flips only
+  //    apply when the stored e-reader profile still carries the old defaults,
+  //    so deliberate user customizations are never clobbered.
+  if (storedVersion < 3) {
+    const ereaderDefaults = defaultReaderProfiles.find((p) => p.id === 'default-ereader');
+    for (let i = 0; i < updated.length; i++) {
+      const profile = updated[i];
+      if (!profile?.settings) continue;
+      const settings = { ...profile.settings };
+      let changed = false;
+
+      if (settings.keepReaderHeaderVisible === undefined) {
+        settings.keepReaderHeaderVisible = profile.id === 'default-ereader';
+        changed = true;
+      }
+
+      if (profile.id === 'default-ereader') {
+        if (settings.enableTapEdgeToFlip === true) {
+          settings.enableTapEdgeToFlip = false;
+          changed = true;
+        }
+        if (settings.avoidPageBreak === false) {
+          settings.avoidPageBreak = true;
+          changed = true;
+        }
+        if (profile.description === EREADER_PRE_V3_DESCRIPTION && ereaderDefaults?.description) {
+          updated[i] = { ...profile, settings, description: ereaderDefaults.description };
+          modified = true;
+          continue;
+        }
+      }
+
+      if (changed) {
+        updated[i] = { ...profile, settings };
+        modified = true;
+      }
+    }
+
+    // Reflect the same conditional flips in the live stores when E-Reader is
+    // the active profile, otherwise the reader keeps the stale values until
+    // the profile is next applied.
+    if (activeProfileId$.getValue?.() === 'default-ereader') {
+      if (enableTapEdgeToFlip$.getValue() === true) enableTapEdgeToFlip$.next(false);
+      if (avoidPageBreak$.getValue() === false) avoidPageBreak$.next(true);
+      if (keepReaderHeaderVisible$.getValue() === false) keepReaderHeaderVisible$.next(true);
     }
   }
 
