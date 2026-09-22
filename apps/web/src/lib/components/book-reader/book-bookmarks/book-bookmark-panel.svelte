@@ -79,7 +79,9 @@
   }
 
   function handleCreate() {
-    closePanel();
+    // Don't close the panel first: panel teardown clears dialogManager,
+    // which would wipe the create dialog opened by openCreateBookmarkDialog.
+    // The dialog stacks above the panel (z-70 over z-60) like edit does.
     dispatch('create');
   }
 </script>
