@@ -390,6 +390,18 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     );
   }
 
+  async listFilesWithPrefix(
+    prefix: string,
+    context: ReplicationContext
+  ): Promise<{ name: string; revision?: string }[]> {
+    // FileSystem handles expose no revision: names alone identify the set.
+    const { files } = await this.getExternalFile(prefix, 1, context);
+
+    return (files || [])
+      .filter((entry) => entry.name.startsWith(prefix))
+      .map((entry) => ({ name: entry.name }));
+  }
+
   async getBook(context: ReplicationContext) {
     const { file } = await this.getExternalFile(
       'bookdata_',
@@ -698,6 +710,22 @@ export class FilesystemStorageHandler extends BaseStorageHandler {
     const filename = BaseStorageHandler.getProgressFileName(data);
     const { lastBookmarkModified, progress } = BaseStorageHandler.getProgressMetadata(filename);
     const { file, files, rootDirectory } = await this.getExternalFile('progress_', 0.4, context);
+
+    // Defensive write-skip, mirroring ApiStorageHandler.saveProgress: no
+    // extra I/O, both names are already in hand. The replicator gate
+    // normally ensures strictly-newer writes only; File pass-through keeps
+    // copy-through behavior.
+    if (!(data instanceof File) && file?.name) {
+      const existing = BaseStorageHandler.getProgressMetadata(file.name);
+
+      if (
+        existing.lastBookmarkModified === lastBookmarkModified &&
+        existing.progress === progress
+      ) {
+        this.addBookCard(ctx.title, { lastBookmarkModified, progress });
+        return;
+      }
+    }
 
     await this.writeFile(
       rootDirectory,

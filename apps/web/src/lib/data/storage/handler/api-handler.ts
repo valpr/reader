@@ -486,6 +486,24 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     );
   }
 
+  async listFilesWithPrefix(
+    prefix: string,
+    context: ReplicationContext
+  ): Promise<{ name: string; revision?: string }[]> {
+    // Metadata-only (''): no body download, served from the warmed
+    // titleToFiles cache when available. Every prefix match is returned so
+    // duplicate files stay visible to exact-state sync gates.
+    const { files } = await this.getExternalFile(prefix, '', 1, true, context);
+
+    return (files || [])
+      .filter((entry) => entry.name.startsWith(prefix))
+      .map((entry) =>
+        entry.revision === undefined
+          ? { name: entry.name }
+          : { name: entry.name, revision: entry.revision }
+      );
+  }
+
   async getBook(context: ReplicationContext) {
     const { file, data } = await this.getExternalFile(
       'bookdata_',
@@ -749,6 +767,26 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     const progressData = data instanceof File ? data : JSON.stringify(data);
     const { titleId, files, file } = await this.getExternalFile('progress_', '', 0.2, false, ctx);
     const { lastBookmarkModified, progress } = BaseStorageHandler.getProgressMetadata(filename);
+
+    // Defensive write-skip (no extra fetch: both names are already in
+    // hand). The replicator's isProgressPresentAndUpToDate gate normally
+    // guarantees saveProgress only runs when the source is strictly newer,
+    // so this only fires for direct callers or same-timestamp races. A
+    // filename match means identical (lastBookmarkModified, progress) — the
+    // only uncovered difference is deviceId, which is display-identical and
+    // self-heals on the next real edit. File pass-through payloads keep the
+    // previous copy-through behavior.
+    if (!(data instanceof File) && file?.name) {
+      const existing = BaseStorageHandler.getProgressMetadata(file.name);
+
+      if (
+        existing.lastBookmarkModified === lastBookmarkModified &&
+        existing.progress === progress
+      ) {
+        this.addBookCard(ctx.title, { lastBookmarkModified, progress });
+        return;
+      }
+    }
 
     await this.upload(titleId, filename, files, file, progressData, '', undefined, ctx.title);
 

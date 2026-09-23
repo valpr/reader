@@ -90,6 +90,11 @@ export class BackupStorageHandler extends BaseStorageHandler {
     return Promise.resolve(false);
   }
 
+  listFilesWithPrefix(_prefix: string, _context: ReplicationContext) {
+    // Backup import/export always copies everything; markers never apply.
+    return Promise.resolve([]);
+  }
+
   areStatisticsPresentAndUpToDate(
     _referenceFilename: string | undefined,
     _context: ReplicationContext
