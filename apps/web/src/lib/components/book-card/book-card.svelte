@@ -93,12 +93,30 @@
       >
         <span class="line-clamp-3">{title}</span>
       </div>
-      <div class="h-2.5 bg-gray-400 bg-opacity-80">
-        <div
-          class="h-full rounded bg-gradient-to-b from-red-600 to-red-900"
-          style:width="{progress * 100}%"
-        ></div>
-      </div>
+      {#if progress > 0}
+        <div class="px-2 pb-1.5">
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
+            aria-label="{title} reading progress"
+            data-testid="book-card-progress"
+            class="relative h-1.5 w-full rounded-full bg-black/50 backdrop-blur-sm"
+          >
+            <!-- User-requested progress color; intentionally not a theme token. -->
+            <div
+              class="h-full rounded-full bg-[#D6ADFF] shadow-[0_0_8px_0_rgba(214,173,255,0.8)]"
+              style:width="{progress * 100}%"
+            ></div>
+            <div
+              aria-hidden="true"
+              class="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#D6ADFF] bg-white shadow-[0_0_6px_rgba(214,173,255,0.9)]"
+              style:left="{progress * 100}%"
+            ></div>
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
