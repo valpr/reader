@@ -62,6 +62,17 @@ export interface ExternalFile {
   revision?: string;
 }
 
+/**
+ * Metadata-only file identity for sync-state comparisons
+ * (bookmarks-sync-state): names (+ revisions where the provider exposes
+ * them) without bodies, so an unchanged set can be recognized without a
+ * download.
+ */
+export interface FileIdentity {
+  name: string;
+  revision?: string;
+}
+
 export abstract class BaseStorageHandler {
   abstract updateSettings(
     window: Window,
@@ -126,6 +137,18 @@ export abstract class BaseStorageHandler {
     referenceFilename: string | undefined,
     context: ReplicationContext
   ): Promise<boolean>;
+
+  /**
+   * Metadata-only listing of files sharing a name prefix within a book's
+   * folder (or the equivalent scope for the handler). Used by exact-state
+   * sync gates to recognize an unchanged remote set without downloading
+   * bodies. Implementations must return every match (not first-match) so
+   * duplicate files are visible; handlers without a file concept return [].
+   */
+  abstract listFilesWithPrefix(
+    prefix: string,
+    context: ReplicationContext
+  ): Promise<FileIdentity[]>;
 
   abstract getBook(
     context: ReplicationContext
@@ -333,6 +356,10 @@ export abstract class BaseStorageHandler {
 
   isCacheDisabled() {
     return !this.cacheStorageData;
+  }
+
+  isOverwriteMode() {
+    return this.saveBehavior === ReplicationSaveBehavior.Overwrite;
   }
 
   getCurrentStorageSource() {

@@ -172,6 +172,18 @@ export async function triggerCloudSync(
     const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
     const runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
 
+    // List warming: one batched metadata listing up front so the per-book
+    // getExternalFiles calls in both passes below serve the in-memory cache
+    // (titleToId/titleToFiles) instead of issuing O(books) per-folder
+    // listings on a cold cache. Metadata-only (folder/file names), no blob
+    // download; no-op when already fetched. Best-effort: failure falls back
+    // to today's per-book listing and must never fail the sync.
+    try {
+      await targetHandler.getBookList();
+    } catch (listError: any) {
+      logger.warn(`Cloud book list warm-up failed for ${sourceName}: ${listError?.message}`);
+    }
+
     // Always pull and merge before publishing. A sync direction preference
     // cannot establish that aggregate records have the same members.
     // Parent activity owns the spinner; inner replicateData calls update

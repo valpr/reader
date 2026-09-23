@@ -16,6 +16,10 @@ import type { LoadData } from '$lib/functions/file-loaders/types';
 import { handleErrorDuringReplication } from '$lib/functions/replication/error-handler';
 import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
 import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
+import {
+  recordUserBookmarksSyncState,
+  trySkipUserBookmarksSync
+} from '$lib/functions/replication/bookmarks-sync-state';
 import { throwIfAborted } from '$lib/functions/replication/replication-error';
 import {
   beginSyncActivity,
@@ -441,24 +445,37 @@ export async function replicateData(
 
             if (processUserBookmarks) {
               // Bookmarks are merged, not replaced (per-syncId LWW, deletions
-              // are just a field on the row) — same reasoning as statistics
-              // v2 above. A scalar freshness marker must never gate this
-              // read: skipping the fetch because *some* row on the source
-              // looks older is exactly how a deletion fails to propagate to
-              // a device that has a newer, unrelated edit. Always pull,
-              // merge, and let saveUserBookmarks's own write-skip (not a
-              // pre-fetch read-skip) absorb the no-op case.
-              const ubData = await sourceHandler.getUserBookmarks(context);
+              // are just a field on the row). A scalar freshness marker must
+              // never gate this read — same-max-timestamp sets can still
+              // differ, and skipping then would drop deletions under clock
+              // skew. The exact-state marker below is the only safe skip:
+              // remote set + local rows identical to the last merge means a
+              // re-merge is a proven no-op. Any doubt falls through to the
+              // full pull + merge, whose own write-skip absorbs no-op
+              // uploads.
+              if (await trySkipUserBookmarksSync(sourceHandler, targetHandler, context)) {
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+                checkCancelAndProgress(cancelSignal, !dataProcessed, true);
+              } else {
+                const ubData = await sourceHandler.getUserBookmarks(context);
 
-              checkCancelAndProgress(cancelSignal, !dataProcessed);
+                checkCancelAndProgress(cancelSignal, !dataProcessed);
 
-              if (ubData) {
-                await targetHandler.saveUserBookmarks(ubData, context);
+                if (ubData) {
+                  await targetHandler.saveUserBookmarks(ubData, context);
 
-                dataProcessed = true;
+                  dataProcessed = true;
+
+                  // Record only genuine merges: File pass-through payloads
+                  // are dropped unmerged by browser targets, so they must
+                  // never mint a "clean" marker.
+                  if (!(ubData instanceof File)) {
+                    await recordUserBookmarksSyncState(sourceHandler, targetHandler, context);
+                  }
+                }
+
+                checkCancelAndProgress(cancelSignal, !dataProcessed, !ubData);
               }
-
-              checkCancelAndProgress(cancelSignal, !dataProcessed, !ubData);
             }
 
             if (dataProcessed) {

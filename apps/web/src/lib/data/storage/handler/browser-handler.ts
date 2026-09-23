@@ -192,7 +192,8 @@ export class BrowserStorageHandler extends BaseStorageHandler {
       fileIdentifier === 'progress_' ||
       fileIdentifier === 'statistics_' ||
       fileIdentifier === FilePrefix.AUDIO_BOOK ||
-      fileIdentifier === FilePrefix.SUBTITLE;
+      fileIdentifier === FilePrefix.SUBTITLE ||
+      fileIdentifier === FilePrefix.USER_BOOKMARKS;
 
     if (bookScoped && !ctx) {
       BrowserStorageHandler.reportProgress(0.5);
@@ -240,6 +241,22 @@ export class BrowserStorageHandler extends BaseStorageHandler {
       fileName = subtitleData
         ? BaseStorageHandler.getSubtitleDataFileName(subtitleData)
         : undefined;
+    } else if (fileIdentifier === FilePrefix.USER_BOOKMARKS) {
+      // Publish-read mirror of isUserBookmarksPresentAndUpToDate below:
+      // manual rows *including* soft-deleted ones, so the filename reflects
+      // deletions too. Previously this branch was missing, so any
+      // getFilenameForRecentCheck(FilePrefix.USER_BOOKMARKS) on the browser
+      // side returned undefined and forced a sync.
+      const bookmarks = await this.getUserBookmarks(ctx!);
+      const existingLastModified = await database.getLastModifiedForType(
+        ctx!.title,
+        StorageDataType.USER_BOOKMARKS
+      );
+
+      fileName =
+        Array.isArray(bookmarks) && bookmarks.length
+          ? BaseStorageHandler.getUserBookmarksFileName(bookmarks, existingLastModified)
+          : undefined;
     }
 
     BrowserStorageHandler.reportProgress(0.5);
@@ -415,6 +432,15 @@ export class BrowserStorageHandler extends BaseStorageHandler {
       referenceFilename,
       fileName
     );
+  }
+
+  async listFilesWithPrefix(
+    _prefix: string,
+    _context: ReplicationContext
+  ): Promise<{ name: string; revision?: string }[]> {
+    // The browser side has no remote file concept; sync-state markers only
+    // ever list the non-browser partner. Required by the abstract surface.
+    return [];
   }
 
   async getBook(context: ReplicationContext) {
