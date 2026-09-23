@@ -1,5 +1,6 @@
 <script lang="ts">
   import { faImage } from '@fortawesome/free-regular-svg-icons';
+  import { faCheck } from '@fortawesome/free-solid-svg-icons';
   import { onDestroy } from 'svelte';
   import Fa from 'svelte-fa';
 
@@ -63,6 +64,7 @@
 
   $: imageLoadComplete = imgEl?.complete && !imageLoading;
   $: alt = `${title}_cover`;
+  $: isComplete = progress >= 1;
 </script>
 
 <div tabindex="0" role="button" class="aspect-w-2 aspect-h-3 relative" on:click on:keyup>
@@ -107,13 +109,24 @@
             <!-- User-requested progress color; intentionally not a theme token. -->
             <div
               class="h-full rounded-full bg-[#D6ADFF] shadow-[0_0_8px_0_rgba(214,173,255,0.8)]"
+              class:shadow-[0_0_12px_1px_rgba(214,173,255,0.95)]={isComplete}
               style:width="{progress * 100}%"
             ></div>
-            <div
-              aria-hidden="true"
-              class="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#D6ADFF] bg-white shadow-[0_0_6px_rgba(214,173,255,0.9)]"
-              style:left="{progress * 100}%"
-            ></div>
+            {#if isComplete}
+              <div
+                aria-hidden="true"
+                data-testid="book-card-progress-complete"
+                class="absolute top-1/2 right-0 flex h-4 w-4 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D6ADFF] text-[10px] leading-none text-[#4C1D95] shadow-[0_0_8px_rgba(214,173,255,1)]"
+              >
+                <Fa icon={faCheck} />
+              </div>
+            {:else}
+              <div
+                aria-hidden="true"
+                class="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#D6ADFF] bg-white shadow-[0_0_6px_rgba(214,173,255,0.9)]"
+                style:left="{progress * 100}%"
+              ></div>
+            {/if}
           </div>
         </div>
       {/if}
