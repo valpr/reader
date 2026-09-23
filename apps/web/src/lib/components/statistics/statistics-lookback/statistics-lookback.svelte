@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { database, readerProfiles$ } from '$lib/data/store';
+  import { database, lastStartDayOfWeek$, readerProfiles$ } from '$lib/data/store';
   import { calculateLookbackMetrics, extractAvailableYears } from './lookback-calculator';
   import LookbackDashboard from './lookback-dashboard.svelte';
   import LookbackStoryPlayer from './lookback-story-player.svelte';
@@ -100,6 +100,8 @@
     {metrics}
     {selectedYear}
     {availableYears}
+    {statisticsData}
+    weekStart={$lastStartDayOfWeek$}
     on:playStory={() => (showStoryPlayer = true)}
     on:yearChange={(e) => (selectedYear = e.detail)}
   />
