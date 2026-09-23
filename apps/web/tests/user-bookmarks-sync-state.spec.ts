@@ -195,7 +195,7 @@ test.describe('User bookmarks exact-state sync gate', () => {
         async deleteBookProgressAndStats(): Promise<any> {}
       }
 
-      const context = { title: 'UB State Clean', imagePath: '' };
+      const context = { id: 101, title: 'UB State Clean', imagePath: '' };
       const types = [StorageDataType.USER_BOOKMARKS];
       const remote = new MemoryBookmarksHandler(window, StorageKey.GDRIVE, 'test-remote');
       const browser = new MemoryBookmarksHandler(window, StorageKey.BROWSER, 'test-browser');
@@ -228,19 +228,21 @@ test.describe('User bookmarks exact-state sync gate', () => {
 
     expect(result.first).toBe('');
     expect(result.second).toBe('');
-    // First run pulls + merges the single row (and its cover side-effect).
+    // First run pulls + merges the single row. Cover traffic stays at zero:
+    // cover re-sync is gated on book-data changes, and this run replicates
+    // bookmarks only.
     expect(result.afterFirst).toEqual({
       remoteFetches: 1,
       remoteWrites: 0,
       browserWrites: 1,
-      coverWrites: 1,
+      coverWrites: 0,
       browserRows: 1
     });
     // Second run: no body fetches, no writes, no cover traffic.
     expect(result.remoteFetches).toBe(1);
     expect(result.remoteWrites).toBe(0);
     expect(result.browserWrites).toBe(1);
-    expect(result.coverWrites).toBe(1);
+    expect(result.coverWrites).toBe(0);
     expect(result.browserRows).toBe(1);
   });
 
@@ -391,7 +393,7 @@ test.describe('User bookmarks exact-state sync gate', () => {
         async deleteBookProgressAndStats(): Promise<any> {}
       }
 
-      const context = { title: 'UB State Edits', imagePath: '' };
+      const context = { id: 102, title: 'UB State Edits', imagePath: '' };
       const types = [StorageDataType.USER_BOOKMARKS];
       const remote = new MemoryBookmarksHandler(window, StorageKey.GDRIVE, 'test-remote');
       const browser = new MemoryBookmarksHandler(window, StorageKey.BROWSER, 'test-browser');
@@ -594,7 +596,7 @@ test.describe('User bookmarks exact-state sync gate', () => {
         async deleteBookProgressAndStats(): Promise<any> {}
       }
 
-      const context = { title: 'UB State Deletion', imagePath: '' };
+      const context = { id: 103, title: 'UB State Deletion', imagePath: '' };
       const types = [StorageDataType.USER_BOOKMARKS];
       const remote = new MemoryBookmarksHandler(window, StorageKey.GDRIVE, 'test-remote');
       const browser = new MemoryBookmarksHandler(window, StorageKey.BROWSER, 'test-browser');
@@ -799,7 +801,7 @@ test.describe('User bookmarks exact-state sync gate', () => {
         async deleteBookProgressAndStats(): Promise<any> {}
       }
 
-      const context = { title: 'UB State Overwrite', imagePath: '' };
+      const context = { id: 104, title: 'UB State Overwrite', imagePath: '' };
       const types = [StorageDataType.USER_BOOKMARKS];
       const remote = new MemoryBookmarksHandler(window, StorageKey.GDRIVE, 'test-remote');
       const browser = new MemoryBookmarksHandler(window, StorageKey.BROWSER, 'test-browser');
@@ -821,5 +823,243 @@ test.describe('User bookmarks exact-state sync gate', () => {
     expect(result.second).toBe('');
     // Recovery semantics: every run copies, markers never engage.
     expect(result.remoteFetches).toBe(2);
+  });
+
+  test('delete-then-reimport refetches despite matching rows', async ({ page }) => {
+    await page.goto('/');
+
+    const result = await page.evaluate(async () => {
+      const basePath = '/src/lib/data/storage/handler/base-handler.ts';
+      const typesPath = '/src/lib/data/storage/storage-types.ts';
+      const mergePath = '/src/lib/data/user-bookmarks-merge.ts';
+      const replicatorPath = '/src/lib/functions/replication/replicator.ts';
+      const { BaseStorageHandler } = await import(/* @vite-ignore */ basePath);
+      const { StorageDataType, StorageKey } = await import(/* @vite-ignore */ typesPath);
+      const { mergeUserBookmarkArrays } = await import(/* @vite-ignore */ mergePath);
+      const { replicateData } = await import(/* @vite-ignore */ replicatorPath);
+
+      localStorage.clear();
+
+      class MemoryBookmarksHandler extends BaseStorageHandler {
+        rows: any;
+        files: any;
+        bodyFetches: any;
+        acceptSaves: any;
+
+        constructor(win: any, storageType: any, sourceName: any) {
+          super(win, storageType);
+          this.storageSourceName = sourceName;
+          this.rows = [];
+          this.files = [];
+          this.bodyFetches = 0;
+          this.acceptSaves = true;
+        }
+
+        updateSettings(win: any, isForBrowser: any, saveBehavior: any): any {
+          this.window = win;
+          this.isForBrowser = isForBrowser;
+          this.saveBehavior = saveBehavior;
+        }
+
+        mintFilename() {
+          const max = Math.max(0, ...this.rows.map((row: any) => row.lastModified || 0));
+          this.files = [{ name: `userBookmarks_1_1_${max}_${this.rows.length}.json` }];
+        }
+
+        async getBookList(): Promise<any> {
+          return [];
+        }
+
+        async checkHasData(): Promise<any> {
+          return { connected: true, hasData: true };
+        }
+
+        clearData(): any {}
+
+        async prepareBookForReading(): Promise<any> {
+          return 0;
+        }
+
+        async updateLastRead(): Promise<any> {}
+
+        async getFilenameForRecentCheck(): Promise<any> {}
+
+        async isBookPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isProgressPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areStatisticsPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areReadingGoalsPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areProfilesPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areBookTagsPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isAudioBookPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isSubtitleDataPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isUserBookmarksPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async listFilesWithPrefix(prefix: any): Promise<any> {
+          return this.files
+            .filter((file: any) => file.name.startsWith(prefix))
+            .map((file: any) => ({ name: file.name }));
+        }
+
+        async getBook(): Promise<any> {}
+
+        async getProgress(): Promise<any> {}
+
+        async getUserBookmarks(): Promise<any> {
+          this.bodyFetches += 1;
+          if (!this.files.length) return undefined;
+          return this.rows.map((row: any) => ({ ...row }));
+        }
+
+        async getStatistics(): Promise<any> {
+          return { statistics: undefined, lastStatisticModified: 0 };
+        }
+
+        async getCover(): Promise<any> {}
+
+        async getReadingGoals(): Promise<any> {
+          return { readingGoals: undefined, lastGoalModified: 0 };
+        }
+
+        async getProfiles(): Promise<any> {
+          return {
+            profiles: undefined,
+            customThemes: undefined,
+            statisticsSettings: undefined,
+            lastProfilesModified: 0
+          };
+        }
+
+        async getBookTags(): Promise<any> {
+          return { tags: undefined, titles: undefined, lastTagsModified: 0, entries: undefined };
+        }
+
+        async getAudioBook(): Promise<any> {}
+
+        async getSubtitleData(): Promise<any> {}
+
+        async saveBook(): Promise<any> {
+          return 0;
+        }
+
+        async saveProgress(): Promise<any> {}
+
+        async saveUserBookmarks(data: any): Promise<any> {
+          if (data instanceof File) return;
+          // Simulates a missing local book row: the merge is a no-op, so a
+          // marker recorded here covers empty rows, not merged ones.
+          if (!this.acceptSaves) return;
+          this.rows = mergeUserBookmarkArrays(data, this.rows);
+          this.mintFilename();
+        }
+
+        async saveStatistics(): Promise<any> {}
+
+        async listContributionFiles(): Promise<any> {
+          return [];
+        }
+
+        async writeContributionFiles(): Promise<any> {}
+
+        async listMigrationMarkers(): Promise<any> {
+          return [];
+        }
+
+        async writeMigrationMarker(): Promise<any> {}
+
+        async listLegacyStatisticSnapshots(): Promise<any> {
+          return [];
+        }
+
+        async saveCover(): Promise<any> {}
+
+        async saveReadingGoals(): Promise<any> {}
+
+        async saveProfiles(): Promise<any> {}
+
+        async saveBookTags(): Promise<any> {}
+
+        async saveAudioBook(): Promise<any> {}
+
+        async saveSubtitleData(): Promise<any> {}
+
+        async deleteBookData(): Promise<any> {
+          return { error: '', deleted: [] };
+        }
+
+        async deleteBookProgressAndStats(): Promise<any> {}
+      }
+
+      const title = 'UB State Reimport';
+      const types = [StorageDataType.USER_BOOKMARKS];
+      const remote = new MemoryBookmarksHandler(window, StorageKey.GDRIVE, 'test-remote');
+      const browser = new MemoryBookmarksHandler(window, StorageKey.BROWSER, 'test-browser');
+      remote.rows = [
+        { syncId: 'a', exploredCharCount: 10, createdAt: 100, lastModified: 100, label: 'A' }
+      ];
+      remote.mintFilename();
+
+      const run = (id: number) =>
+        replicateData(
+          remote,
+          browser,
+          false,
+          [{ id, title, imagePath: '' }],
+          types,
+          undefined,
+          true
+        );
+
+      // First sync: no local book row, so the save is a no-op and the marker
+      // covers empty local rows.
+      browser.acceptSaves = false;
+      const first = await run(501);
+      const fetchesAfterFirst = remote.bodyFetches;
+
+      // Reimport mints a fresh row id with the same (empty) rows and an
+      // unchanged remote set: rows and names match the marker, but the row
+      // id must still force a restoration fetch.
+      browser.acceptSaves = true;
+      const second = await run(502);
+
+      return {
+        first,
+        second,
+        fetchesAfterFirst,
+        fetchesAfterSecond: remote.bodyFetches,
+        browserRows: browser.rows.length
+      };
+    });
+
+    expect(result.first).toBe('');
+    expect(result.second).toBe('');
+    expect(result.fetchesAfterFirst).toBe(1);
+    expect(result.fetchesAfterSecond).toBe(2);
+    expect(result.browserRows).toBe(1);
   });
 });

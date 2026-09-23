@@ -31,6 +31,11 @@ import type { ReplicationContext } from '$lib/functions/replication/replication-
  * that would have differed — worst case is a redundant fetch, never loss.
  * Markers are advisory performance hints in localStorage (no schema
  * migration, no cross-tab coordination): losing one only costs speed.
+ *
+ * Markers bind to the local data-row id as well as the title: deleting a
+ * book and re-importing it mints a fresh row id, so the stale marker from
+ * the deleted row can never suppress the restoration fetch. Contexts
+ * without an id (backup zips, ad-hoc callers) simply never skip.
  */
 const MARKER_VERSION = 1;
 
@@ -40,6 +45,8 @@ export interface BookmarksSyncMarker {
   v: number;
   remoteNames: string[];
   localFp: string;
+  /** Local `data` row id at record time; undefined for id-less contexts. */
+  dataId?: number;
 }
 
 /**
@@ -90,11 +97,13 @@ export function readBookmarksSyncMarker(
       return undefined;
     }
     if (typeof parsed.localFp !== 'string') return undefined;
+    if (parsed.dataId !== undefined && typeof parsed.dataId !== 'number') return undefined;
 
     return {
       v: MARKER_VERSION,
       remoteNames: [...parsed.remoteNames].sort(),
-      localFp: parsed.localFp
+      localFp: parsed.localFp,
+      dataId: parsed.dataId
     };
   } catch {
     return undefined;
@@ -105,12 +114,18 @@ export function writeBookmarksSyncMarker(
   remoteSourceName: string,
   title: string,
   remoteNames: string[],
-  localFp: string
+  localFp: string,
+  dataId: number | undefined
 ): void {
   try {
     readStorage()?.setItem(
       markerKey(remoteSourceName, title),
-      JSON.stringify({ v: MARKER_VERSION, remoteNames: [...remoteNames].sort(), localFp })
+      JSON.stringify({
+        v: MARKER_VERSION,
+        remoteNames: [...remoteNames].sort(),
+        localFp,
+        dataId
+      })
     );
   } catch {
     // Advisory only: losing a marker costs one redundant fetch.
@@ -210,6 +225,15 @@ export async function trySkipUserBookmarksSync(
 
     if (!marker) return false;
 
+    // The marker is bound to the local data row that produced it. A fresh
+    // row id means delete-then-reimport (or any row recreation): the rows
+    // may look identical while the merge never ran for this row, so a
+    // match must not skip the restoration fetch. Id-less contexts never
+    // skip.
+    if (marker.dataId === undefined || context.id === undefined || marker.dataId !== context.id) {
+      return false;
+    }
+
     return marker.localFp === localFp && equalNameSets(marker.remoteNames, remoteNames);
   } catch {
     return false;
@@ -243,7 +267,8 @@ export async function recordUserBookmarksSyncState(
       sides.remote.getCurrentStorageSource(),
       context.title,
       remoteNames,
-      localFp
+      localFp,
+      context.id
     );
   } catch {
     // Advisory only.
