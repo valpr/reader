@@ -13,6 +13,11 @@ import { BOOK_SCOPED_DATA_TYPES } from '$lib/functions/replication/cloud-sync';
 import type { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import type { ReplicationContext } from '$lib/functions/replication/replication-progress';
 import { replicateData } from '$lib/functions/replication/replicator';
+import {
+  beginSyncActivity,
+  buildSyncLabel,
+  endSyncActivity
+} from '$lib/functions/replication/replication-progress';
 
 export interface ExitSyncSnapshot {
   types: StorageDataType[];
@@ -91,16 +96,24 @@ async function runExitSync(snapshot: ExitSyncSnapshot): Promise<void> {
       return;
     }
 
-    const error = await replicateData(
-      snapshot.localHandler,
-      snapshot.externalHandler,
-      snapshot.refreshDataList,
-      [snapshot.context],
-      types
-    ).catch((err: any) => err?.message || String(err));
+    // Parent activity owns the spinner so the header icon survives the
+    // navigation that triggered this post-exit run; inner replicateData
+    // acts as a child and never clears it early.
+    const runId = beginSyncActivity(buildSyncLabel('Uploading', types, snapshot.context?.title));
+    try {
+      const error = await replicateData(
+        snapshot.localHandler,
+        snapshot.externalHandler,
+        snapshot.refreshDataList,
+        [snapshot.context],
+        types
+      ).catch((err: any) => err?.message || String(err));
 
-    if (error) {
-      logger.warn(error);
+      if (error) {
+        logger.warn(error);
+      }
+    } finally {
+      endSyncActivity(runId);
     }
   } catch (error: any) {
     logger.warn(error?.message || String(error));

@@ -18,7 +18,13 @@ import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity
 import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
 import { throwIfAborted } from '$lib/functions/replication/replication-error';
 import {
+  beginSyncActivity,
+  buildSyncLabel,
+  endSyncActivity,
   replicationProgress$,
+  syncActivity$,
+  syncVerbForHandlers,
+  updateSyncActivity,
   type ReplicationContext
 } from '$lib/functions/replication/replication-progress';
 import pLimit from 'p-limit';
@@ -73,6 +79,19 @@ export async function importData(
     const limiter = pLimit(1);
 
     let errorMessage = '';
+    const parentActivity = syncActivity$.getValue();
+    const isChild = parentActivity.active;
+    const childRunId = parentActivity.runId;
+    const runId = isChild
+      ? childRunId
+      : beginSyncActivity(
+          files.length === 1
+            ? `Importing \u201C${files[0]?.name ?? ''}\u201D`
+            : `Importing ${files.length} books`,
+          undefined,
+          files.length
+        );
+    let importedCount = 0;
 
     replicationProgress$.next({ progressBase, maxProgress });
 
@@ -88,6 +107,14 @@ export async function importData(
       tasks.push(
         limiter(async () => {
           let currentTitle = file.name;
+          updateSyncActivity(runId, {
+            label:
+              files.length === 1
+                ? `Importing \u201C${currentTitle}\u201D`
+                : `Importing \u201C${currentTitle}\u201D (${Math.min(importedCount + 1, files.length)}/${files.length})`,
+            completed: importedCount,
+            total: files.length
+          });
 
           if (fileCountData && Object.prototype.hasOwnProperty.call(fileCountData, currentTitle)) {
             checkCancelAndProgress(cancelSignal, true, true);
@@ -147,6 +174,8 @@ export async function importData(
               `Error importing ${currentTitle}: `,
               [limiter]
             );
+          } finally {
+            importedCount += 1;
           }
         })
       )
@@ -170,6 +199,8 @@ export async function importData(
         a.click();
       });
     }
+
+    if (!isChild) endSyncActivity(runId);
 
     return errorMessage;
   });
@@ -211,6 +242,22 @@ export async function replicateData(
   skipTimestamp = false
 ) {
   return runSerialized(async () => {
+    const parentActivity = syncActivity$.getValue();
+    const isChild = parentActivity.active;
+    const childRunId = parentActivity.runId;
+    const verb = syncVerbForHandlers(sourceHandler?.storageType, targetHandler?.storageType);
+    const totalContexts = contexts.length;
+    const runId = isChild
+      ? childRunId
+      : beginSyncActivity(
+          buildSyncLabel(
+            verb,
+            dataToReplicate,
+            totalContexts === 1 ? contexts[0]?.title : undefined
+          ),
+          undefined,
+          totalContexts || undefined
+        );
     const nonBookOperations = [
       StorageDataType.READING_GOALS,
       StorageDataType.PROFILES,
@@ -260,6 +307,11 @@ export async function replicateData(
         replicationLimiter(async () => {
           try {
             throwIfAborted(cancelSignal);
+            updateSyncActivity(runId, {
+              label: buildSyncLabel(verb, dataToReplicate, context.title, processed, totalContexts),
+              completed: processed,
+              total: totalContexts || undefined
+            });
 
             let dataProcessed = false;
 
@@ -561,6 +613,8 @@ export async function replicateData(
     ) {
       lastSyncTimestamp$.next(Date.now());
     }
+
+    if (!isChild) endSyncActivity(runId);
 
     return errorMessage;
   });

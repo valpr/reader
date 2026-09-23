@@ -23,6 +23,12 @@ import {
 } from '$lib/data/store';
 import { MergeMode } from '$lib/data/merge-mode';
 import { replicateData } from '$lib/functions/replication/replicator';
+import {
+  beginSyncActivity,
+  buildSyncLabel,
+  endSyncActivity,
+  updateSyncActivity
+} from '$lib/functions/replication/replication-progress';
 import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
 import { recordSyncRun } from '$lib/functions/replication/sync-diagnostics';
 import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
@@ -163,8 +169,16 @@ export async function triggerCloudSync(
         imagePath: b.coverImage || ''
       }));
 
+    const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
+    const runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
+
     // Always pull and merge before publishing. A sync direction preference
     // cannot establish that aggregate records have the same members.
+    // Parent activity owns the spinner; inner replicateData calls update
+    // detail as children and never clear it (see replicator isChild guard).
+    updateSyncActivity(runId, {
+      label: `${buildSyncLabel('Downloading', dataTypes)} — ${friendlyTarget}`
+    });
     const downError = await replicateData(
       targetHandler,
       localStorageHandler,
@@ -174,8 +188,14 @@ export async function triggerCloudSync(
       undefined,
       true
     );
-    if (downError) return finish(downError);
+    if (downError) {
+      endSyncActivity(runId);
+      return finish(downError);
+    }
 
+    updateSyncActivity(runId, {
+      label: `${buildSyncLabel('Uploading', dataTypes)} — ${friendlyTarget}`
+    });
     const error = await replicateData(
       localStorageHandler,
       targetHandler,
@@ -185,7 +205,11 @@ export async function triggerCloudSync(
       undefined,
       true
     );
-    if (error) return finish(error);
+    if (error) {
+      endSyncActivity(runId);
+      return finish(error);
+    }
+    endSyncActivity(runId);
 
     // Deletion-state census for diagnostics: best-effort, never fails sync.
     deletionCounts = await database.getDeletionCounts().catch(() => undefined);
@@ -297,14 +321,24 @@ export async function runOneShotRecovery(
 
     const from = direction === 'push' ? localStorageHandler : targetHandler;
     const to = direction === 'push' ? targetHandler : localStorageHandler;
+    const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
+    const recoveryVerb = direction === 'push' ? 'Uploading' : 'Downloading';
+    const runId = beginSyncActivity(
+      `${buildSyncLabel(recoveryVerb, SYNC_DATA_TYPES)} — ${friendlyTarget} (recovery)`
+    );
     const error = await replicateData(from, to, false, contexts, SYNC_DATA_TYPES, undefined, true);
-    if (error) return finish(error);
+    if (error) {
+      endSyncActivity(runId);
+      return finish(error);
+    }
 
+    updateSyncActivity(runId, { label: `Syncing Statistics — ${friendlyTarget} (recovery)` });
     const contributionsError = await syncStatisticContributions(
       database,
       targetHandler,
       identity.deviceId
     );
+    endSyncActivity(runId);
     if (contributionsError) return finish(contributionsError);
 
     // Post-recovery census: Overwrite replaces the manual set wholesale, so
