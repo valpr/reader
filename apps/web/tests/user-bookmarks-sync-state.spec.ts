@@ -228,21 +228,21 @@ test.describe('User bookmarks exact-state sync gate', () => {
 
     expect(result.first).toBe('');
     expect(result.second).toBe('');
-    // First run pulls + merges the single row. Cover traffic stays at zero:
-    // cover re-sync is gated on book-data changes, and this run replicates
-    // bookmarks only.
+    // First run pulls + merges the single row. The local card starts
+    // imageless (imagePath ''), so the cover gate heals it once via
+    // getCover/saveCover; bookmarks-only runs never re-fetch after that.
     expect(result.afterFirst).toEqual({
       remoteFetches: 1,
       remoteWrites: 0,
       browserWrites: 1,
-      coverWrites: 0,
+      coverWrites: 1,
       browserRows: 1
     });
-    // Second run: no body fetches, no writes, no cover traffic.
+    // Second run: no body fetches, no writes, no further cover traffic.
     expect(result.remoteFetches).toBe(1);
     expect(result.remoteWrites).toBe(0);
     expect(result.browserWrites).toBe(1);
-    expect(result.coverWrites).toBe(0);
+    expect(result.coverWrites).toBe(1);
     expect(result.browserRows).toBe(1);
   });
 
@@ -1058,6 +1058,242 @@ test.describe('User bookmarks exact-state sync gate', () => {
 
     expect(result.first).toBe('');
     expect(result.second).toBe('');
+    expect(result.fetchesAfterFirst).toBe(1);
+    expect(result.fetchesAfterSecond).toBe(2);
+    expect(result.browserRows).toBe(1);
+  });
+
+  test('expired marker forces a re-verifying fetch', async ({ page }) => {
+    await page.goto('/');
+
+    const result = await page.evaluate(async () => {
+      const basePath = '/src/lib/data/storage/handler/base-handler.ts';
+      const typesPath = '/src/lib/data/storage/storage-types.ts';
+      const mergePath = '/src/lib/data/user-bookmarks-merge.ts';
+      const replicatorPath = '/src/lib/functions/replication/replicator.ts';
+      const { BaseStorageHandler } = await import(/* @vite-ignore */ basePath);
+      const { StorageDataType, StorageKey } = await import(/* @vite-ignore */ typesPath);
+      const { mergeUserBookmarkArrays } = await import(/* @vite-ignore */ mergePath);
+      const { replicateData } = await import(/* @vite-ignore */ replicatorPath);
+
+      localStorage.clear();
+
+      class MemoryBookmarksHandler extends BaseStorageHandler {
+        rows: any;
+        files: any;
+        bodyFetches: any;
+
+        constructor(win: any, storageType: any, sourceName: any) {
+          super(win, storageType);
+          this.storageSourceName = sourceName;
+          this.rows = [];
+          this.files = [];
+          this.bodyFetches = 0;
+        }
+
+        updateSettings(win: any, isForBrowser: any, saveBehavior: any): any {
+          this.window = win;
+          this.isForBrowser = isForBrowser;
+          this.saveBehavior = saveBehavior;
+        }
+
+        mintFilename() {
+          const max = Math.max(0, ...this.rows.map((row: any) => row.lastModified || 0));
+          this.files = [{ name: `userBookmarks_1_1_${max}_${this.rows.length}.json` }];
+        }
+
+        async getBookList(): Promise<any> {
+          return [];
+        }
+
+        async checkHasData(): Promise<any> {
+          return { connected: true, hasData: true };
+        }
+
+        clearData(): any {}
+
+        async prepareBookForReading(): Promise<any> {
+          return 0;
+        }
+
+        async updateLastRead(): Promise<any> {}
+
+        async getFilenameForRecentCheck(): Promise<any> {}
+
+        async isBookPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isProgressPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areStatisticsPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areReadingGoalsPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areProfilesPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async areBookTagsPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isAudioBookPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isSubtitleDataPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async isUserBookmarksPresentAndUpToDate(): Promise<any> {
+          return false;
+        }
+
+        async listFilesWithPrefix(prefix: any): Promise<any> {
+          return this.files
+            .filter((file: any) => file.name.startsWith(prefix))
+            .map((file: any) => ({ name: file.name }));
+        }
+
+        async getBook(): Promise<any> {}
+
+        async getProgress(): Promise<any> {}
+
+        async getUserBookmarks(): Promise<any> {
+          this.bodyFetches += 1;
+          if (!this.files.length) return undefined;
+          return this.rows.map((row: any) => ({ ...row }));
+        }
+
+        async getStatistics(): Promise<any> {
+          return { statistics: undefined, lastStatisticModified: 0 };
+        }
+
+        async getCover(): Promise<any> {}
+
+        async getReadingGoals(): Promise<any> {
+          return { readingGoals: undefined, lastGoalModified: 0 };
+        }
+
+        async getProfiles(): Promise<any> {
+          return {
+            profiles: undefined,
+            customThemes: undefined,
+            statisticsSettings: undefined,
+            lastProfilesModified: 0
+          };
+        }
+
+        async getBookTags(): Promise<any> {
+          return { tags: undefined, titles: undefined, lastTagsModified: 0, entries: undefined };
+        }
+
+        async getAudioBook(): Promise<any> {}
+
+        async getSubtitleData(): Promise<any> {}
+
+        async saveBook(): Promise<any> {
+          return 0;
+        }
+
+        async saveProgress(): Promise<any> {}
+
+        async saveUserBookmarks(data: any): Promise<any> {
+          if (data instanceof File) return;
+          this.rows = mergeUserBookmarkArrays(data, this.rows);
+          this.mintFilename();
+        }
+
+        async saveStatistics(): Promise<any> {}
+
+        async listContributionFiles(): Promise<any> {
+          return [];
+        }
+
+        async writeContributionFiles(): Promise<any> {}
+
+        async listMigrationMarkers(): Promise<any> {
+          return [];
+        }
+
+        async writeMigrationMarker(): Promise<any> {}
+
+        async listLegacyStatisticSnapshots(): Promise<any> {
+          return [];
+        }
+
+        async saveCover(): Promise<any> {}
+
+        async saveReadingGoals(): Promise<any> {}
+
+        async saveProfiles(): Promise<any> {}
+
+        async saveBookTags(): Promise<any> {}
+
+        async saveAudioBook(): Promise<any> {}
+
+        async saveSubtitleData(): Promise<any> {}
+
+        async deleteBookData(): Promise<any> {
+          return { error: '', deleted: [] };
+        }
+
+        async deleteBookProgressAndStats(): Promise<any> {}
+      }
+
+      const title = 'UB State TTL';
+      const remoteName = 'test-remote';
+      const types = [StorageDataType.USER_BOOKMARKS];
+      const remote = new MemoryBookmarksHandler(window, StorageKey.GDRIVE, remoteName);
+      const browser = new MemoryBookmarksHandler(window, StorageKey.BROWSER, 'test-browser');
+      remote.rows = [
+        { syncId: 'a', exploredCharCount: 10, createdAt: 100, lastModified: 100, label: 'A' }
+      ];
+      remote.mintFilename();
+
+      const run = () =>
+        replicateData(
+          remote,
+          browser,
+          false,
+          [{ id: 601, title, imagePath: '' }],
+          types,
+          undefined,
+          true
+        );
+      const first = await run();
+      const fetchesAfterFirst = remote.bodyFetches;
+
+      // Age the freshly recorded marker past its TTL without touching rows
+      // or remote names: only the age may force the re-verifying fetch.
+      const key = `ttu-reader:ub-sync-state:v1:${encodeURIComponent(remoteName)}::${encodeURIComponent(title)}`;
+      const hadMarker = localStorage.getItem(key) !== null;
+      const marker = JSON.parse(localStorage.getItem(key) || '{}');
+      marker.recordedAt = 1;
+      localStorage.setItem(key, JSON.stringify(marker));
+
+      const second = await run();
+
+      return {
+        first,
+        second,
+        hadMarker,
+        fetchesAfterFirst,
+        fetchesAfterSecond: remote.bodyFetches,
+        browserRows: browser.rows.length
+      };
+    });
+
+    expect(result.first).toBe('');
+    expect(result.second).toBe('');
+    expect(result.hadMarker).toBe(true);
     expect(result.fetchesAfterFirst).toBe(1);
     expect(result.fetchesAfterSecond).toBe(2);
     expect(result.browserRows).toBe(1);

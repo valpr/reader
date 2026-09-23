@@ -487,7 +487,15 @@ export async function replicateData(
               // itself changed. Progress, bookmarks, statistics, audio, and
               // subtitle updates never alter the cover — skipping it saves the
               // largest binary payload in the sync (typically 100 KB – 2 MB).
-              if (bookDataChanged) {
+              // A target missing its cover file (e.g. a failed cover upload on
+              // an earlier run) still heals via the presence check below.
+              let syncCover = bookDataChanged;
+
+              if (!syncCover) {
+                syncCover = await isCoverMissing(sourceHandler, targetHandler, context);
+              }
+
+              if (syncCover) {
                 const coverData = await sourceHandler.getCover(context);
 
                 checkCancelAndProgress(cancelSignal, !coverData);
@@ -571,30 +579,28 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            if (
-              await targetHandler.areProfilesPresentAndUpToDate(
-                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.profilesFilePrefix)
-              )
-            ) {
-              checkCancelAndProgress(cancelSignal, false, true);
-              checkCancelAndProgress(cancelSignal, false, true);
-            } else {
-              const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
-                await sourceHandler.getProfiles();
+            // Deliberately no filename gate here (unlike goals/tags above):
+            // the profiles filename derives from lastProfilesModified only,
+            // but the payload also carries customThemes and
+            // statisticsSettings, whose edits never bump that timestamp
+            // (theme save/delete, settings toggles). Gating on the filename
+            // would suppress those publishes indefinitely, so profiles
+            // always pull + merge — it is one small file either way.
+            const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
+              await sourceHandler.getProfiles();
 
-              checkCancelAndProgress(cancelSignal);
+            checkCancelAndProgress(cancelSignal);
 
-              if (profiles) {
-                await targetHandler.saveProfiles(
-                  profiles,
-                  lastProfilesModified,
-                  customThemes,
-                  statisticsSettings
-                );
-              }
-
-              checkCancelAndProgress(cancelSignal, false, !profiles);
+            if (profiles) {
+              await targetHandler.saveProfiles(
+                profiles,
+                lastProfilesModified,
+                customThemes,
+                statisticsSettings
+              );
             }
+
+            checkCancelAndProgress(cancelSignal, false, !profiles);
 
             processed += 1;
           } catch (error) {
@@ -703,6 +709,38 @@ function checkCancelAndProgress(
   }
 
   BaseStorageHandler.completeStep();
+}
+
+/**
+ * Cover healing check for the book-data gate above: when the book payload
+ * itself is in sync, the cover can only be missing, never stale (covers are
+ * write-once), so presence — not content — decides. Backup import/export
+ * always copies everything; the browser side keeps no cover files, so the
+ * local card art traveling on the context is the presence signal there;
+ * cloud/filesystem targets get a metadata-only filename lookup (served from
+ * the warmed cache, no download). Never throws: doubt means "sync it".
+ */
+async function isCoverMissing(
+  sourceHandler: BaseStorageHandler,
+  targetHandler: BaseStorageHandler,
+  context: ReplicationContext
+): Promise<boolean> {
+  try {
+    if (
+      sourceHandler instanceof BackupStorageHandler ||
+      targetHandler instanceof BackupStorageHandler
+    ) {
+      return true;
+    }
+
+    if (targetHandler.storageType === StorageKey.BROWSER) {
+      return !context.imagePath;
+    }
+
+    return (await targetHandler.getFilenameForRecentCheck('cover_', context)) === undefined;
+  } catch {
+    return true;
+  }
 }
 
 /**
