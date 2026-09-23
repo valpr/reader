@@ -163,6 +163,11 @@
               <button
                 type="button"
                 class="astryx-combobox-option-btn"
+                on:mousedown={(event) => {
+                  // Keep focus in the search input so the open panel never
+                  // loses its anchor mid-tap; the click still fires normally.
+                  event.preventDefault();
+                }}
                 on:click={() => addValue(match.value)}
               >
                 <span class="astryx-combobox-option-label" title={match.label}>{match.label}</span>

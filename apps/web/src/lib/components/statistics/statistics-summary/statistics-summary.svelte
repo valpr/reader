@@ -78,6 +78,7 @@
   let renderFullStatisticsSummaryTable = window && window.matchMedia('(min-width: 768px)').matches;
   let statisticsSummaryTableContainerElm: HTMLElement;
   let statisticsSummaryPopover: Popover;
+  let statisticsSummaryPagesPopover: Popover | undefined;
   let statisticsSummaryButtonContainer: HTMLElement;
   let statisticsData: BookStatistic[] = [];
   let currentStatisticsSummaryRows: BookStatistic[] = [];
@@ -867,6 +868,7 @@
   </button>
   <Popover
     yOffset={5}
+    bind:this={statisticsSummaryPagesPopover}
     on:open={() => {
       const currentPageElement = statisticsSummaryPageRefs[currentStatisticsSummaryPage];
 
@@ -878,6 +880,9 @@
       const middle = absoluteElementTop - statisticsSummaryPagesContainer.clientHeight / 2;
 
       statisticsSummaryPagesContainer.scrollTo(0, middle);
+      // The panel is portaled with a fixed strategy, so re-resolve its
+      // position after the programmatic scroll above.
+      statisticsSummaryPagesPopover?.updatePosition();
     }}
   >
     <div class="mx-6">{statisticsSummaryPageLabel}</div>
