@@ -2,12 +2,16 @@
   import { createEventDispatcher } from 'svelte';
   import { Button, Card, Select } from '@custom-ereader/ui';
   import { formatBunkobonPages } from '$lib/functions/statistic-util';
+  import type { BooksDbStatistic } from '$lib/data/database/books-db/versions/books-db';
   import type { LookbackMetrics } from './lookback-types';
   import LookbackTopBooksCarousel from './lookback-top-books-carousel.svelte';
+  import LookbackSpeedTrend from './lookback-speed-trend.svelte';
 
   export let metrics: LookbackMetrics;
   export let selectedYear: number | 'all';
   export let availableYears: number[] = [];
+  export let statisticsData: BooksDbStatistic[] = [];
+  export let weekStart = 1;
 
   const dispatch = createEventDispatcher<{
     playStory: void;
@@ -543,6 +547,9 @@
       </div>
     </div>
   </Card>
+
+  <!-- Reading Speed Trend -->
+  <LookbackSpeedTrend {statisticsData} {selectedYear} {weekStart} />
 
   <!-- Top Books Carousel -->
   <Card
