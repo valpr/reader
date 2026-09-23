@@ -318,6 +318,9 @@ export async function replicateData(
             });
 
             let dataProcessed = false;
+            // Cover is embedded in the book file, not in progress/bookmarks/stats.
+            // Gate the cover fetch+upload only on actual book-data changes.
+            let bookDataChanged = false;
 
             if (processBookData) {
               if (
@@ -336,6 +339,7 @@ export async function replicateData(
                 if (bookData) {
                   await targetHandler.saveBook(bookData, undefined, undefined, context);
                   dataProcessed = true;
+                  bookDataChanged = true;
                 }
 
                 checkCancelAndProgress(cancelSignal, bookOperationsLength === 1, !bookData);
@@ -479,13 +483,22 @@ export async function replicateData(
             }
 
             if (dataProcessed) {
-              const coverData = await sourceHandler.getCover(context);
+              // Cover is embedded in the book file: only re-sync when book data
+              // itself changed. Progress, bookmarks, statistics, audio, and
+              // subtitle updates never alter the cover — skipping it saves the
+              // largest binary payload in the sync (typically 100 KB – 2 MB).
+              if (bookDataChanged) {
+                const coverData = await sourceHandler.getCover(context);
 
-              checkCancelAndProgress(cancelSignal, !coverData);
+                checkCancelAndProgress(cancelSignal, !coverData);
 
-              await targetHandler.saveCover(coverData, context);
+                await targetHandler.saveCover(coverData, context);
 
-              checkCancelAndProgress(cancelSignal);
+                checkCancelAndProgress(cancelSignal);
+              } else {
+                checkCancelAndProgress(cancelSignal, true, true);
+                checkCancelAndProgress(cancelSignal, true, true);
+              }
 
               if (refreshDataList) {
                 database.dataListChanged$.next(targetHandler);
@@ -520,15 +533,26 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            const { readingGoals, lastGoalModified } = await sourceHandler.getReadingGoals();
+            if (
+              await targetHandler.areReadingGoalsPresentAndUpToDate(
+                await sourceHandler.getFilenameForRecentCheck(
+                  BaseStorageHandler.readingGoalsFilePrefix
+                )
+              )
+            ) {
+              checkCancelAndProgress(cancelSignal, false, true);
+              checkCancelAndProgress(cancelSignal, false, true);
+            } else {
+              const { readingGoals, lastGoalModified } = await sourceHandler.getReadingGoals();
 
-            checkCancelAndProgress(cancelSignal);
+              checkCancelAndProgress(cancelSignal);
 
-            if (readingGoals) {
-              await targetHandler.saveReadingGoals(readingGoals, lastGoalModified);
+              if (readingGoals) {
+                await targetHandler.saveReadingGoals(readingGoals, lastGoalModified);
+              }
+
+              checkCancelAndProgress(cancelSignal, false, !readingGoals);
             }
-
-            checkCancelAndProgress(cancelSignal, false, !readingGoals);
 
             processed += 1;
           } catch (error) {
@@ -547,21 +571,30 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
-              await sourceHandler.getProfiles();
+            if (
+              await targetHandler.areProfilesPresentAndUpToDate(
+                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.profilesFilePrefix)
+              )
+            ) {
+              checkCancelAndProgress(cancelSignal, false, true);
+              checkCancelAndProgress(cancelSignal, false, true);
+            } else {
+              const { profiles, customThemes, statisticsSettings, lastProfilesModified } =
+                await sourceHandler.getProfiles();
 
-            checkCancelAndProgress(cancelSignal);
+              checkCancelAndProgress(cancelSignal);
 
-            if (profiles) {
-              await targetHandler.saveProfiles(
-                profiles,
-                lastProfilesModified,
-                customThemes,
-                statisticsSettings
-              );
+              if (profiles) {
+                await targetHandler.saveProfiles(
+                  profiles,
+                  lastProfilesModified,
+                  customThemes,
+                  statisticsSettings
+                );
+              }
+
+              checkCancelAndProgress(cancelSignal, false, !profiles);
             }
-
-            checkCancelAndProgress(cancelSignal, false, !profiles);
 
             processed += 1;
           } catch (error) {
@@ -580,15 +613,24 @@ export async function replicateData(
       replicationTasks.push(
         replicationLimiter(async () => {
           try {
-            const { tags, titles, lastTagsModified, entries } = await sourceHandler.getBookTags();
+            if (
+              await targetHandler.areBookTagsPresentAndUpToDate(
+                await sourceHandler.getFilenameForRecentCheck(BaseStorageHandler.bookTagsFilePrefix)
+              )
+            ) {
+              checkCancelAndProgress(cancelSignal, false, true);
+              checkCancelAndProgress(cancelSignal, false, true);
+            } else {
+              const { tags, titles, lastTagsModified, entries } = await sourceHandler.getBookTags();
 
-            checkCancelAndProgress(cancelSignal);
+              checkCancelAndProgress(cancelSignal);
 
-            if (tags) {
-              await targetHandler.saveBookTags(tags, titles, lastTagsModified, entries);
+              if (tags) {
+                await targetHandler.saveBookTags(tags, titles, lastTagsModified, entries);
+              }
+
+              checkCancelAndProgress(cancelSignal, false, !tags);
             }
-
-            checkCancelAndProgress(cancelSignal, false, !tags);
 
             processed += 1;
           } catch (error) {
