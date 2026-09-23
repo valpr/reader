@@ -31,15 +31,36 @@ import type { ReplicationContext } from '$lib/functions/replication/replication-
  * that would have differed — worst case is a redundant fetch, never loss.
  * Markers are advisory performance hints in localStorage (no schema
  * migration, no cross-tab coordination): losing one only costs speed.
+ *
+ * Markers bind to the local data-row id as well as the title: deleting a
+ * book and re-importing it mints a fresh row id, so the stale marker from
+ * the deleted row can never suppress the restoration fetch. Contexts
+ * without an id (backup zips, ad-hoc callers) simply never skip. Markers
+ * also expire after MARKER_MAX_AGE_MS, bounding the identical-filename
+ * race (same max-timestamp + same count, divergent rows) that exact name
+ * matching cannot see.
  */
 const MARKER_VERSION = 1;
 
 const MARKER_KEY_PREFIX = 'ttu-reader:ub-sync-state:v1:';
 
+/**
+ * Upper bound on trusting a marker without re-verifying bodies (30 days).
+ * The identical-filename race (same max-timestamp + same count, divergent
+ * rows under clock skew) is the one case exact matching cannot see; a TTL
+ * bounds that divergence window while costing one full fetch per idle book
+ * per month — negligible against the per-sync savings.
+ */
+const MARKER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 export interface BookmarksSyncMarker {
   v: number;
   remoteNames: string[];
   localFp: string;
+  /** Local `data` row id at record time; undefined for id-less contexts. */
+  dataId?: number;
+  /** Wall-clock ms at record time; markers pre-dating this field read old. */
+  recordedAt?: number;
 }
 
 /**
@@ -90,11 +111,17 @@ export function readBookmarksSyncMarker(
       return undefined;
     }
     if (typeof parsed.localFp !== 'string') return undefined;
+    if (parsed.dataId !== undefined && typeof parsed.dataId !== 'number') return undefined;
+    if (parsed.recordedAt !== undefined && typeof parsed.recordedAt !== 'number') {
+      return undefined;
+    }
 
     return {
       v: MARKER_VERSION,
       remoteNames: [...parsed.remoteNames].sort(),
-      localFp: parsed.localFp
+      localFp: parsed.localFp,
+      dataId: parsed.dataId,
+      recordedAt: parsed.recordedAt
     };
   } catch {
     return undefined;
@@ -105,12 +132,19 @@ export function writeBookmarksSyncMarker(
   remoteSourceName: string,
   title: string,
   remoteNames: string[],
-  localFp: string
+  localFp: string,
+  dataId: number | undefined
 ): void {
   try {
     readStorage()?.setItem(
       markerKey(remoteSourceName, title),
-      JSON.stringify({ v: MARKER_VERSION, remoteNames: [...remoteNames].sort(), localFp })
+      JSON.stringify({
+        v: MARKER_VERSION,
+        remoteNames: [...remoteNames].sort(),
+        localFp,
+        dataId,
+        recordedAt: Date.now()
+      })
     );
   } catch {
     // Advisory only: losing a marker costs one redundant fetch.
@@ -210,6 +244,25 @@ export async function trySkipUserBookmarksSync(
 
     if (!marker) return false;
 
+    // The marker is bound to the local data row that produced it. A fresh
+    // row id means delete-then-reimport (or any row recreation): the rows
+    // may look identical while the merge never ran for this row, so a
+    // match must not skip the restoration fetch. Id-less contexts never
+    // skip.
+    if (marker.dataId === undefined || context.id === undefined || marker.dataId !== context.id) {
+      return false;
+    }
+
+    // Markers expire (pre-TTL markers read old and therefore always fail
+    // here): bounds the identical-filename race to one TTL window, then a
+    // full fetch re-verifies and re-records.
+    if (
+      typeof marker.recordedAt !== 'number' ||
+      Date.now() - marker.recordedAt > MARKER_MAX_AGE_MS
+    ) {
+      return false;
+    }
+
     return marker.localFp === localFp && equalNameSets(marker.remoteNames, remoteNames);
   } catch {
     return false;
@@ -243,7 +296,8 @@ export async function recordUserBookmarksSyncState(
       sides.remote.getCurrentStorageSource(),
       context.title,
       remoteNames,
-      localFp
+      localFp,
+      context.id
     );
   } catch {
     // Advisory only.
