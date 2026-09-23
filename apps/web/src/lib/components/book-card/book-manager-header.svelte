@@ -2,6 +2,7 @@
   import { browser, dev } from '$app/environment';
   import { goto, preloadCode } from '$app/navigation';
   import type { BookCardProps } from '$lib/components/book-card/book-card-props';
+  import SyncActivityIcon from '$lib/components/cloud/sync-activity-icon.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import MergedHeaderIcon from '$lib/components/merged-header-icon/merged-header-icon.svelte';
   import Popover from '$lib/components/popover/popover.svelte';
@@ -458,6 +459,9 @@
           >
             <Fa icon={faTriangleExclamation} class="text-base" />
           </CloudStatusIcon>
+        {/if}
+        {#if !replicationToProgress}
+          <SyncActivityIcon />
         {/if}
       {:else}
         <Tooltip text="Disable Book Selection">

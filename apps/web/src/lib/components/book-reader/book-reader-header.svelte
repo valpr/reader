@@ -20,6 +20,7 @@
   } from '@fortawesome/free-solid-svg-icons';
   import { preloadCode } from '$app/navigation';
   import { readerImageGalleryPictures$ } from '$lib/components/book-reader/book-reader-image-gallery/book-reader-image-gallery';
+  import SyncActivityIcon from '$lib/components/cloud/sync-activity-icon.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import Popover from '$lib/components/popover/popover.svelte';
   import { IconButton, Tooltip, TopBar, OverflowList, CloudStatusIcon } from '@custom-ereader/ui';
@@ -209,6 +210,8 @@
           <Fa icon={faTriangleExclamation} class="text-base" />
         </CloudStatusIcon>
       {/if}
+
+      <SyncActivityIcon />
 
       {#if $viewMode$ === ViewMode.Continuous && !$isMobile$}
         <Tooltip text="Current Autoscroll Speed">
