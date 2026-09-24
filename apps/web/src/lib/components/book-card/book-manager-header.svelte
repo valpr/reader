@@ -427,34 +427,54 @@
 {#if !replicationToProgress}
   <TopBar bordered={true} density="compact">
     <div slot="start" class="flex items-center gap-1.5">
-      {#if selectedCount === 0}
-        <Tooltip text={selectMode ? 'Disable Book Selection' : 'Enable Book Selection'}>
-          <IconButton
-            nativeTooltip={false}
-            label={selectMode ? 'Disable Book Selection' : 'Enable Book Selection'}
-            size="md"
-            variant={selectMode ? 'secondary' : 'ghost'}
-            active={selectMode}
-            on:click={() => (selectMode = hasBooks && !selectMode)}
+      {#if !selectMode}
+        <Popover
+          placement="bottom"
+          fallbackPlacements={['bottom-end', 'bottom-start']}
+          yOffset={4}
+          bind:this={importMenuElm}
+        >
+          <div slot="icon">
+            <Tooltip text="Import Books or Backup">
+              <Button
+                variant="ghost"
+                size="md"
+                aria-label="Import Books or Backup"
+                data-testid="library-import-button"
+                class="gap-1.5 px-2 text-sm font-medium text-[var(--astryx-color-fg-secondary)] hover:text-[var(--astryx-color-fg-primary)] sm:px-2.5"
+              >
+                <Fa icon={mergeEntries.FILE_IMPORT.icon} class="text-sm opacity-80" />
+                <span class="hidden sm:inline">Import</span>
+                <span class="hidden sm:inline-flex items-center">
+                  <Fa icon={faChevronDown} class="text-xs opacity-60" />
+                </span>
+              </Button>
+            </Tooltip>
+          </div>
+          <div
+            class="min-w-[12rem] rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] bg-[var(--astryx-color-surface,#ffffff)] py-1 shadow-lg text-sm"
+            slot="content"
           >
-            <svg
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5 fill-current"
-            >
-              <path
-                d="M20,4v12H8V4H20 M20,2H8C6.9,2,6,2.9,6,4v12c0,1.1,0.9,2,2,2h12c1.1,0,2-0.9,2-2V4C22,2.9,21.1,2,20,2L20,2z M12.47,14 L9,10.5l1.4-1.41l2.07,2.08L17.6,6L19,7.41L12.47,14z M4,6H2v14c0,1.1,0.9,2,2,2h14v-2H4V6z"
-              />
-            </svg>
-          </IconButton>
-        </Tooltip>
-        {#if !selectMode}
-          <span
-            class="hidden sm:inline-block text-sm font-semibold tracking-tight text-[var(--astryx-color-fg-primary)] ml-1"
-          >
-            Valpr Reader
-          </span>
-        {/if}
+            {#each importMenuItems as item (item.label)}
+              <button
+                type="button"
+                class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
+                on:click={() => {
+                  triggerInput(item.label);
+                  importMenuElm.toggleOpen();
+                }}
+              >
+                <Fa icon={item.icon} class="w-4 text-center opacity-70" />
+                <span>{item.label}</span>
+              </button>
+            {/each}
+          </div>
+        </Popover>
+        <span
+          class="hidden sm:inline-block text-sm font-semibold tracking-tight text-[var(--astryx-color-fg-primary)] ml-1"
+        >
+          Valpr Reader
+        </span>
         {#if showCloudWarning}
           <CloudStatusIcon
             label={cloudWarningLabel}
@@ -479,11 +499,13 @@
             <Fa icon={faTimes} class="text-base" />
           </IconButton>
         </Tooltip>
-        <span
-          class="inline-flex items-center justify-center rounded-full bg-[var(--astryx-color-primary-subtle,rgba(99,102,241,0.15))] px-2 py-0.5 text-xs font-semibold text-[var(--astryx-color-primary,#6366f1)]"
-        >
-          {selectedCount}
-        </span>
+        {#if selectedCount > 0}
+          <span
+            class="inline-flex items-center justify-center rounded-full bg-[var(--astryx-color-primary-subtle,rgba(99,102,241,0.15))] px-2 py-0.5 text-xs font-semibold text-[var(--astryx-color-primary,#6366f1)]"
+          >
+            {selectedCount}
+          </span>
+        {/if}
       {/if}
     </div>
 
@@ -537,49 +559,6 @@
 
     <div slot="end" class="flex items-center gap-0.5 sm:gap-1">
       {#if !selectMode}
-        <Popover
-          placement="bottom"
-          fallbackPlacements={['bottom-end', 'bottom-start']}
-          yOffset={4}
-          bind:this={importMenuElm}
-        >
-          <div slot="icon">
-            <Tooltip text="Import Books or Backup">
-              <Button
-                variant="ghost"
-                size="md"
-                aria-label="Import Books or Backup"
-                data-testid="library-import-button"
-                class="gap-1.5 px-2 text-sm font-medium text-[var(--astryx-color-fg-secondary)] hover:text-[var(--astryx-color-fg-primary)] sm:px-2.5"
-              >
-                <Fa icon={mergeEntries.FILE_IMPORT.icon} class="text-sm opacity-80" />
-                <span class="hidden sm:inline">Import</span>
-                <span class="hidden sm:inline-flex items-center">
-                  <Fa icon={faChevronDown} class="text-xs opacity-60" />
-                </span>
-              </Button>
-            </Tooltip>
-          </div>
-          <div
-            class="min-w-[12rem] rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] bg-[var(--astryx-color-surface,#ffffff)] py-1 shadow-lg text-sm"
-            slot="content"
-          >
-            {#each importMenuItems as item (item.label)}
-              <button
-                type="button"
-                class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
-                on:click={() => {
-                  triggerInput(item.label);
-                  importMenuElm.toggleOpen();
-                }}
-              >
-                <Fa icon={item.icon} class="w-4 text-center opacity-70" />
-                <span>{item.label}</span>
-              </button>
-            {/each}
-          </div>
-        </Popover>
-
         <Popover
           placement="bottom-end"
           fallbackPlacements={['bottom-start', 'bottom']}
@@ -839,6 +818,7 @@
         <MergedHeaderIcon
           items={isOldUrl
             ? [
+                mergeEntries.BOOK_SELECTION,
                 mergeEntries.MANAGE,
                 mergeEntries.DOMAIN_HINT,
                 mergeEntries.SETTINGS,
@@ -847,6 +827,7 @@
                 ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
               ]
             : [
+                mergeEntries.BOOK_SELECTION,
                 mergeEntries.MANAGE,
                 mergeEntries.STATISTICS,
                 mergeEntries.SETTINGS,
@@ -855,6 +836,9 @@
                 ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
               ]}
           on:action={({ detail }) => {
+            if (detail === mergeEntries.BOOK_SELECTION.label) {
+              if (hasBooks) selectMode = true;
+            }
             if (detail === mergeEntries.BUG_REPORT.label) {
               dispatch('bugReportClick');
             }

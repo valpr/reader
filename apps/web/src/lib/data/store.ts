@@ -555,8 +555,6 @@ export const fileCountData$ = writableSubject<Record<string, number> | undefined
 export const bookReaderKeybindMap$ = writableSubject<BookReaderKeybindMap>({
   KeyB: BookReaderAvailableKeybind.BOOKMARK,
   b: BookReaderAvailableKeybind.BOOKMARK,
-  KeyR: BookReaderAvailableKeybind.JUMP_TO_BOOKMARK,
-  r: BookReaderAvailableKeybind.JUMP_TO_BOOKMARK,
   PageDown: BookReaderAvailableKeybind.NEXT_PAGE,
   pagedown: BookReaderAvailableKeybind.NEXT_PAGE,
   PageUp: BookReaderAvailableKeybind.PREV_PAGE,
