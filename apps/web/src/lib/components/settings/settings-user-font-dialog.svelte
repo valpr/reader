@@ -153,7 +153,10 @@
     {/if}
     {#if !cacheLoaded || isLoading}
       <div class="fixed inset-0 flex h-full w-full items-center justify-center">
-        <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Loading fonts…" />
+        <BookLoader
+          mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'}
+          stage={cacheLoaded ? 'Adding font…' : 'Loading fonts…'}
+        />
       </div>
     {/if}
   </div>
