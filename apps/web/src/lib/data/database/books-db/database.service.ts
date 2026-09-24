@@ -1388,6 +1388,11 @@ export class DatabaseService {
     bookTitle: string,
     statistics: BooksDbStatistic[]
   ): Promise<boolean> {
+    // INVARIANT: `statistics` must be this device's OWN rows only, never
+    // folded display rows. Display rows include remote + legacy sources; writing
+    // them here copies peer reading into our contribution and the next refold
+    // double-counts it (cross-device time/char inflation). The tracker seeds its
+    // write model via getOwnStatisticsForBook() to uphold this.
     const db = await this.db;
     const tx = db.transaction(
       ['statisticContribution', 'statisticSyncState', 'deviceIdentity'],
@@ -1691,6 +1696,34 @@ export class DatabaseService {
     if (!title) return [];
     const db = await this.db;
     return db.getAll('statisticContribution', IDBKeyRange.bound([title], [title, []]));
+  }
+
+  /**
+   * This device's own raw contribution rows for one book — the only correct
+   * seed for the reading tracker's write model. The folded `statistic` display
+   * rows include remote + legacy sources and must never seed the write model:
+   * flushing them back via `storeLocalContributions` copies peer reading into
+   * our own contribution, and the next `refoldAllFromStores` sums it twice
+   * (multi-device inflation: each device open adds one generation).
+   *
+   * Returns [] when no device identity exists yet (never synced); callers
+   * should then fall back to display rows for pre-sync continuity.
+   */
+  async getOwnStatisticsForBook(title: string): Promise<BooksDbStatisticContribution[]> {
+    if (!title) return [];
+    const db = await this.db;
+    const identity = await db.get('deviceIdentity', 0).catch(() => undefined);
+    const deviceId = identity?.deviceId;
+    if (!deviceId) return [];
+    const rows = await db.getAll('statisticContribution', IDBKeyRange.bound([title], [title, []]));
+    return rows.filter((row) => row.deviceId === deviceId);
+  }
+
+  /** True once this device has a stable sync identity (i.e. has synced). */
+  async hasDeviceIdentity(): Promise<boolean> {
+    const db = await this.db;
+    const identity = await db.get('deviceIdentity', 0).catch(() => undefined);
+    return !!identity?.deviceId;
   }
 
   async getStatisticContributionsForYear(year: number): Promise<BooksDbStatisticContribution[]> {
