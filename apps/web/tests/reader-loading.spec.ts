@@ -63,7 +63,7 @@ test.describe('Reader Loading & Initialization', () => {
     await expect(content).toContainText('これはテスト本の本文です');
   });
 
-  test('displays loading spinner overlay when clicking a book card to open', async ({ page }) => {
+  test('displays loading overlay when clicking a book card to open', async ({ page }) => {
     await seedReaderBook(page);
     await page.goto('/manage');
     // Wait for JS hydration so the book list is rendered and interactive.
@@ -81,36 +81,69 @@ test.describe('Reader Loading & Initialization', () => {
     await expect(content).toBeVisible();
   });
 
-  test('BookLoadingOverlay renders accessible spinner icon', async ({ page }) => {
+  test('book open shows BookLoader stage (not legacy spinner) while opening', async ({ page }) => {
+    await seedReaderBook(page);
+    // Debug mode surfaces the stage string; flavor mode shows rotating lines.
+    await page.addInitScript(() => window.localStorage.setItem('loaderMode', 'debug'));
     await page.goto('/manage');
-    // Wait for JS hydration so the manage page's onMount (which clears stale
-    // loading overlays) has already run before we push the overlay below.
-    // Otherwise hydration can clear the dialog after it is pushed (slow CI).
     await page.waitForLoadState('networkidle');
 
-    // Push the overlay into dialogs
-    await page.evaluate(async () => {
-      // @ts-expect-error - dynamic browser import in playwright evaluate
-      const { dialogManager } = await import('/src/lib/data/dialog-manager.ts');
-      const { default: BookLoadingOverlay } = await import(
-        // @ts-expect-error - dynamic browser import of .svelte in playwright evaluate
-        '/src/lib/components/book-loading-overlay.svelte'
-      );
-      dialogManager.dialogs$.next([
-        {
-          component: BookLoadingOverlay,
-          disableCloseOnClick: true
+    const bookCard = page.locator('.aspect-w-2:has-text("吾輩は猫である")').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    // Start observing before the click so even a single-frame flash is caught.
+    const observedPromise = page.evaluate(() => {
+      const snapshot = () => {
+        if (document.querySelector('[data-testid="book-loading-overlay"]')) return { legacy: true };
+        const el = document.querySelector('[data-testid="book-loader"]');
+        if (el) {
+          return {
+            legacy: false,
+            mode: el.getAttribute('data-mode'),
+            stage:
+              el.querySelector('[data-testid="book-loader-stage"]')?.textContent?.trim() ?? null
+          };
         }
-      ]);
+        return null;
+      };
+      const initial = snapshot();
+      if (initial) return Promise.resolve(initial);
+      // The click below may already be in flight; watch for the dialog.
+      return new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          const found = snapshot();
+          if (found) {
+            observer.disconnect();
+            resolve(found);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(snapshot());
+        }, 3000);
+      });
     });
+    await bookCard.click();
+    type ObservedLoader =
+      null | { legacy: true } | { legacy: false; mode: string | null; stage: string | null };
+    const observed = (await observedPromise) as ObservedLoader;
 
-    const overlay = page.locator('[data-testid="book-loading-overlay"]');
-    await expect(overlay).toBeVisible();
-    await expect(overlay).toHaveAttribute('role', 'status');
-    await expect(overlay).toHaveAttribute('aria-label', 'Loading book');
+    if (observed) {
+      // The legacy spinner must never appear on this path.
+      expect(observed, 'legacy book-loading-overlay rendered instead of BookLoader').not.toEqual({
+        legacy: true
+      });
+      if (observed.legacy === false) {
+        expect(observed.mode, 'BookLoader should respect the debug loaderMode').toBe('debug');
+        expect(observed.stage, 'BookLoader should name the open stage').toBe('Opening local book…');
+      }
+    }
 
-    const spinnerSvg = overlay.locator('svg');
-    await expect(spinnerSvg).toBeVisible();
-    await expect(spinnerSvg).toHaveClass(/\bspin\b/);
+    // The reader opens successfully either way, with no legacy overlay left.
+    await expect(page).toHaveURL(/\/b\?id=/);
+    await expect(page.locator('[data-testid="book-loading-overlay"]')).toHaveCount(0);
+    const content = page.locator('.book-content');
+    await expect(content).toBeVisible();
   });
 });

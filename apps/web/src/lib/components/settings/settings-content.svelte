@@ -706,6 +706,7 @@
     );
     if (wasFinalCanceled) return;
 
+    settingsLoaderStage = 'Resetting everything…';
     showSpinner = true;
     try {
       await factoryReset();
@@ -742,6 +743,7 @@
   );
 
   let showSpinner = false;
+  let settingsLoaderStage = 'Applying settings…';
   let furiganaStyleTooltip = '';
   let importHTMLFixModeTooltip = '';
   let trackerAutoPauseTooltip = '';
@@ -893,7 +895,10 @@
           class:hidden={currentActiveSection !== 'all' && currentActiveSection !== 'profiles'}
         >
           <SettingsReaderProfiles
-            on:spinner={({ detail }) => (showSpinner = detail)}
+            on:spinner={({ detail }) => {
+              if (detail) settingsLoaderStage = 'Applying settings…';
+              showSpinner = detail;
+            }}
             on:profileChange={handleProfileChange}
           />
         </div>
@@ -1997,6 +2002,7 @@
             variant="secondary"
             size="sm"
             on:click={() => {
+              settingsLoaderStage = 'Clearing zombie statistics…';
               showSpinner = true;
               database
                 .clearZombieStatistics()
@@ -2030,13 +2036,16 @@
     <!-- Section 4: Reading Goals -->
     <SettingsReadingGoals
       storageSources={$storageSources$}
-      on:spinner={({ detail }) => (showSpinner = detail)}
+      on:spinner={({ detail }) => {
+        if (detail) settingsLoaderStage = 'Applying settings…';
+        showSpinner = detail;
+      }}
     />
   </div>
 {/if}
 {#if showSpinner}
   <div class="tap-highlight-transparent fixed inset-0 bg-black/[.2]"></div>
   <div class="fixed inset-0 flex h-full w-full items-center justify-center">
-    <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Applying settings…" />
+    <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage={settingsLoaderStage} />
   </div>
 {/if}

@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
   import { BookLoader } from '@custom-ereader/ui';
+  import { loaderMode$ } from '$lib/data/store';
   import { convertAuthErrorResponse } from '$lib/functions/replication/error-handler';
   import Fa from 'svelte-fa';
 
@@ -222,6 +223,6 @@
   </div>
 {:else}
   <div class="fixed inset-0 flex h-full w-full items-center justify-center">
-    <BookLoader stage="Completing sign-in…" mode="debug" />
+    <BookLoader stage="Completing sign-in…" mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} />
   </div>
 {/if}
