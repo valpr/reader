@@ -105,6 +105,19 @@ test.describe('Pinned Reader Header (Keep Header Visible)', () => {
     await expect(managerBtn).toBeVisible({ timeout: 5000 });
   });
 
+  test('header survives header button actions instead of dismissing', async ({ page }) => {
+    await page.goto('/b?id=1');
+    const bookmarkBtn = page.locator(
+      'button[aria-label="Save Position (Hold to Create Named Bookmark)"]'
+    );
+    await expect(bookmarkBtn).toBeVisible({ timeout: 5000 });
+
+    // Clicking bookmark button triggers bookmarkPage() which previously dismissed the header
+    await bookmarkBtn.click();
+    const managerBtn = page.locator('button[aria-label="Go to Book Manager"]');
+    await expect(managerBtn).toBeVisible({ timeout: 5000 });
+  });
+
   test('book content starts below the pinned header without overlap', async ({ page }) => {
     await page.goto('/b?id=1');
     await expect(page.locator('.book-content')).toBeVisible();
