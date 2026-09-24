@@ -291,4 +291,204 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     expect(result.labels).toContain('Cloud Bookmark 1');
     expect(result.labels).toContain('Cloud Bookmark 2');
   });
+
+  test('creates a highlighted bookmark from text selection and renders mark element with bookmark color', async ({
+    page
+  }) => {
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content p').first()).toBeVisible();
+
+    // Select text within the first paragraph
+    await page.evaluate(() => {
+      const p = document.querySelector('.book-content p');
+      if (!p || !p.firstChild) throw new Error('First paragraph node missing');
+      const range = document.createRange();
+      range.setStart(p.firstChild, 0);
+      range.setEnd(p.firstChild, 7); // '吾輩は猫である'
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    // Open create bookmark dialog via Shift+B
+    await page.keyboard.press('Shift+KeyB');
+    const dialogTitle = page.locator('text=New Bookmark');
+    await expect(dialogTitle).toBeVisible();
+
+    // Verify "Highlight selected text" checkbox is visible and checked
+    const highlightCheckbox = page.locator('input[type="checkbox"]');
+    await expect(highlightCheckbox).toBeVisible();
+    await expect(highlightCheckbox).toBeChecked();
+
+    // Verify snippet preview is visible in the dialog
+    await expect(page.locator('[data-app-dialog]')).toContainText('吾輩は猫である');
+
+    // Fill label and select red color
+    await page.locator('#bookmark-label').fill('Neko Highlight');
+    await page.locator('button[title="red"]').click();
+
+    // Save
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialogTitle).toBeHidden();
+
+    // Verify mark element is rendered in .book-content
+    const mark = page.locator('mark[data-ttu-highlight]');
+    await expect(mark).toBeVisible();
+    await expect(mark).toHaveText('吾輩は猫である');
+
+    // Verify mark has red rgba background color: rgba(239, 68, 68, 0.35)
+    const bgColor = await mark.evaluate((el) => window.getComputedStyle(el).backgroundColor);
+    expect(bgColor).toMatch(/rgba?\(239,\s*68,\s*68/);
+
+    // Verify highlight persisted in IndexedDB
+    const bookmarkRecord = await page.evaluate(async (version) => {
+      return new Promise<any>((resolve, reject) => {
+        const req = indexedDB.open('books', version);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('userBookmark', 'readonly');
+          const getAllReq = tx.objectStore('userBookmark').getAll();
+          getAllReq.onsuccess = () => {
+            const row = (getAllReq.result as any[]).find((b) => b.label === 'Neko Highlight');
+            resolve(row);
+          };
+          getAllReq.onerror = () => reject(getAllReq.error);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    }, currentDbVersion);
+
+    expect(bookmarkRecord).toBeDefined();
+    expect(bookmarkRecord.highlight).toBeDefined();
+    expect(bookmarkRecord.highlight.snippet).toBe('吾輩は猫である');
+    expect(bookmarkRecord.color).toBe('red');
+  });
+
+  test('multi-paragraph selection creates highlights across multiple blocks', async ({ page }) => {
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content p').nth(1)).toBeVisible();
+
+    // Select text spanning paragraph 0 and paragraph 1
+    await page.evaluate(() => {
+      const paras = document.querySelectorAll('.book-content p');
+      if (paras.length < 2 || !paras[0].firstChild || !paras[1].firstChild) {
+        throw new Error('Not enough paragraphs found');
+      }
+      const range = document.createRange();
+      range.setStart(paras[0].firstChild, 5); // middle of para 0
+      range.setEnd(paras[1].firstChild, 10); // middle of para 1
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    await page.keyboard.press('Shift+KeyB');
+    await expect(page.locator('text=New Bookmark')).toBeVisible();
+    await page.locator('#bookmark-label').fill('MultiPara Highlight');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('text=New Bookmark')).toBeHidden();
+
+    // Verify marks exist in both paragraphs
+    const marks = page.locator('mark[data-ttu-highlight]');
+    await expect(marks).toHaveCount(2);
+  });
+
+  test('highlight color updates on bookmark edit and is removed on bookmark delete', async ({
+    page
+  }) => {
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content p').first()).toBeVisible();
+
+    // Create a highlighted bookmark
+    await page.evaluate(() => {
+      const p = document.querySelector('.book-content p');
+      if (!p || !p.firstChild) return;
+      const range = document.createRange();
+      range.setStart(p.firstChild, 0);
+      range.setEnd(p.firstChild, 5);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    await page.keyboard.press('Shift+KeyB');
+    await page.locator('#bookmark-label').fill('Editable Highlight');
+    await page.locator('button[title="blue"]').click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    const mark = page.locator('mark[data-ttu-highlight]');
+    await expect(mark).toBeVisible();
+    const bgColor = await mark.evaluate((el) => window.getComputedStyle(el).backgroundColor);
+    expect(bgColor).toMatch(/rgba?\(59,\s*130,\s*246/); // blue
+
+    // Open drawer
+    await page.keyboard.press('Shift+KeyR');
+    const bookmarksTab = page.locator('button:has-text("Bookmarks")');
+    await expect(bookmarksTab).toBeVisible();
+    await bookmarksTab.click();
+
+    // Edit bookmark to green
+    const editBtn = page.locator('button[title="Edit Bookmark"]').first();
+    await editBtn.click();
+    const editTitle = page.locator('text=Edit Bookmark');
+    await expect(editTitle).toBeVisible();
+    await page.locator('button[title="green"]').click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(editTitle).toBeHidden();
+
+    // Close drawer
+    await page.locator('button[title="Close"]').click();
+    await expect(bookmarksTab).toBeHidden();
+
+    // Verify mark background color updated to green: rgba(34, 197, 94, 0.35)
+    await expect
+      .poll(async () => {
+        return mark.evaluate((el) => window.getComputedStyle(el).backgroundColor);
+      })
+      .toMatch(/rgba?\(34,\s*197,\s*94/);
+
+    // Reopen drawer and delete bookmark
+    await page.keyboard.press('Shift+KeyR');
+    await bookmarksTab.click();
+    await page.locator('button[title="Delete Bookmark"]').first().click();
+    await page.locator('button[title="Close"]').click();
+
+    // Verify mark is removed from DOM
+    await expect(page.locator('mark[data-ttu-highlight]')).toHaveCount(0);
+  });
+
+  test('highlight renders in continuous view mode', async ({ page }) => {
+    // Seed book in continuous mode
+    await seedReaderBook(page, {}, { viewMode: 'continuous', writingMode: 'horizontal-tb' });
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+
+    // Select text
+    await page.evaluate(() => {
+      const p = document.querySelector('.book-content p');
+      if (!p || !p.firstChild) return;
+      const range = document.createRange();
+      range.setStart(p.firstChild, 0);
+      range.setEnd(p.firstChild, 5);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    await page.keyboard.press('Shift+KeyB');
+    await expect(page.locator('text=New Bookmark')).toBeVisible();
+    await page.locator('#bookmark-label').fill('Continuous Highlight');
+    await page.locator('button:has-text("Save")').click();
+
+    const mark = page.locator('mark[data-ttu-highlight]');
+    await expect(mark).toBeVisible();
+    await expect(mark).toHaveText('吾輩は猫で');
+  });
 });

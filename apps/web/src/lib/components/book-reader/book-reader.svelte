@@ -125,6 +125,8 @@
 
   export let userBookmarks: BooksDbUserBookmarkData[] = [];
 
+  export let currentSectionIndex = 0;
+
   let showBlurMessage = false;
 
   let wakeLock: WakeLockSentinel | undefined;
@@ -366,6 +368,7 @@
       {pageColumns}
       {firstDimensionMargin}
       {userBookmarks}
+      bind:currentSectionIndex
       bind:exploredCharCount
       bind:bookCharCount
       bind:isBookmarkScreen

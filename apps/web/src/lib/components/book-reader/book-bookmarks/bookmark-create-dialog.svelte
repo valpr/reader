@@ -9,8 +9,18 @@
   export let initialLabel = '';
   export let initialColor: BookmarkColor = 'blue';
   export let initialNote = '';
+  export let hasSelection = false;
+  export let initialSnippet = '';
+  export let applyHighlight = hasSelection;
   export let resolver: (
-    arg0: { label: string; color: BookmarkColor; note: string } | undefined
+    arg0:
+      | {
+          label: string;
+          color: BookmarkColor;
+          note: string;
+          applyHighlight?: boolean;
+        }
+      | undefined
   ) => void;
 
   let label = initialLabel;
@@ -27,7 +37,8 @@
     resolver({
       label: label.trim() || initialLabel || 'Bookmark',
       color: selectedColor,
-      note: note.trim()
+      note: note.trim(),
+      applyHighlight: hasSelection ? applyHighlight : undefined
     });
     dispatch('close');
   }
@@ -75,6 +86,27 @@
         {/each}
       </div>
     </div>
+
+    {#if hasSelection}
+      <div class="flex flex-col gap-1.5 rounded-lg border border-gray-200 bg-gray-50/75 p-3">
+        <label class="flex min-h-[44px] cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            bind:checked={applyHighlight}
+          />
+          <span class="font-medium text-gray-900 select-none">Highlight selected text</span>
+        </label>
+        {#if initialSnippet}
+          <div
+            class="text-xs text-gray-500 italic min-w-0 max-w-full break-words [overflow-wrap:anywhere]"
+            title={initialSnippet}
+          >
+            "{initialSnippet.length > 80 ? initialSnippet.slice(0, 80) + '...' : initialSnippet}"
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <div>
       <label for="bookmark-note" class="mb-1 block font-medium">Note (optional)</label>

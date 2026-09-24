@@ -12,6 +12,10 @@
     BOOKMARK_COLORS,
     type BooksDbUserBookmarkData
   } from '$lib/components/book-reader/book-bookmarks/bookmark-types';
+  import {
+    applyHighlights,
+    clearHighlights
+  } from '$lib/components/book-reader/book-bookmarks/highlight-renderer';
   import type { BookmarkPosData } from './bookmark-manager-continuous';
   import { isStoredFont } from '$lib/data/fonts';
   import { FuriganaStyle } from '$lib/data/furigana-style';
@@ -276,6 +280,23 @@
           bm.scrollToBookmark(data, customReadingPointScrollOffset);
         }
       });
+    }
+  }
+
+  function renderHighlights() {
+    if (!contentEl) return;
+    clearHighlights(contentEl);
+    if (userBookmarks?.length) {
+      applyHighlights(contentEl, 0, userBookmarks, false);
+    }
+  }
+
+  $: {
+    if (contentEl && userBookmarks) {
+      renderHighlights();
+      if (calculator) {
+        calculator.updateParagraphPos();
+      }
     }
   }
 
@@ -611,6 +632,8 @@
   async function onHtmlLoad() {
     await tick();
     if (!contentEl) return;
+
+    renderHighlights();
 
     calculator = new CharacterStatsCalculator(
       contentEl,

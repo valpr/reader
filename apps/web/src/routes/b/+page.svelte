@@ -127,6 +127,7 @@
   import { bookmarkPanelIsOpen$ } from '$lib/components/book-reader/book-bookmarks/book-bookmark-panel';
   import BookBookmarkPanel from '$lib/components/book-reader/book-bookmarks/book-bookmark-panel.svelte';
   import BookmarkCreateDialog from '$lib/components/book-reader/book-bookmarks/bookmark-create-dialog.svelte';
+  import BookmarkSelectionPill from '$lib/components/book-reader/book-bookmarks/bookmark-selection-pill.svelte';
   import { generateBookmarkLabel } from '$lib/components/book-reader/book-bookmarks/bookmark-utils';
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import NumberDialog from '$lib/components/number-dialog.svelte';
@@ -205,6 +206,7 @@
     getParagraphToPoint,
     getRangeForUserSelection,
     getReferencePoints,
+    getSelectionHighlightData,
     pulseElement
   } from '$lib/functions/range-util';
 
@@ -213,6 +215,8 @@
   let transientShowHeader = false;
   let headerHeight = 0;
   let isBookmarkScreen = false;
+  let currentSectionIndex = 0;
+  let hasActiveSelection = false;
   let showFooter = true;
   let exploredCharCount = 0;
   let bookCharCount = 0;
@@ -662,17 +666,28 @@
   );
 
   const textSelector$ = iffBrowser(() => fromEvent(document, 'selectionchange')).pipe(
-    debounceTime(200),
+    debounceTime(150),
     tap(() => {
-      const currentSelected = window.getSelection()?.toString() || '';
+      const selection = window.getSelection();
+      const currentSelected = selection?.toString() || '';
+      const contentEl = document.querySelector('.book-content');
 
       if (!currentSelected && lastSelectedRangeWasEmpty) {
         lastSelectedRange = undefined;
+        hasActiveSelection = false;
       } else if (currentSelected) {
-        lastSelectedRange = window.getSelection()?.getRangeAt(0);
+        lastSelectedRange =
+          selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
         lastSelectedRangeWasEmpty = false;
+        const isInsideContent = !!(
+          lastSelectedRange &&
+          contentEl &&
+          contentEl.contains(lastSelectedRange.commonAncestorContainer)
+        );
+        hasActiveSelection = isInsideContent && currentSelected.trim().length > 0;
       } else {
         lastSelectedRangeWasEmpty = true;
+        hasActiveSelection = false;
       }
     }),
     reduceToEmptyString()
@@ -1543,22 +1558,37 @@
     pauseTracker();
     skipKeyDownListener$.next(true);
 
+    const selection = window.getSelection();
+    const hasLiveSelection = !!selection && !selection.isCollapsed && selection.rangeCount > 0;
+    const capturedRange = hasLiveSelection
+      ? selection.getRangeAt(0).cloneRange()
+      : lastSelectedRange;
+    const contentEl = document.querySelector('.book-content') as HTMLElement | null;
+    const pendingHighlight =
+      capturedRange && contentEl
+        ? getSelectionHighlightData(capturedRange, contentEl, isPaginated, currentSectionIndex)
+        : undefined;
+
+    hasActiveSelection = false;
+
     const defaultLabel = generateBookmarkLabel($sectionData$, exploredCharCount, bookCharCount);
 
-    const result = await new Promise<{ label: string; color: any; note: string } | undefined>(
-      (resolver) => {
-        dialogManager.dialogs$.next([
-          {
-            component: BookmarkCreateDialog,
-            zIndex: '70',
-            props: {
-              initialLabel: defaultLabel,
-              resolver
-            }
+    const result = await new Promise<
+      { label: string; color: any; note: string; applyHighlight?: boolean } | undefined
+    >((resolver) => {
+      dialogManager.dialogs$.next([
+        {
+          component: BookmarkCreateDialog,
+          zIndex: '70',
+          props: {
+            initialLabel: defaultLabel,
+            hasSelection: !!pendingHighlight,
+            initialSnippet: pendingHighlight?.snippet || '',
+            resolver
           }
-        ]);
-      }
-    );
+        }
+      ]);
+    });
 
     skipKeyDownListener$.next(false);
     restartTrackerAfterCharacterChangeOrTime(1000);
@@ -1569,6 +1599,8 @@
 
     if (!result) return;
 
+    const highlight = result.applyHighlight && pendingHighlight ? pendingHighlight : undefined;
+
     await database.putUserBookmark({
       dataId,
       exploredCharCount: Math.max(1, exploredCharCount),
@@ -1576,9 +1608,13 @@
       label: result.label,
       color: result.color,
       note: result.note,
+      highlight,
       createdAt: Date.now(),
       lastModified: Date.now()
     });
+    window.getSelection()?.removeAllRanges();
+    lastSelectedRange = undefined;
+    hasActiveSelection = false;
     await refreshUserBookmarks();
     scheduleReplication(StorageDataType.USER_BOOKMARKS);
   }
@@ -1587,23 +1623,23 @@
     pauseTracker();
     skipKeyDownListener$.next(true);
 
-    const result = await new Promise<{ label: string; color: any; note: string } | undefined>(
-      (resolver) => {
-        dialogManager.dialogs$.next([
-          {
-            component: BookmarkCreateDialog,
-            zIndex: '70',
-            props: {
-              title: 'Edit Bookmark',
-              initialLabel: item.label,
-              initialColor: item.color,
-              initialNote: item.note || '',
-              resolver
-            }
+    const result = await new Promise<
+      { label: string; color: any; note: string; applyHighlight?: boolean } | undefined
+    >((resolver) => {
+      dialogManager.dialogs$.next([
+        {
+          component: BookmarkCreateDialog,
+          zIndex: '70',
+          props: {
+            title: 'Edit Bookmark',
+            initialLabel: item.label,
+            initialColor: item.color,
+            initialNote: item.note || '',
+            resolver
           }
-        ]);
-      }
-    );
+        }
+      ]);
+    });
 
     skipKeyDownListener$.next(false);
     restartTrackerAfterCharacterChangeOrTime(1000);
@@ -1619,8 +1655,10 @@
       label: result.label,
       color: result.color,
       note: result.note,
+      highlight: item.highlight,
       lastModified: Date.now()
     });
+    await refreshUserBookmarks();
     scheduleReplication(StorageDataType.USER_BOOKMARKS);
   }
 
@@ -2422,6 +2460,7 @@
       pageColumns={$pageColumns$}
       multiplier={$multiplier$}
       {userBookmarks}
+      bind:currentSectionIndex
       bind:exploredCharCount
       bind:bookCharCount
       bind:isBookmarkScreen
@@ -2534,6 +2573,10 @@
     style:height={tapButtonHeight}
     style:top={tapButtonTop}
   ></button>
+{/if}
+
+{#if hasActiveSelection && !$bookmarkPanelIsOpen$}
+  <BookmarkSelectionPill on:bookmark={openCreateBookmarkDialog} />
 {/if}
 
 {#if showSpinner}
