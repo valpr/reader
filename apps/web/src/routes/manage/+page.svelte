@@ -10,7 +10,7 @@
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import DeleteBooksDialog from '$lib/components/delete-books-dialog.svelte';
   import ExternalReadDialog from '$lib/components/external-read-dialog.svelte';
-  import BookLoadingOverlay from '$lib/components/book-loading-overlay.svelte';
+  import { BookLoader } from '@custom-ereader/ui';
   import LogReportDialog from '$lib/components/log-report-dialog.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import MessageDialog from '$lib/components/message-dialog.svelte';
@@ -56,6 +56,7 @@
     libraryFilters$,
     librarySortOption$,
     librarySourceFilter$,
+    loaderMode$,
     oneDriveStorageSource$,
     pendingCloudSync$,
     readingGoalsMergeMode$,
@@ -340,7 +341,7 @@
 
     if (
       current.length > 0 &&
-      current.every((d) => typeof d.component === 'string' || d.component === BookLoadingOverlay)
+      current.every((d) => typeof d.component === 'string' || d.component === BookLoader)
     ) {
       dialogManager.dialogs$.next([]);
     }
@@ -470,6 +471,19 @@
     return local.id;
   }
 
+  function pushBookLoader(stage: string) {
+    dialogManager.dialogs$.next([
+      {
+        component: BookLoader,
+        props: {
+          mode: loaderMode$.getValue() === 'debug' ? 'debug' : 'flavor',
+          stage
+        },
+        disableCloseOnClick: true
+      }
+    ]);
+  }
+
   async function onBookClick(bookId: number, retried = false) {
     if (!operationAllowed()) {
       return;
@@ -478,12 +492,7 @@
     await waitForExitSync();
 
     if (!selectMode) {
-      dialogManager.dialogs$.next([
-        {
-          component: BookLoadingOverlay,
-          disableCloseOnClick: true
-        }
-      ]);
+      pushBookLoader('Opening local book…');
 
       let idToOpen = bookId;
       let failedBookTitle: string | undefined;
@@ -525,6 +534,10 @@
           return;
         }
 
+        if (readSource !== StorageKey.BROWSER) {
+          pushBookLoader('Downloading from cloud…');
+        }
+
         const isForBrowser = readSource === StorageKey.BROWSER;
         const handler = getStorageHandler(
           window,
@@ -555,6 +568,7 @@
           const hasLocalCopy = !!localCopy?.elementHtml;
 
           if (remembered === 'download' && !hasLocalCopy) {
+            pushBookLoader('Downloading from cloud…');
             idToOpen = await downloadCloudBookToBrowser(
               handler,
               bookItem.title,
@@ -581,12 +595,7 @@
             }
 
             if (nextAction === 'download') {
-              dialogManager.dialogs$.next([
-                {
-                  component: BookLoadingOverlay,
-                  disableCloseOnClick: true
-                }
-              ]);
+              pushBookLoader('Downloading from cloud…');
               idToOpen = await downloadCloudBookToBrowser(
                 handler,
                 bookItem.title,
@@ -1504,7 +1513,9 @@
       />
     {/if}
     {#if !$bookCards$ || ($booksAreLoading$ && !$bookCards$.length)}
-      <div class="flex justify-center pt-28 text-sm opacity-60">Loading...</div>
+      <div class="flex justify-center pt-28">
+        <BookLoader mode={$loaderMode$ === 'debug' ? 'debug' : 'flavor'} stage="Loading library…" />
+      </div>
     {:else if $bookCards$.length}
       <BookCardList
         currentBookId={$currentBookId$}
