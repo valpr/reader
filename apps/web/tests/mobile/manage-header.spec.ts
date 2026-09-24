@@ -8,6 +8,7 @@
  * Mobile (Pixel 9) smoke tests for the manage-page header controls.
  * Regression: the Search button was clipped midway at 412px because the
  * Import/Filter/Search text buttons plus sort/overflow overflowed the bar.
+ * The source filter and search are now merged into a single control.
  * Runs in the `mobile` project only (see playwright.config.ts).
  */
 
@@ -37,14 +38,12 @@ for (const width of [412, 360]) {
     await expect(page.locator('.aspect-w-2').first()).toBeVisible({ timeout: 10000 });
 
     const importButton = page.getByTestId('library-import-button');
-    const sourceFilterButton = page.getByTestId('library-source-filter-button');
-    const searchButton = page.getByTestId('library-search-filter-button');
+    const searchFilterButton = page.getByTestId('library-search-filter-button');
     const sortButton = page.getByTestId('library-sort-button');
     const moreActionsButton = page.getByRole('button', { name: 'More Actions' });
 
     await expectFullyInViewport(page, importButton, 'Import');
-    await expectFullyInViewport(page, sourceFilterButton, 'Source filter');
-    await expectFullyInViewport(page, searchButton, 'Search');
+    await expectFullyInViewport(page, searchFilterButton, 'Search and filter');
     await expectFullyInViewport(page, sortButton, 'Sort');
     await expectFullyInViewport(page, moreActionsButton, 'More actions');
     await expectNoHorizontalOverflow(page);
@@ -54,13 +53,12 @@ for (const width of [412, 360]) {
     await expect(page.getByRole('button', { name: 'Import File(s)' })).toBeVisible();
     await importButton.tap();
 
-    await sourceFilterButton.tap();
+    // Merged control opens one popover with both source options and search.
+    await searchFilterButton.tap();
     await expect(page.getByRole('button', { name: 'All sources' })).toBeVisible();
-    await sourceFilterButton.tap();
-
-    await searchButton.tap();
     await expect(page.getByTestId('library-search-input')).toBeVisible();
     await expect(page.getByTestId('library-filter-tags')).toBeVisible();
+    await searchFilterButton.tap();
 
     await sortButton.tap();
     await expect(page.getByText('Added (id)')).toBeVisible();

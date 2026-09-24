@@ -54,7 +54,6 @@
     faChevronDown,
     faCircleXmark,
     faCloudArrowUp,
-    faFilter,
     faMagnifyingGlass,
     faSortDown,
     faSortUp,
@@ -204,13 +203,13 @@
 
   // Single-select: picking a source shows only that source; picking it again
   // (or All) clears back to the unified view. Legacy multi-sets collapse to All.
+  // The popover stays open so a source can be combined with a title query,
+  // progress, or tags in one pass.
   function selectSourceFilter(key: StorageKey | null) {
     librarySourceFilter$.next(key === null ? new Set() : new Set([key]));
-    filterElm?.toggleOpen();
   }
 
   function goToCloudSetup() {
-    filterElm?.toggleOpen();
     goto(`${pagePath}/settings/data`);
   }
 
@@ -316,10 +315,14 @@
   let searchInputFocused = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   let activeFilterCount = 0;
-  let filtersActive = false;
+  let sourceFilterActive = false;
+  let combinedFilterCount = 0;
+  let combinedFiltersActive = false;
 
   $: activeFilterCount = getActiveFilterCount($libraryFilters$);
-  $: filtersActive = activeFilterCount > 0;
+  $: sourceFilterActive = ($librarySourceFilter$?.size ?? 0) > 0;
+  $: combinedFilterCount = activeFilterCount + (sourceFilterActive ? 1 : 0);
+  $: combinedFiltersActive = combinedFilterCount > 0;
 
   // Mirror the store into the draft while the user isn't editing, so
   // external resets (e.g. the empty-state "Clear filters") reflect here.
@@ -371,6 +374,7 @@
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     searchDraft = '';
     libraryFilters$.next({ ...DEFAULT_LIBRARY_FILTERS });
+    librarySourceFilter$.next(new Set());
   }
 
   function changeSortOptions(clickedProperty: string, newDirection: SortDirection) {
@@ -577,82 +581,11 @@
         </Popover>
 
         <Popover
-          placement="bottom"
-          fallbackPlacements={['bottom-end', 'bottom-start']}
+          placement="bottom-end"
+          fallbackPlacements={['bottom-start', 'bottom']}
           yOffset={4}
           bind:this={filterElm}
         >
-          <div slot="icon">
-            <Tooltip text="Filter library by source">
-              <Button
-                variant="ghost"
-                size="md"
-                class="gap-1.5 px-2 text-sm font-medium text-[var(--astryx-color-fg-secondary)] hover:text-[var(--astryx-color-fg-primary)] sm:px-2.5"
-                aria-label="Filter library by source"
-                data-testid="library-source-filter-button"
-              >
-                <Fa icon={faFilter} class="text-sm opacity-80" />
-                <span class="hidden sm:inline">{currentFilterLabel}</span>
-                <span class="hidden sm:inline-flex items-center">
-                  <Fa icon={faChevronDown} class="text-xs opacity-60" />
-                </span>
-              </Button>
-            </Tooltip>
-          </div>
-          <div
-            class="min-w-[12rem] rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] bg-[var(--astryx-color-surface,#ffffff)] py-1 shadow-lg text-sm"
-            slot="content"
-          >
-            <button
-              type="button"
-              class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
-              on:click={() => selectSourceFilter(null)}
-            >
-              <span class="w-4 text-center">
-                {#if isAllActive($librarySourceFilter$)}
-                  <Fa icon={faCheck} class="text-xs" />
-                {/if}
-              </span>
-              <span>All sources</span>
-            </button>
-            {#each sourceFilters as sourceFilter (sourceFilter.key ?? 'cloud-setup')}
-              {@const disabled =
-                !sourceFilter.setup &&
-                isSourceDisabled(sourceFilter.requiresConnectivity, $isOnline$)}
-              {@const active = isFilterActive($librarySourceFilter$, sourceFilter.key)}
-              {@const hint = sourceAvailabilityHint(
-                sourceFilter.key,
-                sourceFilter.requiresConnectivity,
-                sourceFilter.setup,
-                $isOnline$,
-                gDriveStatus,
-                oneDriveStatus
-              )}
-              <button
-                type="button"
-                {disabled}
-                title={hint ? `${sourceFilter.label} — ${hint}` : `Show only ${sourceFilter.label}`}
-                class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                on:click={() =>
-                  sourceFilter.setup
-                    ? goToCloudSetup()
-                    : !disabled && selectSourceFilter(active ? null : sourceFilter.key)}
-              >
-                <span class="w-4 text-center">
-                  {#if active}
-                    <Fa icon={faCheck} class="text-xs" />
-                  {/if}
-                </span>
-                <span class="flex-1">{sourceFilter.label}</span>
-                {#if hint}
-                  <span class="text-xs opacity-60">{hint}</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        </Popover>
-
-        <Popover placement="bottom-end" fallbackPlacements={['bottom-start', 'bottom']} yOffset={4}>
           <div slot="icon">
             <Tooltip text="Search and filter library">
               <Button
@@ -663,13 +596,18 @@
                 data-testid="library-search-filter-button"
               >
                 <Fa icon={faMagnifyingGlass} class="text-sm opacity-80" />
-                <span class="hidden sm:inline">Search</span>
-                {#if filtersActive}
+                <span class="hidden sm:inline"
+                  >{sourceFilterActive ? currentFilterLabel : 'Search'}</span
+                >
+                <span class="hidden sm:inline-flex items-center">
+                  <Fa icon={faChevronDown} class="text-xs opacity-60" />
+                </span>
+                {#if combinedFiltersActive}
                   <span
                     data-testid="library-active-filter-count"
                     class="inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--astryx-color-primary-subtle,rgba(99,102,241,0.15))] px-1.5 py-0.5 text-xs font-semibold text-[var(--astryx-color-primary,#6366f1)]"
                   >
-                    {activeFilterCount}
+                    {combinedFilterCount}
                   </span>
                 {/if}
               </Button>
@@ -698,6 +636,66 @@
                 <Fa icon={faMagnifyingGlass} class="text-xs opacity-60" />
               </span>
             </Input>
+
+            <div class="flex flex-col gap-1.5">
+              <span
+                class="text-xs font-semibold uppercase tracking-wide text-[var(--astryx-color-fg-muted)]"
+              >
+                Storage source
+              </span>
+              <div class="flex flex-col gap-0.5" data-testid="library-source-filter-options">
+                <button
+                  type="button"
+                  aria-pressed={isAllActive($librarySourceFilter$)}
+                  class="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left text-sm text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
+                  on:click={() => selectSourceFilter(null)}
+                >
+                  <span class="w-4 text-center">
+                    {#if isAllActive($librarySourceFilter$)}
+                      <Fa icon={faCheck} class="text-xs" />
+                    {/if}
+                  </span>
+                  <span>All sources</span>
+                </button>
+                {#each sourceFilters as sourceFilter (sourceFilter.key ?? 'cloud-setup')}
+                  {@const disabled =
+                    !sourceFilter.setup &&
+                    isSourceDisabled(sourceFilter.requiresConnectivity, $isOnline$)}
+                  {@const active = isFilterActive($librarySourceFilter$, sourceFilter.key)}
+                  {@const hint = sourceAvailabilityHint(
+                    sourceFilter.key,
+                    sourceFilter.requiresConnectivity,
+                    sourceFilter.setup,
+                    $isOnline$,
+                    gDriveStatus,
+                    oneDriveStatus
+                  )}
+                  <button
+                    type="button"
+                    {disabled}
+                    aria-pressed={active}
+                    title={hint
+                      ? `${sourceFilter.label} — ${hint}`
+                      : `Show only ${sourceFilter.label}`}
+                    class="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left text-sm text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                    on:click={() =>
+                      sourceFilter.setup
+                        ? goToCloudSetup()
+                        : !disabled && selectSourceFilter(active ? null : sourceFilter.key)}
+                  >
+                    <span class="w-4 text-center">
+                      {#if active}
+                        <Fa icon={faCheck} class="text-xs" />
+                      {/if}
+                    </span>
+                    <span class="flex-1">{sourceFilter.label}</span>
+                    {#if hint}
+                      <span class="text-xs opacity-60">{hint}</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            </div>
 
             <div class="flex flex-col gap-1.5">
               <span
@@ -757,7 +755,7 @@
             <button
               type="button"
               data-testid="library-clear-filters"
-              disabled={!filtersActive}
+              disabled={!combinedFiltersActive}
               class="w-full rounded-lg border border-[var(--astryx-color-border-subtle,#e4e4e7)] px-3 py-1.5 text-sm font-medium text-[var(--astryx-color-fg-secondary)] transition-colors hover:bg-[var(--astryx-color-surface-hover)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               on:click={clearLibraryFilters}
             >
