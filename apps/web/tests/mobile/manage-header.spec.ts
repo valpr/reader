@@ -65,5 +65,13 @@ for (const width of [412, 360]) {
 
     await moreActionsButton.tap();
     await expect(page.getByRole('button', { name: 'Statistics' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Select Books' })).toBeVisible();
+
+    // The overflow Select Books entry enters selection mode and exits cleanly.
+    await page.getByRole('button', { name: 'Select Books' }).tap();
+    const disableSelectButton = page.getByRole('button', { name: 'Disable Book Selection' });
+    await expect(disableSelectButton).toBeVisible();
+    await disableSelectButton.tap();
+    await expect(importButton).toBeVisible();
   });
 }

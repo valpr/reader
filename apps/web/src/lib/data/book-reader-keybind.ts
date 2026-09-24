@@ -9,7 +9,6 @@ export enum BookReaderAvailableKeybind {
   AUTO_SCROLL_INCREASE = 'autoScrollIncrease',
   AUTO_SCROLL_DECREASE = 'autoScrollDecrease',
   BOOKMARK = 'bookmark',
-  JUMP_TO_BOOKMARK = 'jumpToBookmark',
   NEXT_CHAPTER = 'nextChapter',
   NEXT_PAGE = 'nextPage',
   PREV_CHAPTER = 'prevChapter',

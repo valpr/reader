@@ -22,7 +22,6 @@ export function onKeydownReader(
   ev: KeyboardEvent,
   bookReaderKeybindMap: BookReaderKeybindMap,
   bookmarkPage: () => void,
-  scrollToBookmark: () => void,
   multiplierOffsetFn: (offset: number) => void,
   autoScroller: AutoScroller | undefined,
   pageManager: PageManager | undefined,
@@ -60,9 +59,6 @@ export function onKeydownReader(
       bookmarkPage();
       return true;
     }
-    case BookReaderAvailableKeybind.JUMP_TO_BOOKMARK:
-      scrollToBookmark();
-      return true;
     case BookReaderAvailableKeybind.AUTO_SCROLL_TOGGLE:
       autoScroller?.toggle();
       return true;

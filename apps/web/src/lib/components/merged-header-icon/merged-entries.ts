@@ -16,6 +16,7 @@ import {
   faHashtag,
   faIcons,
   faImages,
+  faListCheck,
   faSignOutAlt,
   faTriangleExclamation
 } from '@fortawesome/free-solid-svg-icons';
@@ -72,6 +73,12 @@ export const mergeEntries = {
     external: true
   },
   BUG_REPORT: { routeId: '', label: 'Bug Report', icon: faBug, title: 'Report an Issue' },
+  BOOK_SELECTION: {
+    routeId: '',
+    label: 'Select Books',
+    icon: faListCheck,
+    title: 'Enable Book Selection'
+  },
   FOLDER_IMPORT: {
     routeId: '',
     label: 'Import Folder(s)',
