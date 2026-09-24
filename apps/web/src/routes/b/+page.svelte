@@ -210,7 +210,7 @@
 
   let showSpinner = true;
   let loaderStage = 'Opening local book…';
-  let showHeader = false;
+  let transientShowHeader = false;
   let headerHeight = 0;
   let isBookmarkScreen = false;
   let showFooter = true;
@@ -735,9 +735,7 @@
   // Pinned header mode (E-Reader default): the top bar stays visible and
   // reserves its own space instead of floating over the book text.
   $: isHeaderPinned = $keepReaderHeaderVisible$;
-  $: if (isHeaderPinned) {
-    showHeader = true;
-  }
+  $: showHeader = isHeaderPinned || transientShowHeader;
 
   $: firstDimensionMargin =
     browser && $enableTapEdgeToFlip$ && isPaginated && $verticalMode$
@@ -1024,7 +1022,7 @@
     const wasAutoscrollerEnabled = autoScroller?.wasAutoScrollerEnabled$.getValue();
     const wasTrackerPausedBefore = $statisticsEnabled$ ? $isTrackerPaused$ : true;
 
-    showHeader = false;
+    transientShowHeader = false;
     autoScroller?.off();
 
     if ($statisticsEnabled$) {
@@ -1695,7 +1693,7 @@
 
     let data: BooksDbBookmarkData;
 
-    showHeader = false;
+    transientShowHeader = false;
 
     if (isPaginated) {
       const userSelectedRange = $selectionToBookmarkEnabled$
@@ -1735,7 +1733,7 @@
   }
 
   function onFullscreenClick() {
-    showHeader = false;
+    transientShowHeader = false;
 
     if (!fullscreenManager.fullscreenElement) {
       fullscreenManager.requestFullscreen(document.documentElement);
@@ -2101,7 +2099,7 @@
       customReadingPointLeft = window.innerWidth / 2 - 2;
     }
 
-    showHeader = false;
+    transientShowHeader = false;
     isSelectingCustomReadingPoint = true;
     document.body.classList.add('cursor-crosshair');
 
@@ -2255,7 +2253,7 @@
   <button
     aria-label="Show reader header"
     class="fixed inset-x-0 top-0 z-10 h-8 w-full"
-    on:click={() => (showHeader = true)}
+    on:click={() => (transientShowHeader = true)}
   ></button>
 {/if}
 {#if showHeader}
@@ -2264,7 +2262,7 @@
     class="elevation-4 writing-horizontal-tb fixed inset-x-0 top-0 z-10 w-full"
     transition:fly|local={{ y: -300, easing: quintInOut }}
     use:clickOutside={() => {
-      if (!isHeaderPinned) showHeader = false;
+      transientShowHeader = false;
     }}
   >
     <BookReaderHeader
@@ -2282,18 +2280,18 @@
       on:tocClick={() => {
         pauseTracker();
 
-        showHeader = false;
+        transientShowHeader = false;
         tocIsOpen$.next(true);
       }}
       on:jumpClick={handleJump}
       on:completeBook={completeBook}
       on:setCustomReadingPoint={handleSetCustomReadingPoint}
       on:showCustomReadingPoint={() => {
-        showHeader = false;
+        transientShowHeader = false;
         showCustomReadingPoint = true;
       }}
       on:resetCustomReadingPoint={() => {
-        showHeader = false;
+        transientShowHeader = false;
 
         if ($pauseTrackerOnCustomPointChange$) {
           pauseTracker();
@@ -2317,15 +2315,15 @@
       on:bookmarkClick={bookmarkPage}
       on:bookmarkPanelClick={() => {
         pauseTracker();
-        showHeader = false;
+        transientShowHeader = false;
         bookmarkPanelIsOpen$.next(true);
       }}
       on:createBookmarkClick={() => {
-        showHeader = false;
+        transientShowHeader = false;
         openCreateBookmarkDialog();
       }}
       on:scrollToBookmarkClick={() => {
-        showHeader = false;
+        transientShowHeader = false;
         scrollToBookmark();
       }}
       on:statisticsClick={() => {
@@ -2336,7 +2334,7 @@
         leaveReader(mergeEntries.STATISTICS.routeId, false);
       }}
       on:readerImageGalleryClick={() => {
-        showHeader = false;
+        transientShowHeader = false;
         showReaderImageGallery = true;
       }}
       on:settingsClick={() => leaveReader(mergeEntries.SETTINGS.routeId, false)}
