@@ -88,14 +88,12 @@ test.describe('Reader Header Responsive Behavior (Astryx OverflowList)', () => {
 
     // Resize down to mobile width
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.waitForTimeout(300); // Allow resize debounce/calculation
 
     // Now more actions should appear
     await expect(moreActions).toBeVisible();
 
     // Resize back to wide
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.waitForTimeout(300);
 
     // More actions should disappear, and bar items reappear
     await expect(moreActions).toBeHidden();

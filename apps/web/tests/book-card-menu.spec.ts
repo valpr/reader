@@ -5,13 +5,14 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { SAMPLE_BOOK, seedReaderBook } from './fixtures/book-fixture';
+import { SAMPLE_BOOK, seedLibraryItem, seedSyncConfig } from './fixtures/book-fixture';
+import { mockGoogleDrive } from './helpers/cloud-mocks';
 
 test.describe('Book Card Options Menu', () => {
   test('shows an always-visible options button that opens upload and details actions', async ({
     page
   }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -29,7 +30,7 @@ test.describe('Book Card Options Menu', () => {
   });
 
   test('view details opens a dialog with book metadata and closes', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -50,7 +51,7 @@ test.describe('Book Card Options Menu', () => {
   });
 
   test('upload prompts to configure a primary cloud when none is set', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -65,7 +66,7 @@ test.describe('Book Card Options Menu', () => {
   });
 
   test('menu button yields to the selection overlay in select mode', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -83,7 +84,7 @@ test.describe('Book Card Options Menu', () => {
   });
 
   test('delete X still appears on hover alongside the menu button', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -100,15 +101,15 @@ test.describe('Book Card Options Menu', () => {
   test('hides upload for cloud-only books without a local browser copy', async ({ page }) => {
     const cloudTitle = 'Cloud Only Book (Playwright Test Book)';
 
-    // Boot with a primary GDrive target so the library lists the mocked cloud.
-    await page.addInitScript(() => {
-      window.localStorage.setItem('syncTarget', 'test-gdrive-cloud');
-      window.localStorage.setItem('gDriveStorageSource', 'test-gdrive-cloud');
-    });
-
     // Seed the full local schema plus one local book (distinct title, so the
     // mocked cloud title below surfaces as its own cloud-only card).
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
+
+    // Boot with a primary GDrive target so the library lists the mocked cloud.
+    await seedSyncConfig(page, {
+      syncTarget: 'test-gdrive-cloud',
+      gDriveStorageSource: 'test-gdrive-cloud'
+    });
 
     // Seed a connected custom GDrive source with a plain (unencrypted)
     // RemoteContext so listing never needs an unlock dialog.
@@ -141,53 +142,43 @@ test.describe('Book Card Options Menu', () => {
       });
     });
 
-    await page.route('https://oauth2.googleapis.com/token', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          access_token: 'test-access-token',
-          expires_in: '3600',
-          scope: 'test'
-        })
-      })
-    );
-
     // Mock a Drive library holding one title that exists only in the cloud:
     // root folder lookup, title-folder listing, then the bookdata file inside it.
-    await page.route('https://www.googleapis.com/drive/v3/files**', (route) => {
-      const url = new URL(route.request().url());
-      const query = url.searchParams.get('q') || '';
+    await mockGoogleDrive(page, {
+      handleFiles: async (route) => {
+        const url = new URL(route.request().url());
+        const query = url.searchParams.get('q') || '';
 
-      if (query.includes('name = ')) {
+        if (query.includes('name = ')) {
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ files: [{ id: 'root-id' }] })
+          });
+        }
+
+        if (query.includes('cloud-title-id')) {
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              files: [
+                {
+                  id: 'bookdata-id',
+                  name: 'bookdata_1_7_500_1700000000000_1700000000000.zip',
+                  parents: ['cloud-title-id']
+                }
+              ]
+            })
+          });
+        }
+
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ files: [{ id: 'root-id' }] })
+          body: JSON.stringify({ files: [{ id: 'cloud-title-id', name: cloudTitle }] })
         });
       }
-
-      if (query.includes('cloud-title-id')) {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            files: [
-              {
-                id: 'bookdata-id',
-                name: 'bookdata_1_7_500_1700000000000_1700000000000.zip',
-                parents: ['cloud-title-id']
-              }
-            ]
-          })
-        });
-      }
-
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ files: [{ id: 'cloud-title-id', name: cloudTitle }] })
-      });
     });
 
     // Both the seeded local book and the cloud-only title render as cards.
@@ -213,7 +204,7 @@ test.describe('Book Card Options Menu', () => {
   });
 
   test('view details allows resetting reading progress and statistics', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open('books');
@@ -274,8 +265,8 @@ test.describe('Book Card Options Menu', () => {
       title: '坊っちゃん (Playwright Second Book)'
     };
 
-    await seedReaderBook(page);
-    await seedReaderBook(page, SECOND_BOOK);
+    await seedLibraryItem(page);
+    await seedLibraryItem(page, SECOND_BOOK);
     await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open('books');

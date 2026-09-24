@@ -9,43 +9,9 @@
  * Runs in the `mobile` project only (see playwright.config.ts).
  */
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
-import { seedReaderBook } from '../fixtures/book-fixture';
-
-async function seedCloudSource(
-  page: Page,
-  source: { name: string; disconnected: boolean; refreshToken?: string }
-) {
-  await page.evaluate(async (s) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('books');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('storageSource', 'readwrite');
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.objectStore('storageSource').put({
-        name: s.name,
-        type: 'gdrive',
-        data: {
-          clientId: 'test-client-id',
-          clientSecret: 'test-client-secret',
-          refreshToken: s.refreshToken || '',
-          accountEmail: 'reader.long.user.account@example.com',
-          accountName: 'Reader User'
-        },
-        storedInManager: false,
-        encryptionDisabled: true,
-        lastSourceModified: Date.now(),
-        disconnected: s.disconnected
-      });
-    });
-  }, source);
-}
+import { seedCloudSource, seedReaderBook } from '../fixtures/book-fixture';
 
 test.describe('Mobile: settings', () => {
   test('reader settings drill-down works by tap without overflow', async ({ page }) => {

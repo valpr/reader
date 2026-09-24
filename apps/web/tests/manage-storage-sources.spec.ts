@@ -5,44 +5,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { seedReaderBook } from './fixtures/book-fixture';
-
-interface SeedCloudSource {
-  name: string;
-  disconnected: boolean;
-  refreshToken?: string;
-}
-
-async function seedCloudSource(page: Page, source: SeedCloudSource) {
-  await page.evaluate(async (s) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('books');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('storageSource', 'readwrite');
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.objectStore('storageSource').put({
-        name: s.name,
-        type: 'gdrive',
-        data: {
-          clientId: 'test-client-id',
-          clientSecret: 'test-client-secret',
-          refreshToken: s.refreshToken || '',
-          accountEmail: 'test@example.com',
-          accountName: 'Test'
-        },
-        storedInManager: false,
-        encryptionDisabled: true,
-        lastSourceModified: Date.now(),
-        disconnected: s.disconnected
-      });
-    });
-  }, source);
-}
+import { seedLibraryItem, seedCloudSource, seedSyncConfig } from './fixtures/book-fixture';
 
 async function openSourceFilter(page: Page) {
   const filterButton = page.getByRole('button', { name: 'Search and filter library' });
@@ -63,7 +26,7 @@ test.describe('Manage Books Source Filter', () => {
   test('displays All/Browser plus a Cloud setup placeholder when no cloud is connected', async ({
     page
   }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -79,7 +42,7 @@ test.describe('Manage Books Source Filter', () => {
   });
 
   test('selecting a source filters the library', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -97,7 +60,7 @@ test.describe('Manage Books Source Filter', () => {
   });
 
   test('hides disconnected cloud types and offers a Cloud setup placeholder', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await seedCloudSource(page, { name: 'old-gdrive', disconnected: true });
     await page.goto('/manage');
 
@@ -116,7 +79,7 @@ test.describe('Manage Books Source Filter', () => {
   });
 
   test('keeps filter options for sources with expired sessions', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await seedCloudSource(page, {
       name: 'stale-gdrive',
       disconnected: false,
@@ -134,18 +97,11 @@ test.describe('Manage Books Source Filter', () => {
   });
 
   test('disconnecting the primary cloud removes its type from the filter', async ({ page }) => {
-    // Seed once: addInitScript runs before EVERY navigation, so only fill
-    // keys that were never set (null) — a cleared '' value after disconnect
-    // must survive subsequent visits instead of being re-seeded.
-    await page.addInitScript(() => {
-      if (window.localStorage.getItem('syncTarget') === null) {
-        window.localStorage.setItem('syncTarget', 'test-gdrive-disc');
-      }
-      if (window.localStorage.getItem('gDriveStorageSource') === null) {
-        window.localStorage.setItem('gDriveStorageSource', 'test-gdrive-disc');
-      }
+    await seedLibraryItem(page);
+    await seedSyncConfig(page, {
+      syncTarget: 'test-gdrive-disc',
+      gDriveStorageSource: 'test-gdrive-disc'
     });
-    await seedReaderBook(page);
     await seedCloudSource(page, {
       name: 'test-gdrive-disc',
       disconnected: false,

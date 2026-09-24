@@ -11,7 +11,11 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { seedReaderBook, seedStatistics } from '../fixtures/book-fixture';
-import { expectDialogFitsViewport, expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
+import {
+  expectDialogFitsViewport,
+  expectFullyInViewport,
+  expectNoHorizontalOverflow
+} from '../helpers/mobile-assertions';
 
 const LONG_TITLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx';
 
@@ -80,19 +84,6 @@ async function expectSheetNoHorizontalOverflow(page: Page) {
   ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
-/** A control must be fully inside the viewport — not cut off on the right. */
-async function expectFullyInViewport(page: Page, name: string | RegExp) {
-  const locator = page.getByRole('button', { name });
-  await expect(locator).toBeVisible();
-  const viewport = page.viewportSize();
-  expect(viewport, 'no viewport size').not.toBeNull();
-  const box = await locator.boundingBox();
-  expect(box, `${name} has no bounding box`).not.toBeNull();
-  expect(box!.x + box!.width, `${name} is cut off on the right`).toBeLessThanOrEqual(
-    viewport!.width + 1
-  );
-}
-
 for (const width of [412, 360]) {
   test(`data controls sheet fits and closes at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 915 });
@@ -115,9 +106,9 @@ for (const width of [412, 360]) {
     // All four tabs stay reachable; view toggles keep the sheet open
     await page.getByRole('tab', { name: 'Titles' }).tap();
     // Every action button fits on screen — nothing scrolls off the right
-    await expectFullyInViewport(page, 'All');
-    await expectFullyInViewport(page, 'None');
-    await expectFullyInViewport(page, 'In range');
+    await expectFullyInViewport(page, page.getByRole('button', { name: 'All' }), 'All');
+    await expectFullyInViewport(page, page.getByRole('button', { name: 'None' }), 'None');
+    await expectFullyInViewport(page, page.getByRole('button', { name: 'In range' }), 'In range');
     await expectSheetNoHorizontalOverflow(page);
     await expectNoHorizontalOverflow(page);
 

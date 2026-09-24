@@ -9,23 +9,9 @@
  * Runs in the `mobile` project only (see playwright.config.ts).
  */
 
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { seedReaderBook } from '../fixtures/book-fixture';
-import { expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
-
-/** Control bounding box must fit fully inside the viewport (not clipped). */
-async function expectFullyInViewport(page: Page, control: Locator, name: string) {
-  await expect(control, `${name} should be visible`).toBeVisible();
-  const box = await control.boundingBox();
-  expect(box, `${name} has no bounding box`).not.toBeNull();
-  const viewport = page.viewportSize();
-  expect(viewport, 'no viewport size').not.toBeNull();
-  expect(box!.x, `${name} extends past the left edge`).toBeGreaterThanOrEqual(-1);
-  expect(
-    box!.x + box!.width,
-    `${name} is clipped past the right edge of the viewport`
-  ).toBeLessThanOrEqual(viewport!.width + 1);
-}
+import { expectFullyInViewport, expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
 
 for (const width of [412, 360]) {
   test(`statistics header controls fit and open overflow at ${width}px without current book`, async ({
