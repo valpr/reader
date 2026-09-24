@@ -30,8 +30,10 @@
     dateDataSources,
     titleDataSources
   } from '$lib/components/statistics/statistics-types';
+  import { calculateProfileBreakdown } from '$lib/components/statistics/statistics-lookback/lookback-calculator';
   import { dialogManager } from '$lib/data/dialog-manager';
   import { CLOSE_POPOVER } from '$lib/data/events';
+  import type { ReaderProfile } from '$lib/data/profiles/profile-types';
   import { SortDirection } from '$lib/data/sort-types';
   import {
     database,
@@ -45,6 +47,7 @@
     lastStatisticsStartDate$,
     lastStatisticsSummarySortDirection$,
     lastStatisticsSummarySortProperty$,
+    readerProfiles$,
     startDayHoursForTracker$
   } from '$lib/data/store';
   import {
@@ -195,6 +198,43 @@
       endDate: $lastStatisticsEndDate$,
       titlesToCheck: new Set<string>()
     });
+  }
+
+  function getProfileBreakdownLines(
+    row: BookStatistic,
+    profiles: ReaderProfile[] | undefined
+  ): string[] {
+    if (!row.readingTimeByProfile) {
+      return [];
+    }
+
+    const profileSeconds = new Map<string, number>();
+
+    for (const [profileId, seconds] of Object.entries(row.readingTimeByProfile)) {
+      if (seconds > 0) {
+        profileSeconds.set(profileId, seconds);
+      }
+    }
+
+    return calculateProfileBreakdown(profileSeconds, profiles ?? []).map(
+      (entry) =>
+        `${secondsToMinutes(entry.readingTimeSeconds)} min on ${entry.profileName} (${
+          entry.percentage
+        }%)`
+    );
+  }
+
+  function getProfileBreakdownTitle(
+    row: BookStatistic,
+    profiles: ReaderProfile[] | undefined
+  ): string {
+    const lines = getProfileBreakdownLines(row, profiles);
+
+    if (!lines.length) {
+      return 'No per-profile reading time recorded';
+    }
+
+    return `Reading time by profile: ${lines.join(', ')}`;
   }
 
   function handlePropertyChange({
@@ -722,6 +762,7 @@
           <button
             class="text-left"
             class:blur={$lastBlurredTrackerItems$.has('readingTime')}
+            title={getProfileBreakdownTitle(currentStatisticsSummaryRow, $readerProfiles$)}
             on:click={(event) => {
               statisticsSummaryPopoverDetails = [
                 `Time: ${secondsToMinutes(currentStatisticsSummaryRow.readingTime)} min`,
@@ -730,7 +771,8 @@
                 )} min`,
                 `Weighted Time: ${secondsToMinutes(
                   currentStatisticsSummaryRow.averageWeightedReadingTime
-                )} min`
+                )} min`,
+                ...getProfileBreakdownLines(currentStatisticsSummaryRow, $readerProfiles$)
               ];
 
               tick().then(() => {
