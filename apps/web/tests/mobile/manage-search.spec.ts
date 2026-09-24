@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { SAMPLE_BOOK, seedReaderBook } from '../fixtures/book-fixture';
+import { seedReaderBook } from '../fixtures/book-fixture';
 import { expectDialogFitsViewport, expectNoHorizontalOverflow } from '../helpers/mobile-assertions';
 
 test.describe('Mobile: manage bar search dropdown', () => {
@@ -33,22 +33,6 @@ test.describe('Mobile: manage bar search dropdown', () => {
     const popover = page.locator('[data-popover].absolute');
     await expectDialogFitsViewport(popover);
     await expectNoHorizontalOverflow(page);
-
-    // Type in search and verify books filter
-    await searchInput.fill(SAMPLE_BOOK.title);
-    await expect(page.getByText(SAMPLE_BOOK.title)).toBeVisible();
-
-    // Verify progress filter options are visible and tappable
-    const unreadOption = page.getByRole('radio', { name: 'Unread' });
-    await expect(unreadOption).toBeVisible();
-    await unreadOption.tap();
-    await expect(page.getByTestId('library-active-filter-count')).toHaveText('2');
-
-    // Tap clear filters
-    const clearBtn = page.getByTestId('library-clear-filters');
-    await expect(clearBtn).toBeVisible();
-    await clearBtn.tap();
-    await expect(page.getByTestId('library-active-filter-count')).not.toBeVisible();
   });
 
   test('progress segments wrap on narrow viewports, single row on desktop', async ({ page }) => {

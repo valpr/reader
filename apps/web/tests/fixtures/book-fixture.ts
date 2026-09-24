@@ -127,6 +127,102 @@ export async function setReaderSettings(page: Page, settings: ReaderSettingsOpti
   }, settings);
 }
 
+export const MINIMAL_BOOK: TestBookData = {
+  id: 1,
+  title: '吾輩は猫である (Playwright Test Book)',
+  language: 'ja',
+  styleSheet: '',
+  elementHtml: '<div id="s1"><p>テスト</p></div>', // 3 chars vs 1200
+  blobs: {},
+  hasThumb: false,
+  characters: 3,
+  sections: [
+    { reference: 's1', charactersWeight: 3, label: '§1', startCharacter: 0, characters: 3 }
+  ],
+  lastBookModified: Date.now(),
+  lastBookOpen: Date.now()
+};
+
+/** Seed a library card without full reader content */
+export async function seedLibraryItem(
+  page: Page,
+  overrides: Partial<TestBookData> = {},
+  settings: ReaderSettingsOptions = {}
+): Promise<TestBookData> {
+  return seedReaderBook(page, { ...MINIMAL_BOOK, ...overrides }, settings);
+}
+
+/** Seed sync configuration into localStorage */
+export async function seedSyncConfig(
+  page: Page,
+  config: {
+    syncTarget?: string;
+    autoReplication?: string;
+    refreshToken?: string;
+    [key: string]: any;
+  }
+) {
+  await page.evaluate((c) => {
+    if (c.syncTarget) localStorage.setItem('syncTarget', c.syncTarget);
+    if (c.autoReplication) localStorage.setItem('autoReplication', c.autoReplication);
+    if (c.refreshToken) localStorage.setItem('gdriveRefreshToken', c.refreshToken);
+    for (const k in c) {
+      if (k !== 'syncTarget' && k !== 'autoReplication' && k !== 'refreshToken') {
+        localStorage.setItem(k, c[k]);
+      }
+    }
+  }, config);
+}
+
+/** Seed a cloud storage source into IndexedDB */
+export async function seedCloudSource(
+  page: Page,
+  source: {
+    name: string;
+    disconnected?: boolean;
+    refreshToken?: string;
+  }
+) {
+  await page.evaluate(
+    async ({ src, version }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('books', version);
+        request.onupgradeneeded = () => {
+          const d = request.result;
+          if (!d.objectStoreNames.contains('storageSource')) {
+            d.createObjectStore('storageSource', { keyPath: 'name' });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(['storageSource'], 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+
+        tx.objectStore('storageSource').put({
+          name: src.name,
+          type: src.name.includes('onedrive') ? 'onedrive' : 'gdrive',
+          data: {
+            clientId: 'test-client-id',
+            clientSecret: 'test-client-secret',
+            refreshToken: src.refreshToken || '',
+            accountEmail: 'test@example.com',
+            accountName: 'Test'
+          },
+          storedInManager: false,
+          encryptionDisabled: true,
+          lastSourceModified: Date.now(),
+          disconnected: src.disconnected || false
+        });
+      });
+    },
+    { src: source, version: currentDbVersion }
+  );
+}
+
 /**
  * Directly seeds the IndexedDB 'books' database with a book record, default bookmark, and lastItem.
  * Ensures fast (<100ms) setup for reader tests.

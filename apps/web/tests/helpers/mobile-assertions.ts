@@ -52,3 +52,18 @@ export async function expectFooterActionVisible(page: Page, name: string | RegEx
   await expect(action).toBeVisible();
   await expect(action).toBeEnabled();
 }
+
+/** Control bounding box must fit fully inside the viewport (not clipped). */
+export async function expectFullyInViewport(page: Page, control: Locator, label?: string) {
+  const name = label || 'Control';
+  await expect(control, `${name} should be visible`).toBeVisible();
+  const box = await control.boundingBox();
+  expect(box, `${name} has no bounding box`).not.toBeNull();
+  const viewport = page.viewportSize();
+  expect(viewport, 'no viewport size').not.toBeNull();
+  expect(box!.x, `${name} extends past the left edge`).toBeGreaterThanOrEqual(-1);
+  expect(
+    box!.x + box!.width,
+    `${name} is clipped past the right edge of the viewport`
+  ).toBeLessThanOrEqual(viewport!.width + 1);
+}

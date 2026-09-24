@@ -5,12 +5,12 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { SAMPLE_BOOK, seedReaderBook } from './fixtures/book-fixture';
+import { SAMPLE_BOOK, seedLibraryItem } from './fixtures/book-fixture';
 import { currentDbVersion } from '../src/lib/data/database/books-db/versions/books-db';
 
 test.describe('Book Tags', () => {
   test('tags render on the card without overlapping the delete X', async ({ page }) => {
-    await seedReaderBook(page, { tags: ['fantasy', 'science-fiction', 'epic'] });
+    await seedLibraryItem(page, { tags: ['fantasy', 'science-fiction', 'epic'] });
     await page.goto('/manage');
 
     const strip = page.getByTestId('book-card-tags-1');
@@ -32,7 +32,7 @@ test.describe('Book Tags', () => {
   });
 
   test('tags can be added and removed in the details dialog and persist', async ({ page }) => {
-    await seedReaderBook(page, { tags: ['fantasy'] });
+    await seedLibraryItem(page, { tags: ['fantasy'] });
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();
@@ -67,8 +67,8 @@ test.describe('Book Tags', () => {
   });
 
   test('input suggests already-created tags', async ({ page }) => {
-    await seedReaderBook(page, { tags: ['fantasy'] });
-    await seedReaderBook(page, {
+    await seedLibraryItem(page, { tags: ['fantasy'] });
+    await seedLibraryItem(page, {
       id: 2,
       title: 'Second Book (Playwright Test Book)',
       tags: []
@@ -92,7 +92,7 @@ test.describe('Book Tags', () => {
   });
 
   test('removing a tag stamps per-title sync attribution', async ({ page }) => {
-    await seedReaderBook(page, { tags: ['fantasy'] });
+    await seedLibraryItem(page, { tags: ['fantasy'] });
     await page.goto('/manage');
 
     const bookCard = page.locator('.aspect-w-2').first();

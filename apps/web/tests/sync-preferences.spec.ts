@@ -5,12 +5,12 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedSyncConfig } from './fixtures/book-fixture';
 
 test.describe('Sync preferences (M4)', () => {
   test('legacy sync direction migrates to two-way, manual-only stays', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('autoReplication', 'down');
-    });
+    await page.goto('/');
+    await seedSyncConfig(page, { autoReplication: 'down' });
     await page.goto('/settings/data');
     const migrated = await page.evaluate(async () => {
       const storePath = '/src/lib/data/store.ts';
@@ -19,9 +19,8 @@ test.describe('Sync preferences (M4)', () => {
     });
     expect(migrated).toBe('all');
 
-    await page.addInitScript(() => {
-      window.localStorage.setItem('autoReplication', 'off');
-    });
+    await page.goto('/');
+    await seedSyncConfig(page, { autoReplication: 'off' });
     await page.reload();
     const preserved = await page.evaluate(async () => {
       const storePath = '/src/lib/data/store.ts';
@@ -49,9 +48,8 @@ test.describe('Sync preferences (M4)', () => {
   });
 
   test('recovery actions confirm before running and report the outcome', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('syncTarget', 'ttu-gdrive-default');
-    });
+    await page.goto('/');
+    await seedSyncConfig(page, { syncTarget: 'ttu-gdrive-default' });
     await page.goto('/settings/data');
     await expect(page.getByRole('tab', { name: 'Data' })).toHaveAttribute('aria-selected', 'true');
 

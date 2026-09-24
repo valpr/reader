@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { seedReaderBook } from './fixtures/book-fixture';
+import { seedLibraryItem } from './fixtures/book-fixture';
 
 test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
   test('settings page profile action tooltips do not collapse to icon width and stay within viewport', async ({
@@ -85,7 +85,7 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
   });
 
   test('book manager Import tooltip dismisses when its dropdown menu opens', async ({ page }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/manage');
     await page.waitForLoadState('networkidle');
@@ -107,7 +107,7 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
   test('book manager Import tooltip dismisses when its dropdown is opened via keyboard', async ({
     page
   }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/manage');
     await page.waitForLoadState('networkidle');
@@ -178,7 +178,7 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
   test('reader header tooltips render horizontally and do not inherit vertical writing mode in reader view', async ({
     page
   }) => {
-    await seedReaderBook(page);
+    await seedLibraryItem(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/b?id=1');
 

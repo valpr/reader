@@ -5,21 +5,21 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedSyncConfig } from './fixtures/book-fixture';
 
 test.describe('Sync diagnostics', () => {
   test('keeps a bounded local history and ignores malformed stored entries', async ({ page }) => {
     await page.goto('/');
 
+    await seedSyncConfig(page, {
+      syncRuns: JSON.stringify([
+        { startedAt: 'bad' },
+        { startedAt: 1, durationMs: 2, target: 'old', attemptedTypes: [] }
+      ])
+    });
     const runs = await page.evaluate(async () => {
       const modulePath = '/src/lib/functions/replication/sync-diagnostics.ts';
       const diagnostics = await import(/* @vite-ignore */ modulePath);
-      localStorage.setItem(
-        'syncRuns',
-        JSON.stringify([
-          { startedAt: 'bad' },
-          { startedAt: 1, durationMs: 2, target: 'old', attemptedTypes: [] }
-        ])
-      );
 
       for (let index = 0; index < 55; index += 1) {
         diagnostics.recordSyncRun({

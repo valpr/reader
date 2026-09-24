@@ -10,38 +10,56 @@ import { currentDbVersion } from '../src/lib/data/database/books-db/versions/boo
 
 test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
   test.beforeEach(async ({ page }) => {
-    await seedReaderBook(page, {}, { viewMode: 'paginated', writingMode: 'horizontal-tb' });
+    await seedReaderBook(
+      page,
+      {},
+      {
+        viewMode: 'paginated',
+        writingMode: 'horizontal-tb',
+        showCharacterCounter: true,
+        showPercentage: true
+      }
+    );
   });
 
   test('fast bookmark key (KeyB) updates bookmark in IndexedDB', async ({ page }) => {
     await page.goto('/b?id=1');
     await expect(page.locator('.book-content')).toBeVisible();
+    const footerTextLocator = page.locator('.writing-horizontal-tb.fixed.bottom-2.right-2');
+    const initialText = await footerTextLocator.innerText();
 
     // Advance to next page
     await page.keyboard.press('PageDown');
-    await page.waitForTimeout(300);
+
+    // Wait for the reader to process the navigation and update the footer
+    await expect(footerTextLocator).not.toHaveText(initialText);
 
     // Save fast bookmark
     await page.keyboard.press('b');
-    await page.waitForTimeout(300);
 
     // Verify bookmark store in IndexedDB was updated
-    const bookmarkRecord = await page.evaluate(async (version) => {
-      return new Promise<any>((resolve, reject) => {
-        const req = indexedDB.open('books', version);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('bookmark', 'readonly');
-          const getReq = tx.objectStore('bookmark').get(1);
-          getReq.onsuccess = () => resolve(getReq.result);
-          getReq.onerror = () => reject(getReq.error);
-        };
-        req.onerror = () => reject(req.error);
-      });
-    }, currentDbVersion);
+    let bookmarkRecord: any;
+    await expect
+      .poll(async () => {
+        bookmarkRecord = await page.evaluate(async (version) => {
+          return new Promise<any>((resolve, reject) => {
+            const req = indexedDB.open('books', version);
+            req.onsuccess = () => {
+              const db = req.result;
+              const tx = db.transaction('bookmark', 'readonly');
+              const getReq = tx.objectStore('bookmark').get(1);
+              getReq.onsuccess = () => resolve(getReq.result);
+              getReq.onerror = () => reject(getReq.error);
+            };
+            req.onerror = () => reject(req.error);
+          });
+        }, currentDbVersion);
+        return bookmarkRecord;
+      })
+      .toBeDefined();
 
-    expect(bookmarkRecord).toBeDefined();
     expect(bookmarkRecord.dataId).toBe(1);
+    expect(bookmarkRecord.exploredCharCount).toBeGreaterThan(0);
   });
 
   test('reopening a previously read book resumes at latest bookmark/autosave position', async ({
@@ -49,44 +67,47 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
   }) => {
     await page.goto('/b?id=1');
     await expect(page.locator('.book-content')).toBeVisible();
+    const footerTextLocator = page.locator('.writing-horizontal-tb.fixed.bottom-2.right-2');
+    const initialText = await footerTextLocator.innerText();
 
     // Advance 2 pages
     await page.keyboard.press('PageDown');
-    await page.waitForTimeout(300);
     await page.keyboard.press('PageDown');
-    await page.waitForTimeout(300);
+
+    // Wait for the reader to process the navigation and update the footer
+    await expect(footerTextLocator).not.toHaveText(initialText);
 
     // Save fast bookmark
     await page.keyboard.press('b');
-    await page.waitForTimeout(300);
 
-    const bookmarkRecord = await page.evaluate(async (version) => {
-      return new Promise<any>((resolve, reject) => {
-        const req = indexedDB.open('books', version);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('bookmark', 'readonly');
-          const getReq = tx.objectStore('bookmark').get(1);
-          getReq.onsuccess = () => resolve(getReq.result);
-          getReq.onerror = () => reject(getReq.error);
-        };
-        req.onerror = () => reject(req.error);
-      });
-    }, currentDbVersion);
+    let bookmarkRecord: any;
+    await expect
+      .poll(async () => {
+        bookmarkRecord = await page.evaluate(async (version) => {
+          return new Promise<any>((resolve, reject) => {
+            const req = indexedDB.open('books', version);
+            req.onsuccess = () => {
+              const db = req.result;
+              const tx = db.transaction('bookmark', 'readonly');
+              const getReq = tx.objectStore('bookmark').get(1);
+              getReq.onsuccess = () => resolve(getReq.result);
+              getReq.onerror = () => reject(getReq.error);
+            };
+            req.onerror = () => reject(req.error);
+          });
+        }, currentDbVersion);
+        return bookmarkRecord;
+      })
+      .toBeDefined();
 
     expect(bookmarkRecord.exploredCharCount).toBeGreaterThan(0);
 
     // Navigate to /manage and reopen the book
     await page.goto('/manage');
-    await page.waitForTimeout(500);
     await page.goto('/b?id=1');
     await expect(page.locator('.book-content')).toBeVisible();
-    await page.waitForTimeout(1000);
 
-    const footerText = await page
-      .locator('.writing-horizontal-tb.fixed.bottom-2.right-2')
-      .textContent();
-    expect(footerText).toContain(String(bookmarkRecord.exploredCharCount));
+    await expect(footerTextLocator).toContainText(String(bookmarkRecord.exploredCharCount));
   });
 
   test('named bookmark creation (Shift+B) and drawer inspection (Shift+R)', async ({ page }) => {

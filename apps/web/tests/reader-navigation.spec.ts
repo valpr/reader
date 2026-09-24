@@ -30,18 +30,13 @@ test.describe('Reader Navigation & Progress Tracking', () => {
 
     // Navigate to next page via PageDown key
     await page.keyboard.press('PageDown');
-    await page.waitForTimeout(300);
 
     // Progress counter should update
-    const updatedText = await progressCounter.innerText();
-    expect(updatedText).not.toBe(initialText);
+    await expect(progressCounter).not.toHaveText(initialText);
 
     // Navigate back via PageUp key
     await page.keyboard.press('PageUp');
-    await page.waitForTimeout(300);
-
-    const revertedText = await progressCounter.innerText();
-    expect(revertedText).toBe(initialText);
+    await expect(progressCounter).toHaveText(initialText);
   });
 
   test('edge tap to flip enables left/right click navigation zones', async ({ page }) => {
@@ -72,17 +67,11 @@ test.describe('Reader Navigation & Progress Tracking', () => {
 
     // Click right tap button to advance page (in horizontal mode)
     await rightTapButton.click();
-    await page.waitForTimeout(300);
-
-    const nextPageText = await progressCounter.innerText();
-    expect(nextPageText).not.toBe(initialText);
+    await expect(progressCounter).not.toHaveText(initialText);
 
     // Click left tap button to return to previous page
     await leftTapButton.click();
-    await page.waitForTimeout(300);
-
-    const prevPageText = await progressCounter.innerText();
-    expect(prevPageText).toBe(initialText);
+    await expect(progressCounter).toHaveText(initialText);
   });
 
   test('footer toggles visibility upon click', async ({ page }) => {

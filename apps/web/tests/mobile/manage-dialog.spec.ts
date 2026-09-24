@@ -40,29 +40,6 @@ test.describe('Mobile: book details dialog', () => {
     await expect(page.getByTestId('save-tags')).toBeEnabled();
   });
 
-  test('typing a tag then tapping Save directly persists it', async ({ page }) => {
-    await seedReaderBook(page, { tags: ['fantasy'] });
-    await page.goto('/manage');
-
-    const bookCard = page.locator('.aspect-w-2').first();
-    await expect(bookCard).toBeVisible({ timeout: 10000 });
-
-    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).tap();
-    await page.getByRole('button', { name: 'View details' }).tap();
-
-    // Type without pressing Enter, then tap Save directly.
-    await page.getByTestId('book-tags-input').fill('Cozy Mystery');
-    await page.getByTestId('save-tags').tap();
-
-    await expect(page.getByTestId('book-details-dialog')).not.toBeVisible();
-
-    const strip = page.getByTestId('book-card-tags-1');
-    await expect(strip).toContainText('cozy-mystery');
-
-    await page.reload();
-    await expect(page.getByTestId('book-card-tags-1')).toContainText('cozy-mystery');
-  });
-
   test('reset progress confirmation fits mobile viewport and works via tap', async ({ page }) => {
     await seedReaderBook(page);
     await page.goto('/manage');

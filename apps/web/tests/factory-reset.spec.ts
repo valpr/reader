@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedReaderBook } from './fixtures/book-fixture';
+import { mockGoogleDrive } from './helpers/cloud-mocks';
 
 test.describe('Factory reset', () => {
   test('reset wipes local data and restores defaults', async ({ page }) => {
@@ -130,65 +131,9 @@ test.describe('Factory reset', () => {
       });
     });
 
-    await page.route('https://oauth2.googleapis.com/token', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          access_token: 'test-access-token',
-          expires_in: '3600',
-          scope: 'test'
-        })
-      })
-    );
-
-    // NOTE: '**' (not '*') so URLs with an extra path segment
-    // (e.g. /files/<id>?alt=media) also match — '*' does not cross '/'.
-    await page.route('https://www.googleapis.com/drive/v3/files**', (route) => {
-      // Folder creation (POST without query): hand back a stable root id.
-      if (route.request().method() === 'POST') {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ id: 'root-id' })
-        });
-      }
-      const url = new URL(route.request().url());
-      if (url.searchParams.get('alt') === 'media') {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(cloudPayload)
-        });
-      }
-      const query = url.searchParams.get('q') || '';
-      if (query.includes("mimeType = 'application/vnd.google-apps.folder'")) {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ files: [{ id: 'root-id' }] })
-        });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          files: [{ id: 'profiles-file-id', name: 'ttu-user-profiles_1_7_1700000000000.json' }]
-        })
-      });
-    });
-
-    let uploadedBody = '';
-    await page.route('https://www.googleapis.com/upload/drive/v3/files**', (route) => {
-      // Ignore the CORS preflight: only the PATCH carries the payload.
-      if (route.request().method() === 'PATCH') {
-        uploadedBody = route.request().postData() || '';
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ id: 'profiles-file-id', name: 'uploaded.json' })
-      });
+    const driveMock = await mockGoogleDrive(page, {
+      cloudPayload,
+      defaultFiles: [{ id: 'profiles-file-id', name: 'ttu-user-profiles_1_7_1700000000000.json' }]
     });
 
     // Switching profiles pushes local profiles to the primary cloud target.
@@ -204,6 +149,7 @@ test.describe('Factory reset', () => {
 
     // Union, not replace: the cloud custom survives exactly once alongside
     // the built-in defaults — nothing was clobbered or duplicated.
+    const uploadedBody = driveMock.getUploadedBody();
     expect(uploadedBody).toContain('"id":"custom-cloud"');
     expect(uploadedBody).toContain('"name":"Cloud Custom"');
     expect(uploadedBody.match(/"id":"custom-cloud"/g)).toHaveLength(1);
