@@ -15,6 +15,7 @@
   } from '$lib/data/storage/token-refresh-scheduler';
   import { applyAppTheme } from '$lib/functions/app-theme';
   import { dummyFn, isMobile, isMobile$ } from '$lib/functions/utils';
+  import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
   import { MetaTags } from 'svelte-meta-tags';
   import '../app.css';
 
@@ -87,6 +88,11 @@
   }
 
   function closeAllDialogs() {
+    // Cancel any pending popup-dictionary scan (Yomitan, etc.): the dialog
+    // closes synchronously while the extension's delayed scan is still
+    // pending, and without this the scan would land on text revealed
+    // underneath.
+    suppressDictionaryScan();
     dialogManager.dialogs$.next([]);
     clickOnCloseDisabled = false;
     zIndex = '';
@@ -161,6 +167,7 @@
     ></div>
 
     <div
+      data-app-dialog
       class="relative top-1/2 left-1/2 inline-block w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] max-h-[90vh] max-h-[90dvh] overflow-y-auto p-4 sm:w-auto sm:max-w-[80vw] -translate-x-1/2 -translate-y-1/2"
     >
       {#each dialogs as dialog}

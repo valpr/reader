@@ -171,6 +171,7 @@
     type ExitSyncSnapshot
   } from '$lib/functions/replication/exit-sync';
   import { reconnectAndSyncNow } from '$lib/functions/replication/cloud-reauth';
+  import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
   import { BOOK_SCOPED_DATA_TYPES } from '$lib/functions/replication/cloud-sync';
   import {
     StorageOAuthManager,
@@ -1517,6 +1518,24 @@
     }
   }
 
+  /**
+   * True when the pointer event landed inside a stacked app dialog (e.g. the
+   * bookmark create/edit dialog above the bookmark side panel). The side
+   * panels use click-outside to close, but clicks inside a stacked dialog are
+   * not "outside" — without this guard, picking a bookmark color would close
+   * the panel, whose teardown wipes the dialog as well.
+   * Placeholder entries (plain strings) don't render interactive content, so
+   * they don't count.
+   */
+  function isClickInsideAppDialog(ev: MouseEvent): boolean {
+    const hasRealDialog = dialogManager.dialogs$
+      .getValue()
+      .some((dialog) => typeof dialog.component !== 'string');
+    return (
+      hasRealDialog && ev.target instanceof Element && !!ev.target.closest('[data-app-dialog]')
+    );
+  }
+
   async function openCreateBookmarkDialog() {
     const dataId = getBookIdSync();
     if (!dataId) return;
@@ -1606,6 +1625,7 @@
   }
 
   function handleNavigateUserBookmark(item: BooksDbUserBookmarkData) {
+    suppressDictionaryScan();
     bookmarkPanelIsOpen$.next(false);
     if (!bookmarkManager) return;
 
@@ -2433,7 +2453,9 @@
     style:color={$themeOption$?.fontColor}
     style:background-color={$backgroundColor$}
     in:fly|local={{ x: -100, duration: 100, easing: quintInOut }}
-    use:clickOutside={() => {
+    use:clickOutside={(ev) => {
+      if (isClickInsideAppDialog(ev)) return;
+      suppressDictionaryScan();
       if ($statisticsEnabled$ && !wasTrackerPaused) {
         isTrackerPaused$.next(false);
       }
@@ -2455,7 +2477,9 @@
     style:color={$themeOption$?.fontColor}
     style:background-color={$backgroundColor$}
     in:fly|local={{ x: -100, duration: 100, easing: quintInOut }}
-    use:clickOutside={() => {
+    use:clickOutside={(ev) => {
+      if (isClickInsideAppDialog(ev)) return;
+      suppressDictionaryScan();
       if ($statisticsEnabled$ && !wasTrackerPaused) {
         isTrackerPaused$.next(false);
       }
