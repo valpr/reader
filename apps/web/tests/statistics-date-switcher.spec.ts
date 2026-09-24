@@ -177,4 +177,43 @@ test.describe('Statistics Summary Date Stepper & Activity Management', () => {
     // Row is updated and edit mode exited
     await expect(page.getByTitle('Edit Row')).toBeVisible();
   });
+
+  test('clicking the date picker on desktop calls showPicker and allows changing date', async ({
+    page
+  }) => {
+    await page.goto('/statistics');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('radio', { name: 'Summary' }).click();
+
+    const dateInput = page.locator('#summaryDatePicker');
+    await expect(dateInput).toBeAttached();
+
+    await page.evaluate(() => {
+      const input = document.getElementById('summaryDatePicker') as HTMLInputElement;
+      const orig = input.showPicker;
+      (window as any).__showPickerErrors = [];
+      input.showPicker = function () {
+        (window as any).__showPickerCalled = true;
+        if (orig) {
+          try {
+            return orig.call(this);
+          } catch (err: any) {
+            (window as any).__showPickerErrors.push(err.name + ': ' + err.message);
+          }
+        }
+      };
+    });
+
+    // Click on the date picker button
+    await page.getByTestId('summary-date-picker-button').click();
+
+    const wasCalled = await page.evaluate(() => (window as any).__showPickerCalled);
+    expect(wasCalled).toBe(true);
+
+    // Changing date updates the summary view
+    await dateInput.fill('2026-01-01');
+    await dateInput.dispatchEvent('change');
+    await expect(page.getByTestId('summary-date-label')).toContainText('Jan 1, 2026');
+  });
 });

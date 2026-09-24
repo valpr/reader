@@ -483,6 +483,21 @@
     $lastStatisticsEndDate$ = todayKey;
   }
 
+  let summaryDatePickerElm: HTMLInputElement;
+
+  function openSummaryDatePicker() {
+    if (!summaryDatePickerElm) return;
+    try {
+      if ('showPicker' in HTMLInputElement.prototype) {
+        summaryDatePickerElm.showPicker();
+        return;
+      }
+    } catch {
+      // Ignore if showPicker fails (e.g. already open or unsupported)
+    }
+    summaryDatePickerElm.focus();
+  }
+
   function handleDatePick(event: Event) {
     const input = event.target as HTMLInputElement;
     const selected = input.value;
@@ -544,25 +559,41 @@
     <!-- Date display & native date picker overlay -->
     <div class="relative flex items-center min-w-0">
       <input
+        bind:this={summaryDatePickerElm}
         id="summaryDatePicker"
         data-testid="summary-date-picker-input"
         type="date"
-        class="absolute inset-0 h-full w-full opacity-0 cursor-pointer z-10"
+        tabindex="-1"
+        class="absolute inset-0 h-full w-full opacity-0 pointer-events-none [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:z-10 cursor-pointer"
         aria-label="Select date"
         max={todayKey}
         value={isSingleDay ? $lastStatisticsStartDate$ : ''}
         on:change={handleDatePick}
+        on:click={(e) => {
+          e.preventDefault();
+          openSummaryDatePicker();
+        }}
+        on:keydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            openSummaryDatePicker();
+          }
+        }}
       />
-      <div
-        class="flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-1.5 text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] transition-colors cursor-pointer select-none"
+      <button
+        type="button"
+        data-testid="summary-date-picker-button"
+        class="flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-1.5 text-sm font-medium text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)] focus-visible:ring-2 focus-visible:ring-[var(--astryx-color-border-focus,#18181b)] transition-colors cursor-pointer select-none"
         title="Click to choose a date"
+        aria-label="Select date: {displayDateLabel}"
+        on:click={openSummaryDatePicker}
       >
         <Fa
           icon={faCalendar}
           class="text-xs text-[var(--astryx-color-fg-muted,#71717a)] shrink-0"
         />
         <span data-testid="summary-date-label" class="truncate">{displayDateLabel}</span>
-      </div>
+      </button>
     </div>
 
     <!-- Next day button -->
