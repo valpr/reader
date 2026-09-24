@@ -150,13 +150,25 @@
         : statistics.get(todayKey) || getDefaultStatistic(bookTitle, todayKey);
 
     if (todayKey === referenceDateKey) {
+      const todayTimeDiff = isNegativeTimeDiff ? -timeDiffForToday : timeDiffForToday;
       updateStatistic(
         todaysStatistics,
-        isNegativeTimeDiff ? -timeDiffForToday : timeDiffForToday,
+        todayTimeDiff,
         characterDiff,
         lastStatisticModified,
         referenceDate.getHours()
       );
+      // Mirror session deltas into the folded "Today" display total so the
+      // menu stays live; the write model above stays own-only for flush.
+      if (displayTodaysStatistics.dateKey === todayKey) {
+        updateStatistic(
+          displayTodaysStatistics,
+          todayTimeDiff,
+          characterDiff,
+          lastStatisticModified,
+          referenceDate.getHours()
+        );
+      }
     } else {
       updateStatistic(todaysStatistics, 0, 0, lastStatisticModified);
     }
@@ -196,6 +208,17 @@
     updateTimeToFinishBook();
 
     return flushData ? flushUpdates() : Promise.resolve([false, 0]);
+  }
+
+  /**
+   * Re-baseline the scroll position without counting time or characters.
+   * Hosts should call this after programmatic scroll restores (resume
+   * bookmark, checkpoint jumps) so the resulting position delta is never
+   * recorded as fresh reading.
+   */
+  export function syncPositionBaseline() {
+    updateLastExploredCharCount(exploredCharCount, frozenPosition);
+    lastTrackerTick = Date.now();
   }
 
   export async function flushUpdates(force = false) {
@@ -285,6 +308,11 @@
   let todayKey = getDateKey($startDayHoursForTracker$);
   let sessionStatistics = getDefaultStatistic(bookTitle, todayKey);
   let todaysStatistics = getDefaultStatistic(bookTitle, todayKey);
+  // Write model (own device only) — the ONLY source flushed via
+  // storeStatistics(..., LOCAL). Seeded from getOwnStatisticsForBook, never
+  // from folded display rows (see init). `displayTodaysStatistics` below is
+  // the folded total shown in the menu / goals UI.
+  let displayTodaysStatistics = getDefaultStatistic(bookTitle, todayKey);
   let allTimeStatistics = getDefaultStatistic(bookTitle, todayKey);
   let bookCompletionStatistics:
     Omit<BooksDbStatistic, 'title' | 'lastStatisticModified'> | undefined;
@@ -457,6 +485,15 @@
         (todaysStatistics.lookupsByHour[currentHour] || 0) + 1;
       statistics.set(todayKey, todaysStatistics);
       statisticsToStore.add(todayKey);
+      if (displayTodaysStatistics.dateKey === todaysStatistics.dateKey) {
+        displayTodaysStatistics.lookupCount = (displayTodaysStatistics.lookupCount || 0) + 1;
+        displayTodaysStatistics.lastStatisticModified = now;
+        if (!displayTodaysStatistics.lookupsByHour) {
+          displayTodaysStatistics.lookupsByHour = new Array(24).fill(0);
+        }
+        displayTodaysStatistics.lookupsByHour[currentHour] =
+          (displayTodaysStatistics.lookupsByHour[currentHour] || 0) + 1;
+      }
     }
     wasDictionaryDisplayed = isDisplayed;
 
@@ -547,6 +584,14 @@
       -historyItem.characterDiff,
       lastStatisticModified
     );
+    if (displayTodaysStatistics.dateKey === historyItem.dateKey) {
+      updateStatistic(
+        displayTodaysStatistics,
+        -historyItem.timeDiff,
+        -historyItem.characterDiff,
+        lastStatisticModified
+      );
+    }
 
     statistics.set(entry.dateKey, entry);
     statisticsToStore.add(entry.dateKey);
@@ -618,15 +663,36 @@
         dispatch('statisticsSaved');
       }
 
+      // Write-model seed: own contributions only. Folded display rows contain
+      // remote + legacy reading; seeding from them copies peer totals into our
+      // own contribution on the next flush, and refold sums them twice.
+      // Pre-sync fallback: with no device identity there is no remote data, so
+      // display rows are our own reading — seed from them to keep continuity.
+      const ownStatisticsForTitle = await database.getOwnStatisticsForBook(bookTitle);
+      const hasIdentity = await database.hasDeviceIdentity();
+      const writeSeed =
+        ownStatisticsForTitle.length > 0 || hasIdentity
+          ? ownStatisticsForTitle
+          : statisticsForTitle;
+
+      for (let index = 0, { length } = writeSeed; index < length; index += 1) {
+        const statisticEntry = writeSeed[index];
+
+        statistics.set(statisticEntry.dateKey, { ...statisticEntry });
+
+        if (todayKey === statisticEntry.dateKey) {
+          addToStatistic(todaysStatistics, statisticEntry);
+        }
+      }
+
+      // Display model (folded totals across devices) for menu / goals UI.
       for (let index = 0, { length } = statisticsForTitle; index < length; index += 1) {
         const statisticEntry = statisticsForTitle[index];
-
-        statistics.set(statisticEntry.dateKey, statisticEntry);
 
         addToStatistic(allTimeStatistics, statisticEntry);
 
         if (todayKey === statisticEntry.dateKey) {
-          addToStatistic(todaysStatistics, statisticEntry);
+          addToStatistic(displayTodaysStatistics, statisticEntry);
         }
 
         if (statisticEntry.completedBook && statisticEntry.completedData) {
@@ -643,6 +709,16 @@
   async function updateReadingGoalWindow() {
     todayKey = getDateKey($startDayHoursForTracker$);
     todaysStatistics = statistics.get(todayKey) || getDefaultStatistic(bookTitle, todayKey);
+    // Keep the menu's folded "Today" total in step on day rollover.
+    try {
+      const displayRows = await database.getStatisticsForBook(bookTitle);
+      const displayToday = displayRows.find((row) => row.dateKey === todayKey);
+      displayTodaysStatistics = displayToday
+        ? { ...displayToday }
+        : getDefaultStatistic(bookTitle, todayKey);
+    } catch {
+      // Display refresh is best-effort; the write model above is authoritative.
+    }
 
     try {
       await tick();
@@ -700,6 +776,15 @@
     const elapsed = Math.round((nowTick - lastTrackerTick) / 1000);
 
     lastTrackerTick = nowTick;
+
+    // Position restore / navigation guard: while the host blocks data updates
+    // (e.g. reader is resolving the resume bookmark or leaving), never count
+    // time or characters — just re-baseline so the post-restore jump is not
+    // recorded as fresh reading on the next tick.
+    if (blockDataUpdates) {
+      updateLastExploredCharCount(exploredCharCount, frozenPosition);
+      return;
+    }
 
     if (trackerIdleTimeReached) {
       wasTrackerPaused = true;
@@ -950,7 +1035,7 @@
       {frozenPosition}
       {trackingHistory}
       {sessionStatistics}
-      {todaysStatistics}
+      todaysStatistics={displayTodaysStatistics}
       {allTimeStatistics}
       {bookCompletionStatistics}
       {autoScrollerStatistics}
