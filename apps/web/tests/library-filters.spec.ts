@@ -164,6 +164,36 @@ test.describe('Library search and filters', () => {
     await expect(page.getByText(BOOK_TWO)).toBeHidden();
   });
 
+  test('merged source filter stays open, badges, and clears with search', async ({ page }) => {
+    await seedLibrary(page);
+    await page.goto('/manage');
+    await expect(page.locator('.aspect-w-2').first()).toBeVisible({ timeout: 10000 });
+
+    const filterButton = page.getByTestId('library-search-filter-button');
+    await filterButton.click();
+    await expect(page.getByTestId('library-search-input')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'All sources' })).toBeVisible();
+
+    // Selecting a source keeps the merged popover open for combining.
+    await page.getByRole('button', { name: 'Browser', exact: true }).click();
+    await expect(page.getByTestId('library-search-input')).toBeVisible();
+    await expect(filterButton).toContainText('Browser');
+    await expect(page.getByTestId('library-active-filter-count')).toHaveText('1');
+
+    // Combining with a title query stacks the badge count.
+    await page.getByTestId('library-search-input').fill('beta');
+    await expect(page.getByTestId('library-active-filter-count')).toHaveText('2');
+    await expect(page.getByText(BOOK_TWO)).toBeVisible();
+    await expect(page.getByText(BOOK_ONE)).toBeHidden();
+
+    // Clearing resets both the source label and the query.
+    await page.getByTestId('library-clear-filters').click();
+    await expect(filterButton).toContainText('Search');
+    await expect(page.getByTestId('library-active-filter-count')).toHaveCount(0);
+    await expect(page.getByText(BOOK_ONE)).toBeVisible();
+    await expect(page.getByText(BOOK_TWO)).toBeVisible();
+  });
+
   test('progress helpers keep cloud-merged progress and parse legacy values', async () => {
     // Pure unit coverage (no page needed): the bookmark overlay must take the
     // max so a missing/stale local bookmark can't demote a started book.

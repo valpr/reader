@@ -97,7 +97,7 @@ test.describe('Cloud re-auth deferred UX', () => {
     const banner = page.getByTestId('cloud-reconnect-banner');
     await expect(banner).toBeVisible();
 
-    const filterButton = page.getByRole('button', { name: 'Filter library by source' });
+    const filterButton = page.getByRole('button', { name: 'Search and filter library' });
     await expect(filterButton).toBeVisible();
     await filterButton.click();
     await expect(page.getByRole('button', { name: 'All sources' })).toBeVisible();
@@ -105,7 +105,7 @@ test.describe('Cloud re-auth deferred UX', () => {
     // The open menu must paint above the banner: pick a point where their
     // boxes intersect and hit-test it — it must resolve inside the popover.
     // (Bounding boxes intersect either way — only paint order distinguishes.)
-    const menuBox = await page.locator('div[data-popover].absolute').boundingBox();
+    const menuBox = await page.getByTestId('popover-panel').boundingBox();
     const bannerBox = await banner.boundingBox();
     expect(menuBox).not.toBeNull();
     expect(bannerBox).not.toBeNull();

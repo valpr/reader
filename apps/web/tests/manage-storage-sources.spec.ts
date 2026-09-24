@@ -45,7 +45,7 @@ async function seedCloudSource(page: Page, source: SeedCloudSource) {
 }
 
 async function openSourceFilter(page: Page) {
-  const filterButton = page.getByRole('button', { name: 'Filter library by source' });
+  const filterButton = page.getByRole('button', { name: 'Search and filter library' });
   const browserOption = page.getByRole('button', { name: 'Browser', exact: true });
   await expect(filterButton).toBeVisible({ timeout: 15000 });
   // Clicks can land while the header is still settling (async session
@@ -85,12 +85,14 @@ test.describe('Manage Books Source Filter', () => {
     const bookCard = page.locator('.aspect-w-2').first();
     await expect(bookCard).toBeVisible({ timeout: 10000 });
 
-    const filterButton = page.getByRole('button', { name: 'Filter library by source' });
+    const filterButton = page.getByRole('button', { name: 'Search and filter library' });
     await filterButton.click();
     await page.getByRole('button', { name: 'Browser', exact: true }).click();
 
-    // Button reflects the active filter and the local book is still shown
+    // Button reflects the active filter, stays open for combining, and badges +1 for the source
     await expect(filterButton).toContainText('Browser');
+    await expect(page.getByTestId('library-search-input')).toBeVisible();
+    await expect(page.getByTestId('library-active-filter-count')).toHaveText('1');
     await expect(bookCard).toBeVisible({ timeout: 10000 });
   });
 
