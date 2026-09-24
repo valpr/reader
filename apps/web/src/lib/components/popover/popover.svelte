@@ -3,6 +3,7 @@
   import { popovers } from '$lib/components/popover/popover';
   import { CLOSE_POPOVER } from '$lib/data/events';
   import { clickOutside } from '$lib/functions/use-click-outside';
+  import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
   import type { Instance, Placement } from '@popperjs/core';
   import flip from '@popperjs/core/lib/modifiers/flip';
   import offset from '@popperjs/core/lib/modifiers/offset';
@@ -84,6 +85,11 @@
   });
 
   export async function toggleOpen(referenceElement?: HTMLElement | Event) {
+    // Cancel any pending popup-dictionary scan (Yomitan, etc.) started by
+    // this pointer interaction in the capture phase: the menu opens/closes
+    // synchronously while the extension's delayed scan is still pending, and
+    // without this the scan would land on text revealed underneath.
+    suppressDictionaryScan();
     if (isOpen) {
       popovers.remove(id);
     } else if (singlePopover) {

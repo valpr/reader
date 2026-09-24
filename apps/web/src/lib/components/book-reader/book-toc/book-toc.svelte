@@ -8,6 +8,7 @@
   } from '$lib/components/book-reader/book-toc/book-toc';
   import { isTrackerPaused$ } from '$lib/components/book-reader/book-reading-tracker/book-reading-tracker';
   import { dialogManager } from '$lib/data/dialog-manager';
+  import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
   import { PAGE_CHANGE } from '$lib/data/events';
   import { skipKeyDownListener$, statisticsEnabled$ } from '$lib/data/store';
   import { dummyFn, getWeightedAverage } from '$lib/functions/utils';
@@ -118,6 +119,7 @@
   }
 
   function closeTocMenu() {
+    suppressDictionaryScan();
     tocIsOpen$.next(false);
     dialogManager.dialogs$.next([]);
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { faPlus, faTrash, faXmark } from '@fortawesome/free-solid-svg-icons';
   import { dialogManager } from '$lib/data/dialog-manager';
+  import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
   import { isTrackerPaused$ } from '$lib/components/book-reader/book-reading-tracker/book-reading-tracker';
   import { skipKeyDownListener$, statisticsEnabled$ } from '$lib/data/store';
   import { createEventDispatcher, onMount } from 'svelte';
@@ -50,6 +51,7 @@
   });
 
   function closePanel() {
+    suppressDictionaryScan();
     if ($statisticsEnabled$ && !wasTrackerPaused) {
       isTrackerPaused$.next(false);
     }
