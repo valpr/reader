@@ -37,6 +37,7 @@
     BooksDbReadingGoal,
     BooksDbStatistic
   } from '$lib/data/database/books-db/versions/books-db';
+  import { calculateProfileBreakdown } from '$lib/components/statistics/statistics-lookback/lookback-calculator';
   import { dialogManager } from '$lib/data/dialog-manager';
   import { logger } from '$lib/data/logger';
   import { getDateRangeLabel } from '$lib/data/reading-goal';
@@ -52,6 +53,7 @@
     lastStatisticsStartDate$,
     lastStatisticsTab$,
     loaderMode$,
+    readerProfiles$,
     skipKeyDownListener$,
     startDayHoursForTracker$,
     statisticsTabKeybindMap$
@@ -266,6 +268,33 @@
     $lastStatisticsStartDate$,
     $lastStatisticsEndDate$
   );
+
+  $: scopeProfileBreakdown = calculateProfileBreakdown(
+    aggregateProfileSeconds(statisticsForSelection),
+    $readerProfiles$ ?? []
+  );
+
+  $: scopeProfileBreakdownLabel = scopeProfileBreakdown
+    .map((entry) => `${secondsToMinutes(entry.readingTimeSeconds)} min on ${entry.profileName}`)
+    .join(', ');
+
+  function aggregateProfileSeconds(statistics: BookStatistic[]) {
+    const profileSeconds = new Map<string, number>();
+
+    for (let index = 0, { length } = statistics; index < length; index += 1) {
+      const readingTimeByProfile = statistics[index].readingTimeByProfile;
+
+      if (!readingTimeByProfile) {
+        continue;
+      }
+
+      for (const [profileId, seconds] of Object.entries(readingTimeByProfile)) {
+        profileSeconds.set(profileId, (profileSeconds.get(profileId) || 0) + (seconds || 0));
+      }
+    }
+
+    return profileSeconds;
+  }
 
   $: if (
     statisticsData &&
@@ -844,6 +873,16 @@
             ? Math.min(statistic.altMinReadingSpeed, entry.altMinReadingSpeed)
             : statistic.altMinReadingSpeed;
           statistic.maxReadingSpeed = Math.max(statistic.maxReadingSpeed, entry.lastReadingSpeed);
+          if (entry.readingTimeByProfile) {
+            if (!statistic.readingTimeByProfile) {
+              statistic.readingTimeByProfile = {};
+            }
+
+            for (const [profileId, seconds] of Object.entries(entry.readingTimeByProfile)) {
+              statistic.readingTimeByProfile[profileId] =
+                (statistic.readingTimeByProfile[profileId] || 0) + (seconds || 0);
+            }
+          }
           weightedSum += entry.readingTime * entry.charactersRead;
 
           if (statistic.readingTime) {
@@ -973,6 +1012,16 @@
         >
           grouped by {$lastPrimaryReadingDataAggregationMode$}
         </button>
+      {/if}
+      {#if scopeProfileBreakdown.length}
+        <span aria-hidden="true" class="opacity-50">·</span>
+        <span
+          data-testid="summary-profile-breakdown"
+          class="min-w-0 break-words [overflow-wrap:anywhere] opacity-80"
+          title={scopeProfileBreakdownLabel}
+        >
+          {scopeProfileBreakdownLabel}
+        </span>
       {/if}
     </div>
   {/if}
