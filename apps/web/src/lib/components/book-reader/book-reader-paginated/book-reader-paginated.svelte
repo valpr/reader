@@ -7,6 +7,10 @@
     BOOKMARK_COLORS,
     type BooksDbUserBookmarkData
   } from '$lib/components/book-reader/book-bookmarks/bookmark-types';
+  import {
+    applyHighlights,
+    clearHighlights
+  } from '$lib/components/book-reader/book-bookmarks/highlight-renderer';
   import { SECTION_CHANGE } from '$lib/data/events';
   import { isStoredFont } from '$lib/data/fonts';
   import { FuriganaStyle } from '$lib/data/furigana-style';
@@ -123,6 +127,8 @@
 
   export let userBookmarks: BooksDbUserBookmarkData[] = [];
 
+  export let currentSectionIndex = 0;
+
   const dispatch = createEventDispatcher<{
     contentChange: HTMLElement;
     trackerPause: void;
@@ -169,6 +175,7 @@
   const height$ = new Subject<number>();
 
   const sectionIndex$ = new BehaviorSubject<number>(-1);
+  $: currentSectionIndex = Math.max(0, $sectionIndex$);
 
   const pageChange$ = new Subject<boolean>();
 
@@ -535,12 +542,22 @@
     );
   }
 
+  function renderHighlights() {
+    if (!scrollEl) return;
+    clearHighlights(scrollEl);
+    if (userBookmarks?.length) {
+      applyHighlights(scrollEl, Math.max(0, sectionIndex$.getValue()), userBookmarks, true);
+    }
+  }
+
   function onHtmlLoad() {
     if (skipFirstHtmlLoad) {
       skipFirstHtmlLoad = false;
       return;
     }
     if (!scrollEl) return;
+
+    renderHighlights();
 
     calculator = new SectionCharacterStatsCalculator(
       scrollEl,
@@ -720,6 +737,10 @@
   }
 
   $: if (userBookmarks) {
+    renderHighlights();
+    if (calculator) {
+      calculator.updateParagraphPos();
+    }
     updateUserBookmarksScreen();
   }
 

@@ -7,5 +7,7 @@
 export {
   type BookmarkColor,
   BOOKMARK_COLORS,
-  type BooksDbV7UserBookmarkData as BooksDbUserBookmarkData
-} from '$lib/data/database/books-db/versions/v7/books-db-v7';
+  type BooksDbUserBookmarkData,
+  type BookmarkHighlight,
+  type BookmarkHighlightAnchor
+} from '$lib/data/database/books-db/versions/books-db';
