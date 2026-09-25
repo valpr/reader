@@ -230,4 +230,35 @@ test.describe('Reading Lookback E2E', () => {
     // Back to dashboard
     await expect(page.getByRole('heading', { name: /Reading Lookback/ })).toBeVisible();
   });
+
+  test('exports recap card as PNG from dashboard and story final slide', async ({ page }) => {
+    await page.goto('/statistics');
+
+    const recapTab = page.getByRole('radio', { name: 'Recap' });
+    await expect(recapTab).toBeVisible({ timeout: 10000 });
+    await recapTab.click();
+    await expect(recapTab).toHaveAttribute('aria-checked', 'true');
+
+    // Visual-state assertion: export is gated on sufficient data
+    // (seed provides 3 finished books across 6 distinct days).
+    const exportBtn = page.getByRole('button', { name: /Export Image/ });
+    await expect(exportBtn).toBeVisible();
+    await expect(exportBtn).toBeEnabled();
+
+    const [download] = await Promise.all([page.waitForEvent('download'), exportBtn.click()]);
+    expect(download.suggestedFilename()).toMatch(/reading-recap-.*\.png/);
+
+    // Story player final slide offers the same export.
+    await page.getByRole('button', { name: /Play Story/ }).click();
+    const storyDialog = page.getByRole('dialog', { name: 'Reading Lookback Story' });
+    await expect(storyDialog).toBeVisible();
+    const nextBtn = storyDialog.getByRole('button', { name: 'Next →' });
+    for (let i = 0; i < 7; i += 1) {
+      await nextBtn.click();
+    }
+    const saveBtn = storyDialog.getByRole('button', { name: /Save Image/ });
+    await expect(saveBtn).toBeVisible();
+    const [storyDownload] = await Promise.all([page.waitForEvent('download'), saveBtn.click()]);
+    expect(storyDownload.suggestedFilename()).toMatch(/reading-recap-.*\.png/);
+  });
 });
