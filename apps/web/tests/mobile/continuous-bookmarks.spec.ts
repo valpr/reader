@@ -55,46 +55,75 @@ test.describe('Continuous mobile bookmarking', () => {
   test('continuous horizontal mobile bookmarking and navigation', async ({ page }) => {
     await seedReaderBook(page, BOOK_WITH_PICTURES, {
       viewMode: 'continuous',
-      writingMode: 'horizontal-tb'
+      writingMode: 'horizontal-tb',
+      showCharacterCounter: true
     });
 
     await page.goto('/b?id=1');
     await expect(page.locator('.book-content')).toBeVisible();
+    const footerTextLocator = page.locator('.writing-horizontal-tb.fixed.bottom-2.right-2');
 
-    // Find P1 position and scroll into it
-    const p1Pos = await page.evaluate(() => {
-      const p1 = document.getElementById('p-prologue-1')!;
-      const docEl = document.documentElement;
-      const r = p1.getBoundingClientRect();
-      const docTop = r.top - docEl.getBoundingClientRect().top;
-      return { docTop };
+    // Wait for fonts/images so the layout the target is computed from is
+    // close to final (reduces re-scroll iterations below).
+    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => {
+      const imgs = [...document.images];
+      return Promise.all(
+        imgs.map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((r) => img.addEventListener('load', r, { once: true }))
+        )
+      );
     });
 
-    const targetY = p1Pos.docTop + 20;
-    await page.evaluate((y) => window.scrollTo(0, y), targetY);
-    await page.waitForTimeout(500);
+    // Scroll into P1 and save the fast bookmark. The reader fires late
+    // restore scrolls (initial bookmark/section setup via BookmarkManager and
+    // PageManager) that can yank a programmatic scroll back to the top, so
+    // recompute the target and re-scroll until the position sticks; only then
+    // does the 'b' save observe the intended position. The loop is
+    // self-healing: a save raced by a yank simply fails the poll and retries.
+    let bookmarkRecord: any;
+    await expect
+      .poll(
+        async () => {
+          const targetY = await page.evaluate(() => {
+            const p1 = document.getElementById('p-prologue-1')!;
+            const r = p1.getBoundingClientRect();
+            return r.top - document.documentElement.getBoundingClientRect().top + 20;
+          });
+          if (Math.abs((await page.evaluate(() => window.scrollY)) - targetY) > 2) {
+            await page.evaluate((y) => window.scrollTo(0, y), targetY);
+            return -1;
+          }
+          await page.keyboard.press('b');
+          bookmarkRecord = await page.evaluate(async () => {
+            return new Promise<any>((resolve, reject) => {
+              const req = indexedDB.open('books');
+              req.onsuccess = () => {
+                const db = req.result;
+                const tx = db.transaction('bookmark', 'readonly');
+                const getReq = tx.objectStore('bookmark').get(1);
+                getReq.onsuccess = () => resolve(getReq.result);
+                getReq.onerror = () => reject(getReq.error);
+              };
+              req.onerror = () => reject(req.error);
+            });
+          });
+          return bookmarkRecord?.exploredCharCount ?? -1;
+        },
+        { timeout: 20000 }
+      )
+      .toBe(65);
 
-    // Set fast bookmark
-    await page.keyboard.press('b');
-    await page.waitForTimeout(500);
-
-    const bookmarkRecord = await page.evaluate(async () => {
-      return new Promise<any>((resolve, reject) => {
-        const req = indexedDB.open('books');
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('bookmark', 'readonly');
-          const getReq = tx.objectStore('bookmark').get(1);
-          getReq.onsuccess = () => resolve(getReq.result);
-          getReq.onerror = () => reject(getReq.error);
-        };
-        req.onerror = () => reject(req.error);
-      });
-    });
-
-    expect(bookmarkRecord.exploredCharCount).toBe(65);
+    const targetY = await page.evaluate(() => window.scrollY);
     expect(bookmarkRecord.progress).toBeGreaterThan(0);
     expect(bookmarkRecord.scrollY).toBe(targetY);
+
+    // Wait for the live tracker to catch up to the saved position before
+    // opening the create dialog: its default label is generated from the
+    // live exploredCharCount, not the saved record.
+    await expect(footerTextLocator).toContainText('65');
 
     // Open create bookmark dialog and verify default label points to active chapter
     await page.keyboard.press('Shift+KeyB');
@@ -110,22 +139,32 @@ test.describe('Continuous mobile bookmarking', () => {
 
     // Scroll back to top
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(300);
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 
-    // Jump to fast bookmark with 'r'
-    await page.keyboard.press('r');
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.scrollY)).toBe(targetY);
+    // Reopening resumes at the fast bookmark (the 'r' jump keybind was
+    // removed in #179 along with the Return to Bookmark button). Layout can
+    // shift slightly across loads, so allow the same tolerance as the
+    // vertical-rl resume test below.
+    await page.goto('/manage');
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible();
+    // Same settle as above: the resume scroll fires after content layout,
+    // so only assert once fonts/images are done shifting it.
+    await page.evaluate(() => document.fonts.ready);
+    await expect
+      .poll(async () => {
+        const y = await page.evaluate(() => window.scrollY);
+        return Math.abs(y - targetY);
+      })
+      .toBeLessThanOrEqual(150);
 
     // Scroll back to top
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(300);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 
     // Jump to user bookmark with Shift+KeyN
     await page.keyboard.press('Shift+KeyN');
-    await page.waitForTimeout(500);
-    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(1300);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(1300);
   });
 
   test('continuous vertical-rl mobile bookmarking works properly', async ({ page }) => {
