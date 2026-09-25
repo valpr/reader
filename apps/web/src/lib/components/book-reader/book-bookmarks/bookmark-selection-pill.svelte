@@ -17,7 +17,7 @@
 </script>
 
 <div
-  class="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] left-1/2 z-40 -translate-x-1/2 select-none"
+  class="writing-horizontal-tb fixed bottom-[calc(2.5rem+env(safe-area-inset-bottom,0px))] left-2 z-40 select-none"
   data-testid="bookmark-selection-pill"
 >
   <button
