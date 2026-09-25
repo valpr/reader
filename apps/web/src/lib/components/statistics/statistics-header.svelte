@@ -63,7 +63,11 @@
 
 <div class="w-full max-w-full overflow-hidden" bind:clientWidth={headerWidth}>
   <TopBar bordered={true} class="shadow-sm">
-    <div slot="start" bind:clientWidth={startWidth} class="flex items-center gap-3">
+    <div
+      slot="start"
+      bind:clientWidth={startWidth}
+      class="flex shrink-0 items-center gap-3 min-w-0"
+    >
       <div class="font-semibold text-sm tracking-tight hidden md:block opacity-90 pl-1">
         Statistics
       </div>

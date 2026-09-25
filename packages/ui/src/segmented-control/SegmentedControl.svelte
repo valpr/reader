@@ -64,6 +64,8 @@
     box-sizing: border-box;
     user-select: none;
     gap: var(--astryx-space-0-5, 2px);
+    flex-shrink: 0;
+    max-width: 100%;
   }
 
   .full-width {
@@ -117,7 +119,7 @@
   }
 
   .astryx-segment-item {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     display: inline-flex;
     align-items: center;
@@ -163,5 +165,6 @@
   .astryx-segment-label {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

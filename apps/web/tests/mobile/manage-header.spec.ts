@@ -25,12 +25,10 @@ for (const width of [412, 360]) {
 
     const importButton = page.getByTestId('library-import-button');
     const searchFilterButton = page.getByTestId('library-search-filter-button');
-    const sortButton = page.getByTestId('library-sort-button');
     const moreActionsButton = page.getByRole('button', { name: 'More Actions' });
 
     await expectFullyInViewport(page, importButton, 'Import');
     await expectFullyInViewport(page, searchFilterButton, 'Search and filter');
-    await expectFullyInViewport(page, sortButton, 'Sort');
     await expectFullyInViewport(page, moreActionsButton, 'More actions');
     await expectNoHorizontalOverflow(page);
 
@@ -39,15 +37,19 @@ for (const width of [412, 360]) {
     await expect(page.getByRole('button', { name: 'Import File(s)' })).toBeVisible();
     await importButton.tap();
 
-    // Merged control opens one popover with both source options and search.
+    // Merged control opens one popover with source options, search, and sort.
     await searchFilterButton.tap();
     await expect(page.getByRole('button', { name: 'All sources' })).toBeVisible();
     await expect(page.getByTestId('library-search-input')).toBeVisible();
     await expect(page.getByTestId('library-filter-tags')).toBeVisible();
+    await expect(page.getByTestId('library-sort-select')).toBeVisible();
+    const directionToggle = page.getByTestId('library-sort-direction-toggle');
+    await expect(directionToggle).toBeVisible();
+    await expect(directionToggle).toHaveAttribute('aria-label', /Sort (ascending|descending)/);
+    // Sort controls keep the popover open for combining with filters.
+    await expect(page.getByTestId('library-search-input')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
     await searchFilterButton.tap();
-
-    await sortButton.tap();
-    await expect(page.getByText('Added (id)')).toBeVisible();
 
     await moreActionsButton.tap();
     await expect(page.getByRole('button', { name: 'Statistics' })).toBeVisible();

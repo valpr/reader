@@ -11,6 +11,7 @@
     CloudStatusIcon,
     IconButton,
     Input,
+    Select,
     SegmentedControl,
     Tooltip,
     TopBar
@@ -47,7 +48,7 @@
   import { dummyFn, isMobile$, isOnOldUrl } from '$lib/functions/utils';
   import {
     faArrowDownShortWide,
-    faArrowDownWideShort,
+    faArrowUpShortWide,
     faCalendarXmark,
     faChartLine,
     faCheck,
@@ -55,8 +56,6 @@
     faCircleXmark,
     faCloudArrowUp,
     faMagnifyingGlass,
-    faSortDown,
-    faSortUp,
     faTimes,
     faTrash,
     faTriangleExclamation
@@ -189,7 +188,6 @@
   let countImportElm: HTMLInputElement;
   let importMenuElm: Popover;
   let filterElm: Popover;
-  let sortOptionsElm: Popover;
   let isOldUrl = false;
   let showLoadCount = false;
 
@@ -377,20 +375,32 @@
     librarySourceFilter$.next(new Set());
   }
 
-  function changeSortOptions(clickedProperty: string, newDirection: SortDirection) {
-    const { property, direction } = $librarySortOption$;
+  type LibrarySortProperty = Exclude<
+    keyof BookCardProps,
+    'imagePath' | 'isPlaceholder' | 'sources'
+  >;
 
-    if (property !== clickedProperty || direction !== newDirection) {
+  $: sortSelectOptions = sortMenuItems.map((item) => ({
+    value: item.property,
+    label: item.label
+  }));
+
+  function setSortProperty(property: string) {
+    const current = librarySortOption$.getValue();
+    if (current.property !== property) {
       librarySortOption$.next({
-        property: clickedProperty as Exclude<
-          keyof BookCardProps,
-          'imagePath' | 'isPlaceholder' | 'sources'
-        >,
-        direction: newDirection
+        property: property as LibrarySortProperty,
+        direction: current.direction
       });
     }
+  }
 
-    sortOptionsElm.toggleOpen();
+  function toggleSortDirection() {
+    const current = librarySortOption$.getValue();
+    librarySortOption$.next({
+      property: current.property,
+      direction: current.direction === SortDirection.ASC ? SortDirection.DESC : SortDirection.ASC
+    });
   }
 </script>
 
@@ -731,6 +741,49 @@
               {/if}
             </div>
 
+            <div class="flex flex-col gap-1.5">
+              <span
+                class="text-xs font-semibold uppercase tracking-wide text-[var(--astryx-color-fg-muted)]"
+              >
+                Sort by
+              </span>
+              <div class="flex w-full max-w-full items-center gap-1.5">
+                <div class="min-w-0 flex-1">
+                  <Select
+                    size="sm"
+                    aria-label="Sort by"
+                    data-testid="library-sort-select"
+                    options={sortSelectOptions}
+                    value={$librarySortOption$.property}
+                    on:change={(e) => setSortProperty(String(e.detail.value))}
+                  />
+                </div>
+                <Tooltip
+                  text={$librarySortOption$.direction === SortDirection.ASC
+                    ? 'Sort ascending (click for descending)'
+                    : 'Sort descending (click for ascending)'}
+                >
+                  <IconButton
+                    nativeTooltip={false}
+                    label={$librarySortOption$.direction === SortDirection.ASC
+                      ? 'Sort ascending'
+                      : 'Sort descending'}
+                    size="sm"
+                    variant="ghost"
+                    data-testid="library-sort-direction-toggle"
+                    data-direction={$librarySortOption$.direction}
+                    on:click={toggleSortDirection}
+                  >
+                    {#if $librarySortOption$.direction === SortDirection.ASC}
+                      <Fa icon={faArrowUpShortWide} class="text-sm" />
+                    {:else}
+                      <Fa icon={faArrowDownShortWide} class="text-sm" />
+                    {/if}
+                  </IconButton>
+                </Tooltip>
+              </div>
+            </div>
+
             <button
               type="button"
               data-testid="library-clear-filters"
@@ -740,78 +793,6 @@
             >
               Clear filters
             </button>
-          </div>
-        </Popover>
-
-        <Popover
-          placement="bottom"
-          fallbackPlacements={['bottom-end', 'bottom-start']}
-          yOffset={4}
-          bind:this={sortOptionsElm}
-        >
-          <div slot="icon">
-            <Tooltip text="Select Sort Options">
-              <div
-                data-testid="library-sort-button"
-                title="Select Sort Options"
-                class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-[var(--astryx-radius-md,6px)] text-[var(--astryx-color-fg-muted)] transition-colors hover:bg-[var(--astryx-color-surface-hover)] hover:text-[var(--astryx-color-fg-primary)]"
-              >
-                {#if $librarySortOption$.direction === SortDirection.ASC}
-                  <Fa icon={faArrowDownShortWide} class="text-base" />
-                {:else}
-                  <Fa icon={faArrowDownWideShort} class="text-base" />
-                {/if}
-              </div>
-            </Tooltip>
-          </div>
-          <div
-            class="min-w-[12rem] rounded-lg border border-[var(--astryx-color-border-subtle)] bg-[var(--astryx-color-surface)] py-1 shadow-lg"
-            slot="content"
-          >
-            {#each sortMenuItems as sortMenuItem (sortMenuItem.property)}
-              {@const isCurrentSort = $librarySortOption$.property === sortMenuItem.property}
-              {@const isCurrentSortAsc =
-                isCurrentSort && $librarySortOption$.direction === SortDirection.ASC}
-              <div
-                class="grid grid-cols-[auto_1fr_auto] items-center text-sm transition-colors hover:bg-[var(--astryx-color-surface-hover)]"
-                class:bg-[var(--astryx-color-surface-active)]={isCurrentSort}
-              >
-                <div
-                  tabindex="0"
-                  role="button"
-                  class="cursor-pointer p-2 transition-colors"
-                  class:text-[var(--astryx-color-primary)]={isCurrentSortAsc}
-                  class:text-[var(--astryx-color-fg-muted)]={!isCurrentSortAsc}
-                  class:hover:text-[var(--astryx-color-primary)]={!isCurrentSortAsc}
-                  title="Sort Ascending"
-                  on:click={() => {
-                    changeSortOptions(sortMenuItem.property, SortDirection.ASC);
-                  }}
-                  on:keyup={dummyFn}
-                >
-                  <Fa icon={faSortUp} class="px-2" />
-                </div>
-                <div class="truncate px-1 py-2 font-medium text-[var(--astryx-color-fg-primary)]">
-                  {sortMenuItem.label}
-                </div>
-                <div
-                  tabindex="0"
-                  role="button"
-                  class="cursor-pointer p-2 transition-colors"
-                  class:text-[var(--astryx-color-primary)]={isCurrentSort && !isCurrentSortAsc}
-                  class:text-[var(--astryx-color-fg-muted)]={!isCurrentSort || isCurrentSortAsc}
-                  class:hover:text-[var(--astryx-color-primary)]={!isCurrentSort ||
-                    isCurrentSortAsc}
-                  title="Sort Descending"
-                  on:click={() => {
-                    changeSortOptions(sortMenuItem.property, SortDirection.DESC);
-                  }}
-                  on:keyup={dummyFn}
-                >
-                  <Fa icon={faSortDown} class="mt-0.5 px-2" />
-                </div>
-              </div>
-            {/each}
           </div>
         </Popover>
 
