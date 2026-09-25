@@ -194,6 +194,34 @@ test.describe('Library search and filters', () => {
     await expect(page.getByText(BOOK_TWO)).toBeVisible();
   });
 
+  test('sort property and direction update inside the filter popover', async ({ page }) => {
+    await seedLibrary(page);
+    await page.goto('/manage');
+    await expect(page.locator('.aspect-w-2').first()).toBeVisible({ timeout: 10000 });
+
+    await openSearchFilters(page);
+    const sortSelect = page.getByTestId('library-sort-select');
+    const directionToggle = page.getByTestId('library-sort-direction-toggle');
+    await expect(sortSelect).toBeVisible();
+    await expect(directionToggle).toBeVisible();
+
+    // Changing the property updates the control's own state and keeps the
+    // popover open for combining with filters.
+    await sortSelect.selectOption('title');
+    await expect(sortSelect).toHaveValue('title');
+    await expect(page.getByTestId('library-search-input')).toBeVisible();
+
+    const initialDirection = await directionToggle.getAttribute('data-direction');
+    await directionToggle.click();
+    const toggledDirection = initialDirection === 'asc' ? 'desc' : 'asc';
+    await expect(directionToggle).toHaveAttribute('data-direction', toggledDirection);
+    await expect(directionToggle).toHaveAttribute(
+      'aria-label',
+      toggledDirection === 'asc' ? 'Sort ascending' : 'Sort descending'
+    );
+    await expect(page.getByTestId('library-search-input')).toBeVisible();
+  });
+
   test('progress helpers keep cloud-merged progress and parse legacy values', async () => {
     // Pure unit coverage (no page needed): the bookmark overlay must take the
     // max so a missing/stale local bookmark can't demote a started book.
