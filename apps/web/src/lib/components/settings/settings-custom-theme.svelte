@@ -3,7 +3,8 @@
   import DialogTemplate from '$lib/components/dialog-template.svelte';
   import Ripple from '$lib/components/ripple.svelte';
   import SettingsCustomThemeInput from '$lib/components/settings/settings-custom-theme-input.svelte';
-  import { buttonClasses } from '$lib/css-classes';
+  import { Select } from '@custom-ereader/ui';
+  import { buttonClasses, themedInputClasses } from '$lib/css-classes';
   import { customThemes$, theme$ } from '$lib/data/store';
   import { availableThemes, type CustomThemeValue, type ThemeOption } from '$lib/data/theme-option';
   import { createEventDispatcher, onMount } from 'svelte';
@@ -193,13 +194,11 @@
     <div
       class="grid grid-cols-1 gap-2 items-center overflow-auto max-h-[60vh] max-h-[60dvh] min-w-0 sm:grid-cols-[auto_auto_5rem] sm:gap-4"
     >
-      <select class="sm:col-span-2" bind:value={themeToCopy}>
-        {#each existingThemes as theme (theme.id)}
-          <option value={theme.id}>
-            {theme.id}
-          </option>
-        {/each}
-      </select>
+      <Select
+        class="sm:col-span-2"
+        options={existingThemes.map((theme) => ({ value: theme.id, label: theme.id }))}
+        bind:value={themeToCopy}
+      />
       <button class={buttonClasses} on:click={handleCopyTheme}
         >Copy
         <Ripple />
@@ -243,7 +242,7 @@
         on:alpha={handleAlphaValueChange}
       />
       <input
-        class="sm:col-span-2"
+        class="{themedInputClasses} sm:col-span-2"
         type="text"
         placeholder="Theme Name"
         bind:value={themeName}

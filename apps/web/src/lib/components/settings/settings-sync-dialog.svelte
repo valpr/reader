@@ -8,6 +8,7 @@
   import type { SyncSelection } from '$lib/data/dialog-manager';
   import { lastSyncedSettingsSource$, lastSyncedSettingsTarget$ } from '$lib/data/store';
   import { dummyFn } from '$lib/functions/utils';
+  import { Select } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
   import Fa from 'svelte-fa';
 
@@ -62,13 +63,11 @@
   <svelte:fragment slot="content">
     <div class="flex flex-col min-w-0">
       <div>Source</div>
-      <select class="max-w-full min-w-0" bind:value={selectedSource}>
-        {#each sources as source (source.id)}
-          <option value={source.id}>
-            {source.label}
-          </option>
-        {/each}
-      </select>
+      <Select
+        class="max-w-full min-w-0"
+        options={sources.map((source) => ({ value: source.id, label: source.label }))}
+        bind:value={selectedSource}
+      />
       <div
         tabindex="0"
         role="button"
@@ -96,13 +95,11 @@
         <Fa icon={faArrowsUpDown} />
       </div>
       <div>Target</div>
-      <select class="max-w-full min-w-0" bind:value={selectedTarget}>
-        {#each targets as target (target.id)}
-          <option value={target.id}>
-            {target.label}
-          </option>
-        {/each}
-      </select>
+      <Select
+        class="max-w-full min-w-0"
+        options={targets.map((target) => ({ value: target.id, label: target.label }))}
+        bind:value={selectedTarget}
+      />
     </div>
   </svelte:fragment>
   <div class="flex min-w-0 grow flex-wrap justify-between gap-2" slot="footer">

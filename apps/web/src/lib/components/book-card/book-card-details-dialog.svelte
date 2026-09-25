@@ -5,6 +5,7 @@
   import type { StorageKey } from '$lib/data/storage/storage-types';
   import { normalizeTag, normalizeTagList } from '$lib/data/book-tags';
   import { buttonClasses } from '$lib/css-classes';
+  import { Input } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
 
   export let title = '';
@@ -189,11 +190,10 @@
             {/each}
           </div>
           <div class="relative mt-1">
-            <input
+            <Input
               id="book-tags-input"
               data-testid="book-tags-input"
               type="text"
-              class="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
               placeholder="Add a tag, e.g. fantasy"
               autocomplete="off"
               bind:value={inputValue}
@@ -205,13 +205,13 @@
                 suggestionsOpen = true;
                 highlightedIndex = -1;
               }}
-              on:keydown={onInputKeydown}
+              on:keydown={(e) => onInputKeydown(e.detail)}
             />
             {#if suggestionsOpen && suggestions.length}
               <div
                 data-testid="book-tags-suggestions"
                 role="listbox"
-                class="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded border border-gray-300 bg-white shadow-lg"
+                class="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] shadow-lg"
               >
                 {#each suggestions as suggestion, index (suggestion)}
                   <button
@@ -219,8 +219,9 @@
                     role="option"
                     aria-selected={index === highlightedIndex}
                     data-testid="tag-suggestion-{suggestion}"
-                    class="block w-full px-2 py-1 text-left text-sm hover:bg-gray-100"
-                    class:bg-gray-100={index === highlightedIndex}
+                    class="block w-full px-2 py-1 text-left text-sm text-[var(--astryx-color-fg-primary,#18181b)] hover:bg-[var(--astryx-color-surface-hover,#f4f4f5)]"
+                    class:bg-[var(--astryx-color-surface-hover,#f4f4f5)]={index ===
+                      highlightedIndex}
                     on:mousedown={(event) => {
                       event.preventDefault();
                       addTag(suggestion);

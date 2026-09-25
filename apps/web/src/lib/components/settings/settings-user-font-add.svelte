@@ -3,6 +3,7 @@
   import { reservedFontNames } from '$lib/data/fonts';
   import { userFonts$ } from '$lib/data/store';
   import { dummyFn } from '$lib/functions/utils';
+  import { Input } from '@custom-ereader/ui';
   import { faFloppyDisk } from '@fortawesome/free-solid-svg-icons';
   import Fa from 'svelte-fa';
 
@@ -27,14 +28,12 @@
       return;
     }
 
-    if (
-      !(
-        file.name.endsWith('.woff2') ||
-        file.name.endsWith('.woff') ||
-        file.name.endsWith('.ttf') ||
-        file.name.endsWith('.otf')
-      )
-    ) {
+    if (!(
+      file.name.endsWith('.woff2') ||
+      file.name.endsWith('.woff') ||
+      file.name.endsWith('.ttf') ||
+      file.name.endsWith('.otf')
+    )) {
       currentError = 'only woff2, woff, ttf and otf fonts are supported';
       resetFileElement();
       return;
@@ -91,7 +90,7 @@
 
 <div class="flex flex-col min-w-0 w-full">
   <span>Font Name</span>
-  <input
+  <Input
     class="mt-2"
     type="text"
     bind:value={fontName}

@@ -2,6 +2,7 @@
   import DialogTemplate from '$lib/components/dialog-template.svelte';
   import Ripple from '$lib/components/ripple.svelte';
   import { buttonClasses } from '$lib/css-classes';
+  import { Input, Textarea } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
   import { BOOKMARK_COLORS, type BookmarkColor } from './bookmark-types';
 
@@ -53,16 +54,18 @@
   <svelte:fragment slot="header">
     <span class="block truncate" {title}>{title}</span>
   </svelte:fragment>
-  <div class="flex flex-col gap-4 text-sm text-gray-800 sm:text-base" slot="content">
+  <div
+    class="flex flex-col gap-4 text-sm text-[var(--astryx-color-fg-primary,#18181b)] sm:text-base"
+    slot="content"
+  >
     <div>
       <label for="bookmark-label" class="mb-1 block font-medium">Label</label>
-      <input
+      <Input
         id="bookmark-label"
         type="text"
-        class="w-full rounded border border-gray-300 px-3 py-1.5 focus:border-blue-500 focus:outline-none"
         bind:value={label}
-        on:keyup={(evt) => {
-          if (evt.key === 'Enter') {
+        on:keydown={(evt) => {
+          if (evt.detail.key === 'Enter') {
             save();
           }
         }}
@@ -88,18 +91,22 @@
     </div>
 
     {#if hasSelection}
-      <div class="flex flex-col gap-1.5 rounded-lg border border-gray-200 bg-gray-50/75 p-3">
+      <div
+        class="flex flex-col gap-1.5 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-subtle,#f4f4f5)] p-3"
+      >
         <label class="flex min-h-[44px] cursor-pointer items-center gap-3">
           <input
             type="checkbox"
-            class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            class="h-5 w-5 accent-[var(--astryx-color-primary,#6366f1)]"
             bind:checked={applyHighlight}
           />
-          <span class="font-medium text-gray-900 select-none">Highlight selected text</span>
+          <span class="font-medium text-[var(--astryx-color-fg-primary,#18181b)] select-none"
+            >Highlight selected text</span
+          >
         </label>
         {#if initialSnippet}
           <div
-            class="text-xs text-gray-500 italic min-w-0 max-w-full break-words [overflow-wrap:anywhere]"
+            class="text-xs text-[var(--astryx-color-fg-muted,#71717a)] italic min-w-0 max-w-full break-words [overflow-wrap:anywhere]"
             title={initialSnippet}
           >
             "{initialSnippet.length > 80 ? initialSnippet.slice(0, 80) + '...' : initialSnippet}"
@@ -110,12 +117,12 @@
 
     <div>
       <label for="bookmark-note" class="mb-1 block font-medium">Note (optional)</label>
-      <textarea
+      <Textarea
         id="bookmark-note"
-        rows="2"
-        class="w-full rounded border border-gray-300 px-3 py-1.5 focus:border-blue-500 focus:outline-none"
+        rows={2}
         placeholder="Add an optional note..."
-        bind:value={note}></textarea>
+        bind:value={note}
+      />
     </div>
   </div>
   <div class="flex grow justify-between pt-2" slot="footer">
