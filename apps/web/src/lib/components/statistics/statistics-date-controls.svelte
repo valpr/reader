@@ -12,7 +12,7 @@
     lastStatisticsRangeTemplate$,
     lastStatisticsStartDate$
   } from '$lib/data/store';
-  import { Select } from '@custom-ereader/ui';
+  import { Input, Select } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
   import Fa from 'svelte-fa';
 
@@ -50,10 +50,10 @@
   <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end">
     <div class="flex min-w-0 flex-1 flex-col">
       <label for="fromDate">From</label>
-      <input
+      <Input
         id="fromDate"
         type="date"
-        class="min-h-[44px] w-full min-w-0 text-black"
+        class="min-w-0"
         bind:value={selectedStatisticsStartDate}
         on:change={() =>
           dispatch('statisticsDateChange', {
@@ -92,10 +92,10 @@
     </div>
     <div class="flex min-w-0 flex-1 flex-col">
       <label for="toDate">To</label>
-      <input
+      <Input
         id="toDate"
         type="date"
-        class="min-h-[44px] w-full min-w-0 text-black"
+        class="min-w-0"
         bind:value={selectedStatisticsEndDate}
         on:change={() =>
           dispatch('statisticsDateChange', {

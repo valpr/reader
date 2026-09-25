@@ -20,6 +20,7 @@
     secondsToMinutes
   } from '$lib/functions/statistic-util';
   import { pluralize } from '$lib/functions/utils';
+  import { Input } from '@custom-ereader/ui';
   import { createEventDispatcher, onMount, tick } from 'svelte';
 
   export let newReadingGoal: ReadingGoal;
@@ -276,7 +277,7 @@
     {#if newReadingGoal.goalStartDate}
       <div>
         <span>New Reading Goal starts from</span>
-        <input
+        <Input
           disabled
           class="mb-4 sm:ml-1"
           type="date"
@@ -289,7 +290,7 @@
       <input type="checkbox" bind:checked={archiveReadingGoal} on:change={checkDates} />
       <span class:opacity-50={!archiveReadingGoal}>
         <span class="mr-2">Archive Reading Goal from</span>
-        <input
+        <Input
           class="w-full mt-2 sm:mt-0 md:w-[initial]"
           type="date"
           disabled={!archiveReadingGoal || !archiveDateEditable}
@@ -297,7 +298,7 @@
           on:change={checkDates}
         />
         <span class="mx-2">-</span>
-        <input
+        <Input
           class="w-full md:w-[initial]"
           type="date"
           disabled={!archiveReadingGoal || !archiveDateEditable}

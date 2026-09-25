@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CustomThemeValue, ThemeOption } from '$lib/data/theme-option';
+  import { themedInputClasses } from '$lib/css-classes';
   import { createEventDispatcher } from 'svelte';
 
   export let label: string;
@@ -34,12 +35,13 @@
 <span>{label}</span>
 <input
   type="color"
-  class="border border-black"
+  class="h-11 w-full min-w-0 cursor-pointer rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] p-1"
   value={values.hexExpression}
   on:change={handleColorChange}
 />
 <input
   type="number"
+  class={themedInputClasses}
   step="0.1"
   min="0"
   max="1"

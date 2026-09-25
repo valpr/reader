@@ -2,6 +2,7 @@
   import DialogTemplate from '$lib/components/dialog-template.svelte';
   import Ripple from '$lib/components/ripple.svelte';
   import { buttonClasses } from '$lib/css-classes';
+  import { Input } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
 
   export let dialogHeader: string;
@@ -30,13 +31,13 @@
 <DialogTemplate>
   <svelte:fragment slot="header">{dialogHeader}</svelte:fragment>
   <div class="flex flex-col text-sm sm:text-base" slot="content">
-    <input
+    <Input
       type="number"
       min={minValue}
       max={maxValue}
       bind:value={target}
-      on:keyup={(evt) => {
-        if (evt.key === 'Enter') {
+      on:keydown={(evt) => {
+        if (evt.detail.key === 'Enter') {
           closeDialog(target);
         }
       }}
