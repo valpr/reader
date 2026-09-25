@@ -30,7 +30,7 @@ test.describe('Mobile: manage bar search dropdown', () => {
     const searchInput = page.getByTestId('library-search-input');
     await expect(searchInput).toBeVisible();
 
-    const popover = page.locator('[data-popover].absolute');
+    const popover = page.getByTestId('popover-panel');
     await expectDialogFitsViewport(popover);
     await expectNoHorizontalOverflow(page);
   });
@@ -53,7 +53,7 @@ test.describe('Mobile: manage bar search dropdown', () => {
       await expect(searchBtn).toBeVisible();
       await searchBtn.tap();
 
-      const popover = page.locator('[data-popover].absolute');
+      const popover = page.getByTestId('popover-panel');
       await expect(popover).toBeVisible();
 
       const popoverBox = await popover.boundingBox();
@@ -115,7 +115,7 @@ test.describe('Mobile: manage bar search dropdown', () => {
     const searchInput = page.getByTestId('library-search-input');
     await expect(searchInput).toBeVisible();
 
-    const popover = page.locator('[data-popover].absolute');
+    const popover = page.getByTestId('popover-panel');
     await expectDialogFitsViewport(popover);
     await expectNoHorizontalOverflow(page);
   });
