@@ -125,6 +125,10 @@
     font-family: var(--astryx-font-family-sans, sans-serif);
     box-sizing: border-box;
     text-align: left;
+    color-scheme: light;
+  }
+  :global(.dark) .astryx-select-wrapper {
+    color-scheme: dark;
   }
 
   .astryx-select-label {

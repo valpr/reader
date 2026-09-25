@@ -67,6 +67,7 @@
   import { debounceTime, fromEvent, tap } from 'rxjs';
   import { createEventDispatcher, tick } from 'svelte';
   import Fa from 'svelte-fa';
+  import { Input } from '@custom-ereader/ui';
 
   export let aggregratedStatistics: BookStatistic[];
   export let statisticsDateRangeLabel: string;
@@ -781,9 +782,10 @@
           {currentStatisticsSummaryRow.title}
         </div>
         {#if currentRowInEdit}
-          <input
-            class="w-full"
+          <Input
             type="number"
+            size="sm"
+            aria-label="Reading time in seconds"
             bind:value={rowInEditTime}
             on:change={() => {
               if (rowInEdit && (!Number.isFinite(rowInEditTime) || rowInEditTime < 0)) {
@@ -821,9 +823,10 @@
           </button>
         {/if}
         {#if currentRowInEdit}
-          <input
-            class="w-full"
+          <Input
             type="number"
+            size="sm"
+            aria-label="Characters read"
             bind:value={rowInEditCharacters}
             on:change={() => {
               if (rowInEdit && (!Number.isFinite(rowInEditCharacters) || rowInEditCharacters < 0)) {

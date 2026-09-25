@@ -2,7 +2,7 @@
   import { browser } from '$app/environment';
   import DialogTemplate from '$lib/components/dialog-template.svelte';
   import Ripple from '$lib/components/ripple.svelte';
-  import { buttonClasses } from '$lib/css-classes';
+  import { buttonClasses, themedInputClasses } from '$lib/css-classes';
   import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
   import { gDriveRevokeEndpoint } from '$lib/data/env';
   import { BaseStorageHandler } from '$lib/data/storage/handler/base-handler';
@@ -16,6 +16,7 @@
     type StorageUnlockAction
   } from '$lib/data/storage/storage-source-manager';
   import { StorageKey } from '$lib/data/storage/storage-types';
+  import { Select } from '@custom-ereader/ui';
   import { database, isOnline$ } from '$lib/data/store';
   import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
   import { createEventDispatcher } from 'svelte';
@@ -261,6 +262,7 @@
       required
       type="text"
       placeholder="Name"
+      class={themedInputClasses}
       bind:value={storageSourceName}
       bind:this={nameElm}
     />
@@ -270,8 +272,12 @@
       <input id="cbx-manager" type="checkbox" bind:checked={storageSourceIsSourceDefault} />
       <label for="cbx-source" class="ml-2">Is Source Default</label>
     </div>
-    <select
+    <Select
       class="my-4"
+      options={storageSourceTypes.map((sourceType) => ({
+        value: sourceType.key,
+        label: sourceType.label
+      }))}
       bind:value={storageSourceType}
       on:change={() => {
         if (storageSourceType === StorageKey.FS) {
@@ -284,13 +290,7 @@
           handleFsPath = '';
         }
       }}
-    >
-      {#each storageSourceTypes as sourceType (sourceType.key)}
-        <option value={sourceType.key}>
-          {sourceType.label}
-        </option>
-      {/each}
-    </select>
+    />
     {#if storageSourceType === StorageKey.FS}
       <button class={buttonClasses} on:click={selectDirectory}>
         Select Directory
@@ -300,15 +300,21 @@
         {handleFsPath || 'Nothing selected'}
       </div>
     {:else}
-      <input required type="text" placeholder="Client ID" bind:value={storageSourceClientId} />
       <input
-        class="mt-4"
+        required
+        type="text"
+        placeholder="Client ID"
+        class={themedInputClasses}
+        bind:value={storageSourceClientId}
+      />
+      <input
+        class="{themedInputClasses} mt-4"
         type="text"
         placeholder="Client Secret"
         bind:value={storageSourceClientSecret}
       />
       <input
-        class="mt-4"
+        class="{themedInputClasses} mt-4"
         type="password"
         placeholder="Password"
         required={!storageSourceEncryptionDisabled}
@@ -316,7 +322,7 @@
         bind:this={pwElm}
       />
       <input
-        class="mt-4"
+        class="{themedInputClasses} mt-4"
         type="password"
         placeholder="Confirm Password"
         required={!storageSourceEncryptionDisabled}

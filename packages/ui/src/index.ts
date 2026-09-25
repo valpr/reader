@@ -16,6 +16,7 @@ export { default as Switch } from './switch/Switch.svelte';
 export { default as Card } from './card/Card.svelte';
 export { default as Tooltip } from './tooltip/Tooltip.svelte';
 export { default as Input } from './input/Input.svelte';
+export { default as Textarea } from './textarea/Textarea.svelte';
 export { default as List } from './list/List.svelte';
 export { default as ListItem } from './list/ListItem.svelte';
 export { default as ListSection } from './list/ListSection.svelte';
