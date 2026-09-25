@@ -214,6 +214,7 @@
   let loaderStage = 'Opening local book…';
   let transientShowHeader = false;
   let headerHeight = 0;
+  let footerHeight = 0;
   let isBookmarkScreen = false;
   let currentSectionIndex = 0;
   let hasActiveSelection = false;
@@ -762,7 +763,15 @@
 
   // In pinned mode the reader viewport shrinks by the measured header height
   // (matching the top padding below) so the last line still fits on screen.
-  $: readerViewportHeight = ($containerViewportHeight$ ?? 0) - (isHeaderPinned ? headerHeight : 0);
+  // The fixed footer bar (#ttu-page-footer, h-8) always overlays the bottom,
+  // so always reserve its measured height plus the bottom safe-area inset.
+  // Physical padding is writing-mode agnostic, so this clears vertical-rl
+  // (where firstDimensionMargin is lateral only) as well as horizontal-tb,
+  // in both paginated (via reduced height) and continuous (via trailing pad).
+  $: readerViewportHeight = Math.max(
+    0,
+    ($containerViewportHeight$ ?? 0) - (isHeaderPinned ? headerHeight : 0) - footerHeight
+  );
 
   $: footerChapterProgress = getCurrentChapterProgress($sectionData$);
 
@@ -2403,10 +2412,16 @@
   <StyleSheetRenderer styleSheet={$bookData$.styleSheet} />
   <!-- Pinned header mode reserves the measured header height as physical top
     padding (physical properties are writing-mode agnostic, unlike in-flow
-    spacers on a vertical-rl page) so book text starts below the fixed bar. -->
+    spacers on a vertical-rl page) so book text starts below the fixed bar.
+    The fixed footer bar always reserves its measured height as physical
+    bottom padding (plus bottom safe-area) so book text ends above it. -->
   <div
     data-testid="pinned-reader-header-offset"
+    data-footer-offset="reader-footer-offset"
     style:padding-top={isHeaderPinned && headerHeight ? `${headerHeight}px` : undefined}
+    style:padding-bottom={footerHeight
+      ? `calc(${footerHeight}px + env(safe-area-inset-bottom, 0px))`
+      : 'env(safe-area-inset-bottom, 0px)'}
   >
     <BookReader
       htmlContent={$bookData$.htmlContent}
@@ -2568,6 +2583,7 @@
 
 <div
   id="ttu-page-footer"
+  bind:clientHeight={footerHeight}
   tabindex="0"
   role="button"
   class="writing-horizontal-tb fixed bottom-0 left-0 z-10 flex h-8 w-full items-center justify-between text-xs leading-none"
