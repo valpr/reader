@@ -4,6 +4,7 @@
   import { buttonClasses } from '$lib/css-classes';
   import { decrypt, type StorageUnlockAction } from '$lib/data/storage/storage-source-manager';
   import { skipKeyDownListener$ } from '$lib/data/store';
+  import { Input } from '@custom-ereader/ui';
   import { createEventDispatcher, onMount } from 'svelte';
 
   export let description: string;
@@ -15,7 +16,7 @@
   export let resolver: (arg0: StorageUnlockAction | undefined) => void;
 
   let containerElm: HTMLElement;
-  let passwordElm: HTMLInputElement;
+  let passwordElm: Input;
   let secret = '';
   let error = '';
 
@@ -65,13 +66,13 @@
     <div class="min-w-0 break-words [overflow-wrap:anywhere]">{description}</div>
     <div class="my-2 min-w-0 break-words [overflow-wrap:anywhere]">{action}</div>
     {#if requiresSecret}
-      <input
+      <Input
         type="password"
         placeholder="Password"
         bind:value={secret}
         bind:this={passwordElm}
-        on:keyup={(evt) => {
-          if (evt.key === 'Enter') {
+        on:keydown={(evt) => {
+          if (evt.detail.key === 'Enter') {
             unlock();
           }
         }}

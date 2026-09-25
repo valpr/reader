@@ -37,6 +37,8 @@ export type AstryxTheme = 'neutral';
 export type InputSize = 'sm' | 'md' | 'lg';
 export type InputVariant = 'outline' | 'filled' | 'underline';
 
+export type TextareaSize = 'sm' | 'md' | 'lg';
+
 export type ListVariant = 'plain' | 'card' | 'bordered';
 export type ListDensity = 'compact' | 'normal' | 'relaxed';
 export type ListItemDensity = 'compact' | 'normal' | 'relaxed';

@@ -6,6 +6,7 @@
   import type { StatisticsAddRequest } from '$lib/components/statistics/statistics-summary/statistics-summary';
   import type { BooksDbBookData } from '$lib/data/database/books-db/versions/books-db';
   import { secondsToMinutes } from '$lib/functions/statistic-util';
+  import { Select } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
 
   export let dateKey: string;
@@ -79,15 +80,12 @@
           >
             Book
           </label>
-          <select
+          <Select
             id="activityBookTitle"
-            class="min-h-[44px] w-full max-w-full min-w-0 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] bg-[var(--astryx-color-surface-elevated,var(--astryx-color-surface,#ffffff))] px-3 py-2 text-sm text-[var(--astryx-color-fg-primary,#18181b)] focus:outline-none focus:ring-2 focus:ring-[var(--astryx-color-primary,#6366f1)]"
+            class="max-w-full min-w-0"
+            options={books.map((book) => ({ value: book.title, label: book.title }))}
             bind:value={selectedTitle}
-          >
-            {#each books as book (book.id)}
-              <option value={book.title}>{book.title}</option>
-            {/each}
-          </select>
+          />
         </div>
 
         {#if existingEntry}

@@ -9,6 +9,11 @@
   --font-color: var(--astryx-color-fg-primary, rgba(0, 0, 0, 0.87));
   --background-color: var(--astryx-color-canvas, #fafafa);
   scrollbar-color: var(--astryx-color-border-strong, #c1c1c1) transparent;
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
 }
 
 .book-cover {
