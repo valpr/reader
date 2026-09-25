@@ -3,6 +3,7 @@
     faCalendar,
     faChevronLeft,
     faChevronRight,
+    faCircleInfo,
     faClose,
     faFloppyDisk,
     faPen,
@@ -10,6 +11,7 @@
     faTrash,
     faXmark
   } from '@fortawesome/free-solid-svg-icons';
+  import { Tooltip } from '@custom-ereader/ui';
   import Popover from '$lib/components/popover/popover.svelte';
   import {
     StatisticsSummaryKey,
@@ -860,6 +862,17 @@
           <div class="flex items-center">
             <input id="reset-min-max" type="checkbox" bind:checked={rowInEditResetMinMaxValues} />
             <label for="reset-min-max" class="ml-1">Reset Min/Max</label>
+            <Tooltip
+              text="Off: min/max keep their history and only change if this edit is a new fastest or slowest speed. On: min/max restart from this row's new speed. Use this after fixing a mistracked session."
+            >
+              <button
+                type="button"
+                aria-label="What does Reset Min/Max do?"
+                class="ml-1 inline-flex min-h-[44px] min-w-[44px] cursor-help items-center justify-center bg-transparent text-[var(--astryx-color-fg-muted,#71717a)]"
+              >
+                <Fa icon={faCircleInfo} class="text-xs" />
+              </button>
+            </Tooltip>
           </div>
         {:else}
           <button
