@@ -6,6 +6,7 @@
   import type { LookbackMetrics } from './lookback-types';
   import LookbackTopBooksCarousel from './lookback-top-books-carousel.svelte';
   import LookbackSpeedTrend from './lookback-speed-trend.svelte';
+  import { downloadRecapImage } from './lookback-export-card';
 
   export let metrics: LookbackMetrics;
   export let selectedYear: number | 'all';
@@ -37,6 +38,22 @@
 
   function formatNumber(num: number): string {
     return num.toLocaleString();
+  }
+
+  let isExporting = false;
+  let exportError: string | null = null;
+
+  async function handleExportImage() {
+    if (isExporting || !metrics.hasSufficientData) return;
+    isExporting = true;
+    exportError = null;
+    try {
+      await downloadRecapImage(metrics);
+    } catch {
+      exportError = 'Could not export the recap image. Please try again.';
+    } finally {
+      isExporting = false;
+    }
   }
 </script>
 
@@ -78,8 +95,29 @@
         <span>▶</span>
         <span>Play Story</span>
       </Button>
+
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={!metrics.hasSufficientData}
+        loading={isExporting}
+        class="font-medium shadow-sm flex items-center gap-1.5"
+        on:click={handleExportImage}
+      >
+        <span aria-hidden="true">⤓</span>
+        <span>{isExporting ? 'Exporting…' : 'Export Image'}</span>
+      </Button>
     </div>
   </div>
+
+  {#if exportError}
+    <p
+      role="alert"
+      class="text-xs text-rose-600 dark:text-rose-400 break-words [overflow-wrap:anywhere]"
+    >
+      {exportError}
+    </p>
+  {/if}
 
   <!-- Gating Banner: Unlocks with 3 Finished Books & 3+ Days -->
   {#if !metrics.hasSufficientData}

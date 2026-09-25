@@ -201,3 +201,87 @@ for (const width of [412, 360]) {
     await expectNoHorizontalOverflow(page);
   });
 }
+
+for (const width of [412, 360]) {
+  test(`statistics lookback export image downloads at ${width}px without overflow`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 915 });
+
+    await seedReaderBook(page, {
+      title: 'Export Seed Book One',
+      characters: 90000
+    });
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    await seedStatistics(page, [
+      {
+        title: 'Export Seed Book One',
+        dateKey: `${currentYear}-02-10`,
+        charactersRead: 30000,
+        readingTime: 5400,
+        minReadingSpeed: 20000,
+        altMinReadingSpeed: 20000,
+        lastReadingSpeed: 20000,
+        maxReadingSpeed: 22000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 200,
+        completedBook: 1,
+        maxProgress: 1.0,
+        readingTimeByProfile: { 'default-mobile': 5400 }
+      },
+      {
+        title: 'Export Seed Book Two',
+        dateKey: `${currentYear}-02-11`,
+        charactersRead: 20000,
+        readingTime: 3600,
+        minReadingSpeed: 20000,
+        altMinReadingSpeed: 20000,
+        lastReadingSpeed: 20000,
+        maxReadingSpeed: 20000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 60,
+        completedBook: 1,
+        maxProgress: 1.0,
+        readingTimeByProfile: { 'default-mobile': 3600 }
+      },
+      {
+        title: 'Export Seed Book Three',
+        dateKey: `${currentYear}-02-12`,
+        charactersRead: 25000,
+        readingTime: 3600,
+        minReadingSpeed: 25000,
+        altMinReadingSpeed: 25000,
+        lastReadingSpeed: 25000,
+        maxReadingSpeed: 25000,
+        lastStatisticModified: Date.now(),
+        lookupCount: 80,
+        completedBook: 1,
+        maxProgress: 1.0,
+        readingTimeByProfile: { 'default-mobile': 3600 }
+      }
+    ]);
+
+    await page.goto('/statistics');
+
+    const recapTab = page.getByRole('radio', { name: 'Recap' });
+    await expect(recapTab).toBeVisible({ timeout: 10000 });
+    await recapTab.tap();
+    await expect(recapTab).toHaveAttribute('aria-checked', 'true');
+    await expectNoHorizontalOverflow(page);
+
+    // Visual-state assertion: export is enabled once recap data is sufficient.
+    const exportBtn = page.getByRole('button', { name: /Export Image/ });
+    await expect(exportBtn).toBeVisible();
+    await expect(exportBtn).toBeEnabled();
+    const exportBox = await exportBtn.boundingBox();
+    expect(exportBox, 'Export Image has no bounding box').not.toBeNull();
+    expect(exportBox!.x + exportBox!.width).toBeLessThanOrEqual(width + 1);
+
+    const [download] = await Promise.all([page.waitForEvent('download'), exportBtn.tap()]);
+    expect(download.suggestedFilename()).toMatch(/reading-recap-.*\.png/);
+    await expectNoHorizontalOverflow(page);
+  });
+}
