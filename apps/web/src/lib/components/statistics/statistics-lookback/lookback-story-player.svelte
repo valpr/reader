@@ -2,6 +2,7 @@
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { Button, IconButton } from '@custom-ereader/ui';
   import { formatBunkobonPages } from '$lib/functions/statistic-util';
+  import { downloadRecapImage } from './lookback-export-card';
   import type { LookbackMetrics } from './lookback-types';
 
   export let metrics: LookbackMetrics;
@@ -17,6 +18,8 @@
   let isPaused = false;
   let progressPercent = 0;
   let copiedText = false;
+  let isExportingImage = false;
+  let exportError: string | null = null;
   let timerInterval: ReturnType<typeof setInterval> | null = null;
   let startTime = Date.now();
   let elapsedBeforePause = 0;
@@ -122,6 +125,19 @@
       prevSlide();
     } else {
       nextSlide();
+    }
+  }
+
+  async function handleExportImage() {
+    if (isExportingImage) return;
+    isExportingImage = true;
+    exportError = null;
+    try {
+      await downloadRecapImage(metrics);
+    } catch {
+      exportError = 'Could not export the recap image. Please try again.';
+    } finally {
+      isExportingImage = false;
     }
   }
 
@@ -577,6 +593,21 @@
             >
               {copiedText ? '✓ Copied to Clipboard!' : '📋 Copy Summary'}
             </Button>
+
+            <Button
+              variant="outline"
+              size="md"
+              class="w-full font-bold text-white border-white/30 hover:bg-white/10"
+              loading={isExportingImage}
+              on:click={handleExportImage}
+            >
+              {isExportingImage ? 'Exporting…' : '🖼️ Save Image'}
+            </Button>
+            {#if exportError}
+              <p role="alert" class="text-xs text-rose-300 break-words [overflow-wrap:anywhere]">
+                {exportError}
+              </p>
+            {/if}
 
             <div class="flex gap-2">
               <Button
