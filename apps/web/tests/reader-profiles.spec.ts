@@ -5,6 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedReaderBook } from './fixtures/book-fixture';
 
 test.describe('Reader Profiles System', () => {
   test.beforeEach(async ({ page }) => {
@@ -207,5 +208,78 @@ test.describe('Reader Profiles System', () => {
     expect(descBox).not.toBeNull();
     // In mobile stacked layout, description should be wide (> 250px), not a narrow column
     expect(descBox!.width).toBeGreaterThan(250);
+  });
+});
+
+test.describe('First-run dark mode seeding', () => {
+  test.use({ colorScheme: 'dark' });
+
+  test('seeds dark reader theme in appearance settings for new users with dark OS', async ({
+    page
+  }) => {
+    await page.goto('/settings/reader/appearance');
+    await expect(page.locator('text=Appearance & Themes').first()).toBeVisible({ timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    // The Reader Palette radio group should have gray-theme selected (aria-checked=true)
+    const grayThemeRadio = page.locator('button[role="radio"][title="gray-theme"]');
+    await expect(grayThemeRadio).toBeVisible();
+    await expect(grayThemeRadio).toHaveAttribute('aria-checked', 'true');
+
+    const lightThemeRadio = page.locator('button[role="radio"][title="light-theme"]');
+    await expect(lightThemeRadio).toBeVisible();
+    await expect(lightThemeRadio).toHaveAttribute('aria-checked', 'false');
+  });
+
+  test('reader body background uses dark theme on first run when dark mode is enabled', async ({
+    page
+  }) => {
+    await seedReaderBook(page);
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
+
+    // In dark mode, reader palette defaults to gray-theme (rgb(35, 39, 42))
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(35, 39, 42)');
+  });
+
+  test('existing user stored light theme is preserved even when dark mode is enabled', async ({
+    page
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('theme', 'light-theme');
+    });
+    await seedReaderBook(page);
+    await page.goto('/b?id=1');
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
+
+    // light-theme background is rgb(255, 255, 255)
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  });
+
+  test('profile switching respects seeded dark theme and forced light e-reader preset', async ({
+    page
+  }) => {
+    await page.goto('/settings/reader/profiles');
+    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+
+    // Switch to E-Reader / E-Ink: reader theme should switch to light-theme
+    await page.locator('[role="button"]:has-text("E-Reader / E-Ink")').click();
+    await page.goto('/settings/reader/appearance');
+    await expect(page.locator('button[role="radio"][title="light-theme"]')).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+
+    // Switch back to PC / Desktop: reader theme should be back to gray-theme
+    await page.goto('/settings/reader/profiles');
+    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+    await page.locator('[role="button"]:has-text("PC / Desktop")').click();
+    await page.goto('/settings/reader/appearance');
+    await expect(page.locator('button[role="radio"][title="gray-theme"]')).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
   });
 });
