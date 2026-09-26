@@ -8,6 +8,8 @@
   export let dialogMessage: string;
   export let contentStyles: string = '';
   export let showCancel = true;
+  export let confirmLabel: string = 'Confirm';
+  export let destructive: boolean = false;
   export let resolver: (arg0: boolean) => void;
 
   const dispatch = createEventDispatcher<{
@@ -32,9 +34,26 @@
       Cancel
       <Ripple />
     </button>
-    <button class={buttonClasses} on:click={() => closeDialog()}>
-      Confirm
+    <button
+      class={buttonClasses}
+      class:astryx-confirm-destructive={destructive}
+      on:click={() => closeDialog()}
+    >
+      {confirmLabel}
       <Ripple />
     </button>
   </div>
 </DialogTemplate>
+
+<style>
+  .astryx-confirm-destructive {
+    background-color: var(--astryx-color-danger, #ef4444);
+    border-color: var(--astryx-color-danger, #ef4444);
+    color: #ffffff;
+  }
+  .astryx-confirm-destructive:hover {
+    background-color: var(--astryx-color-danger-hover, #dc2626);
+    border-color: var(--astryx-color-danger-hover, #dc2626);
+    opacity: 1;
+  }
+</style>
