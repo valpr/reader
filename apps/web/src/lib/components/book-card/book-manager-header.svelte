@@ -9,6 +9,7 @@
   import {
     Button,
     CloudStatusIcon,
+    GoalProgressChip,
     IconButton,
     Input,
     Select,
@@ -16,6 +17,7 @@
     Tooltip,
     TopBar
   } from '@custom-ereader/ui';
+  import type { GoalProgressChipState } from '@custom-ereader/ui';
   import { pagePath } from '$lib/data/env';
   import { logger } from '$lib/data/logger';
   import { normalizeTag } from '$lib/data/book-tags';
@@ -41,8 +43,13 @@
     isOnline$,
     libraryFilters$,
     librarySortOption$,
-    librarySourceFilter$
+    librarySourceFilter$,
+    readingGoal$,
+    startDayHoursForTracker$
   } from '$lib/data/store';
+  import { getReadingGoalWindow } from '$lib/data/reading-goal';
+  import { getDateKey, secondsToMinutes } from '$lib/functions/statistic-util';
+  import { caluclatePercentage } from '$lib/functions/utils';
   import { inputAllowDirectory } from '$lib/functions/file-dom/input-allow-directory';
   import { inputFile } from '$lib/functions/file-dom/input-file';
   import { dummyFn, isMobile$, isOnOldUrl } from '$lib/functions/utils';
@@ -91,6 +98,73 @@
   }>();
 
   let importMenuItems = [mergeEntries.FILE_IMPORT];
+
+  let goalTime = 0;
+  let goalChars = 0;
+  let goalStart = '';
+  let goalEnd = '';
+  let goalRemaining = '';
+  let goalLoadToken = 0;
+
+  $: goalTodayKey = getDateKey($startDayHoursForTracker$);
+  $: goalHasTarget = !!($readingGoal$.goalStartDate && goalTodayKey >= $readingGoal$.goalStartDate);
+  $: if (goalHasTarget) {
+    loadGoalProgress($readingGoal$);
+  } else {
+    goalTime = 0;
+    goalChars = 0;
+    goalStart = '';
+    goalEnd = '';
+    goalRemaining = '';
+  }
+  $: goalTimePercent = $readingGoal$.timeGoal
+    ? caluclatePercentage(goalTime, $readingGoal$.timeGoal)
+    : 0;
+  $: goalCharPercent = $readingGoal$.characterGoal
+    ? caluclatePercentage(goalChars, $readingGoal$.characterGoal)
+    : 0;
+  $: goalTimeLabel = $readingGoal$.timeGoal
+    ? `${secondsToMinutes(goalTime)} / ${secondsToMinutes($readingGoal$.timeGoal)} Min (${goalTimePercent}%)`
+    : '';
+  $: goalCharLabel = $readingGoal$.characterGoal
+    ? `${goalChars} / ${$readingGoal$.characterGoal} Characters (${goalCharPercent}%)`
+    : '';
+  $: goalWindowLabel =
+    goalStart && goalEnd && goalStart !== goalEnd ? `${goalStart} - ${goalEnd}` : goalStart;
+  $: goalState = ((): GoalProgressChipState => {
+    if (!$readingGoal$.timeGoal && !$readingGoal$.characterGoal) return 'active';
+    const timeDone = !$readingGoal$.timeGoal || goalTimePercent >= 100;
+    const charsDone = !$readingGoal$.characterGoal || goalCharPercent >= 100;
+    return timeDone && charsDone ? 'complete' : 'active';
+  })();
+
+  async function loadGoalProgress(goal: typeof $readingGoal$) {
+    const token = (goalLoadToken += 1);
+    try {
+      const [start, end, remaining] = getReadingGoalWindow(
+        goalTodayKey,
+        $startDayHoursForTracker$,
+        goal
+      );
+      const rows = await database.getStatisticsForTimeWindow(start, end).catch(() => []);
+      if (token !== goalLoadToken) return;
+      let time = 0;
+      let chars = 0;
+      for (const row of rows) {
+        time += row.readingTime || 0;
+        chars += row.charactersRead || 0;
+      }
+      goalTime = time;
+      goalChars = chars;
+      goalStart = start;
+      goalEnd = end;
+      goalRemaining = remaining;
+    } catch {
+      if (token !== goalLoadToken) return;
+      goalTime = 0;
+      goalChars = 0;
+    }
+  }
 
   interface SourceFilterEntry {
     label: string;
@@ -519,7 +593,7 @@
       {/if}
     </div>
 
-    <div class="flex items-center justify-center">
+    <div class="flex min-w-0 items-center justify-center">
       {#if !selectMode}
         {#if hasBookOpened}
           <Tooltip text="Back to Book">
@@ -543,6 +617,23 @@
               </svg>
             </IconButton>
           </Tooltip>
+        {/if}
+        {#if goalHasTarget && (goalTimeLabel !== '' || goalCharLabel !== '')}
+          <div class="ml-1 hidden min-w-0 sm:block">
+            <GoalProgressChip
+              variant="badge"
+              size="sm"
+              timeLabel={goalTimeLabel}
+              timePercent={goalTimePercent}
+              charLabel={goalCharLabel}
+              charPercent={goalCharPercent}
+              windowLabel={goalWindowLabel}
+              remainingLabel={goalRemaining}
+              state={goalState}
+              label="Current reading goal"
+              on:click={() => goto(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
+            />
+          </div>
         {/if}
       {:else}
         <Tooltip text="Select all Books">

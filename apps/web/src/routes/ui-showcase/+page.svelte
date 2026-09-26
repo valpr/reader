@@ -3,6 +3,7 @@
   import {
     Button,
     BookLoader,
+    GoalProgressChip,
     IconButton,
     ButtonGroup,
     ToggleButton,
@@ -796,6 +797,50 @@
           </div>
           <div data-testid="showcase-loader-debug">
             <BookLoader mode="debug" stage="Syncing cloud library…" progress={0.42} />
+          </div>
+        </div>
+      </Card>
+
+      <!-- 11. Reading Goal Progress -->
+      <Card padding="lg" radius="lg">
+        <h2 class="section-title">11. Reading Goal Progress</h2>
+        <p class="section-desc">
+          Chip (library/statistics) and badge (reader header) variants. Empty metrics are never
+          rendered; no-goal renders nothing.
+        </p>
+
+        <div class="demo-grid-2">
+          <div data-testid="showcase-goal-chip-both">
+            <GoalProgressChip
+              timeLabel="12 / 20 Min (60%)"
+              timePercent={60}
+              charLabel="800 / 1000 Characters (80%)"
+              charPercent={80}
+              windowLabel="Today"
+              remainingLabel="5h left"
+              state="active"
+            />
+          </div>
+          <div data-testid="showcase-goal-chip-time-only">
+            <GoalProgressChip
+              timeLabel="20 / 20 Min (100%)"
+              timePercent={100}
+              windowLabel="Today"
+              state="complete"
+            />
+          </div>
+          <div data-testid="showcase-goal-badge">
+            <GoalProgressChip
+              variant="badge"
+              size="sm"
+              timeLabel="12 / 20 Min (60%)"
+              timePercent={60}
+              charLabel="800 / 1000 Characters (80%)"
+              charPercent={80}
+              windowLabel="Today"
+              state="active"
+              label="Current reading goal"
+            />
           </div>
         </div>
       </Card>
