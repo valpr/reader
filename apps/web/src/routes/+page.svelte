@@ -29,7 +29,11 @@
   let pendingTarget: string | null = null;
 
   if (browser && isFirstTimeProfileUser()) {
-    const suggested = detectSuggestedProfileId(window.navigator.userAgent || '', isMobile(window));
+    const minDim = window.screen ? Math.min(window.screen.width, window.screen.height) : undefined;
+    const suggested = detectSuggestedProfileId(window.navigator.userAgent || '', isMobile(window), {
+      maxTouchPoints: window.navigator.maxTouchPoints || 0,
+      minScreenDimension: minDim
+    });
     if (suggested) {
       preselectedProfileId = suggested;
       // Set before the autoNavigate$ subscription below can emit, so the

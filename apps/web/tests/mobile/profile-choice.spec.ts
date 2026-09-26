@@ -25,18 +25,29 @@ test.describe('Mobile: first-run profile choice', () => {
     const modal = page.getByTestId('profile-choice-modal');
     await expect(modal).toBeVisible({ timeout: 10000 });
 
-    // Pixel 9 UA is not E-Ink, so Mobile is preselected.
+    // Pixel 9 UA is a phone, so Mobile is preselected.
     const mobileCard = page.getByTestId('profile-choice-mobile');
+    const tabletCard = page.getByTestId('profile-choice-tablet');
     const ereaderCard = page.getByTestId('profile-choice-ereader');
     await expect(mobileCard).toHaveAttribute('aria-checked', 'true');
+    await expect(tabletCard).toHaveAttribute('aria-checked', 'false');
     await expect(ereaderCard).toHaveAttribute('aria-checked', 'false');
 
     // Cards toggle selection and stay a radio group.
+    await tabletCard.tap();
+    await expect(tabletCard).toHaveAttribute('aria-checked', 'true');
+    await expect(mobileCard).toHaveAttribute('aria-checked', 'false');
+    await expect(ereaderCard).toHaveAttribute('aria-checked', 'false');
+
     await ereaderCard.tap();
     await expect(ereaderCard).toHaveAttribute('aria-checked', 'true');
+    await expect(tabletCard).toHaveAttribute('aria-checked', 'false');
     await expect(mobileCard).toHaveAttribute('aria-checked', 'false');
+
     await mobileCard.tap();
     await expect(mobileCard).toHaveAttribute('aria-checked', 'true');
+    await expect(tabletCard).toHaveAttribute('aria-checked', 'false');
+    await expect(ereaderCard).toHaveAttribute('aria-checked', 'false');
 
     // Modal fits the viewport and the footer Confirm is actionable.
     await expectDialogFitsViewport(modal);
@@ -61,6 +72,17 @@ test.describe('Mobile: first-run profile choice', () => {
     await expect(page.getByTestId('profile-choice-modal')).toHaveCount(0);
   });
 
+  test('modal fits viewport at narrow 360px width without overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 640 });
+    await page.goto('/');
+
+    const modal = page.getByTestId('profile-choice-modal');
+    await expect(modal).toBeVisible({ timeout: 10000 });
+    await expectDialogFitsViewport(modal);
+    await expectNoHorizontalOverflow(page);
+    await expectFooterActionVisible(page, 'Confirm');
+  });
+
   test('skip keeps Desktop and dismisses permanently', async ({ page }) => {
     await page.goto('/');
     const modal = page.getByTestId('profile-choice-modal');
@@ -76,6 +98,7 @@ test.describe('Mobile: first-run profile choice', () => {
     }));
     expect(stored.seen).toBe('1');
     expect(stored.active).not.toBe('default-mobile');
+    expect(stored.active).not.toBe('default-tablet');
     expect(stored.active).not.toBe('default-ereader');
   });
 
@@ -94,6 +117,10 @@ test.describe('Mobile: first-run profile choice', () => {
         'aria-checked',
         'true'
       );
+      await expect(page.getByTestId('profile-choice-tablet')).toHaveAttribute(
+        'aria-checked',
+        'false'
+      );
       await expect(page.getByTestId('profile-choice-mobile')).toHaveAttribute(
         'aria-checked',
         'false'
@@ -105,6 +132,39 @@ test.describe('Mobile: first-run profile choice', () => {
       await expect(page).toHaveURL(/\/manage/, { timeout: 10000 });
       const active = await page.evaluate(() => localStorage.getItem('activeProfileId'));
       expect(active).toBe('default-ereader');
+    });
+  });
+
+  test.describe('tablet user agent preselects Tablet', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1'
+    });
+
+    test('tablet card preselected and confirmable', async ({ page }) => {
+      await page.goto('/');
+      const modal = page.getByTestId('profile-choice-modal');
+      await expect(modal).toBeVisible({ timeout: 10000 });
+
+      await expect(page.getByTestId('profile-choice-tablet')).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+      await expect(page.getByTestId('profile-choice-mobile')).toHaveAttribute(
+        'aria-checked',
+        'false'
+      );
+      await expect(page.getByTestId('profile-choice-ereader')).toHaveAttribute(
+        'aria-checked',
+        'false'
+      );
+
+      await expectDialogFitsViewport(modal);
+      await page.getByTestId('profile-choice-confirm').tap();
+
+      await expect(page).toHaveURL(/\/manage/, { timeout: 10000 });
+      const active = await page.evaluate(() => localStorage.getItem('activeProfileId'));
+      expect(active).toBe('default-tablet');
     });
   });
 });

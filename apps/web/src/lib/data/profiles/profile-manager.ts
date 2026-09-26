@@ -627,18 +627,45 @@ export function isEReaderUserAgent(userAgent: string): boolean {
   return EREADER_UA_PATTERN.test(userAgent || '');
 }
 
-export type SuggestedProfileId = 'default-mobile' | 'default-ereader';
+export type SuggestedProfileId = 'default-mobile' | 'default-tablet' | 'default-ereader';
+
+export function isTabletUserAgent(userAgent: string, maxTouchPoints = 0): boolean {
+  const ua = userAgent || '';
+  if (/iPad/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && maxTouchPoints > 1) return true;
+  if (/Android/i.test(ua) && !/Mobile/i.test(ua)) return true;
+  return false;
+}
+
+export interface DetectProfileOptions {
+  maxTouchPoints?: number;
+  minScreenDimension?: number;
+  isTablet?: boolean;
+}
 
 /**
  * Binary first-run suggestion: desktop/laptop returns null (no prompt).
- * Anything else preselects Mobile, except E-Ink UAs which preselect E-Reader.
+ * Preselects Tablet for tablet devices/UAs, E-Reader for E-Ink UAs,
+ * and Mobile for phones/handheld devices.
  * Pure function of its inputs so it is unit-testable and SSR-safe.
  */
 export function detectSuggestedProfileId(
   userAgent: string,
-  isMobileDevice: boolean
+  isMobileDevice: boolean,
+  options?: DetectProfileOptions
 ): SuggestedProfileId | null {
   if (isEReaderUserAgent(userAgent)) return 'default-ereader';
+
+  const touchPoints = options?.maxTouchPoints ?? 0;
+  const isTablet =
+    options?.isTablet ??
+    (isTabletUserAgent(userAgent, touchPoints) ||
+      (touchPoints > 0 &&
+        options?.minScreenDimension !== undefined &&
+        options.minScreenDimension >= 600 &&
+        options.minScreenDimension < 1024));
+
+  if (isTablet) return 'default-tablet';
   if (isMobileDevice) return 'default-mobile';
   return null;
 }
