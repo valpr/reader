@@ -105,6 +105,7 @@ async function seedStorageSources(page: Page, sources: SeedSource[]) {
           });
         }
       });
+      db.close();
     },
     { list: sources, version: currentDbVersion }
   );

@@ -117,6 +117,7 @@ test.describe('Book Tags', () => {
         req.onsuccess = () => {
           const db = req.result;
           const tx = db.transaction('lastModified', 'readonly');
+          tx.oncomplete = () => db.close();
           const getAllReq = tx.objectStore('lastModified').getAll();
           getAllReq.onsuccess = () => resolve(getAllReq.result);
           getAllReq.onerror = () => reject(getAllReq.error);

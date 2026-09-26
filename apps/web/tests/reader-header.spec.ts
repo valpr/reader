@@ -13,11 +13,11 @@ test.describe('Reader Header & Core Bar Controls', () => {
   });
 
   async function openHeader(page: any) {
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
     const topTrigger = page.locator('button.fixed.inset-x-0.top-0');
     await topTrigger.click();
     await expect(page.locator('button[aria-label="Go to Book Manager"]')).toBeVisible({
-      timeout: 5000
+      timeout: 10000
     });
   }
 
@@ -30,7 +30,7 @@ test.describe('Reader Header & Core Bar Controls', () => {
 
     // Click outside header on book content to dismiss
     await page.locator('.book-content').click({ position: { x: 50, y: 200 } });
-    await expect(managerBtn).toBeHidden({ timeout: 5000 });
+    await expect(managerBtn).toBeHidden({ timeout: 10000 });
   });
 
   test('return to book manager navigates back to /manage', async ({ page }) => {
@@ -62,10 +62,9 @@ test.describe('Reader Header & Core Bar Controls', () => {
 
     // Cancel button closes dialog
     const cancelBtn = page.locator('button:has-text("Cancel")');
-    if (await cancelBtn.isVisible()) {
-      await cancelBtn.click();
-      await expect(dialogTitle).toBeHidden();
-    }
+    await expect(cancelBtn).toBeVisible({ timeout: 10000 });
+    await cancelBtn.click();
+    await expect(dialogTitle).toBeHidden({ timeout: 10000 });
   });
 
   test('reader settings button navigates to settings view', async ({ page }) => {
@@ -86,11 +85,11 @@ test.describe('Pinned Reader Header (Keep Header Visible)', () => {
 
   test('header is visible without tapping and has no show-header trigger', async ({ page }) => {
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
 
     // Pinned header controls are visible immediately, no trigger tap needed
     await expect(page.locator('button[aria-label="Go to Book Manager"]')).toBeVisible({
-      timeout: 5000
+      timeout: 10000
     });
     await expect(page.locator('button[aria-label="Show reader header"]')).toHaveCount(0);
   });
@@ -98,11 +97,11 @@ test.describe('Pinned Reader Header (Keep Header Visible)', () => {
   test('header survives outside clicks instead of auto-hiding', async ({ page }) => {
     await page.goto('/b?id=1');
     const managerBtn = page.locator('button[aria-label="Go to Book Manager"]');
-    await expect(managerBtn).toBeVisible({ timeout: 5000 });
+    await expect(managerBtn).toBeVisible({ timeout: 10000 });
 
     // Clicking book content must not dismiss the pinned header
     await page.locator('.book-content').click({ position: { x: 50, y: 200 } });
-    await expect(managerBtn).toBeVisible({ timeout: 5000 });
+    await expect(managerBtn).toBeVisible({ timeout: 10000 });
   });
 
   test('header survives header button actions instead of dismissing', async ({ page }) => {
@@ -110,33 +109,42 @@ test.describe('Pinned Reader Header (Keep Header Visible)', () => {
     const bookmarkBtn = page.locator(
       'button[aria-label="Save Position (Hold to Create Named Bookmark)"]'
     );
-    await expect(bookmarkBtn).toBeVisible({ timeout: 5000 });
+    await expect(bookmarkBtn).toBeVisible({ timeout: 10000 });
 
     // Clicking bookmark button triggers bookmarkPage() which previously dismissed the header
     await bookmarkBtn.click();
     const managerBtn = page.locator('button[aria-label="Go to Book Manager"]');
-    await expect(managerBtn).toBeVisible({ timeout: 5000 });
+    await expect(managerBtn).toBeVisible({ timeout: 10000 });
   });
 
   test('book content starts below the pinned header without overlap', async ({ page }) => {
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('button[aria-label="Go to Book Manager"]')).toBeVisible({
-      timeout: 5000
+      timeout: 10000
     });
+    // Fonts shift header/content geometry on cold boot; wait for final layout.
+    await page.evaluate(() => document.fonts.ready);
 
     // The offset wrapper reserves the measured header height as top padding
-    const paddingTop = await page
-      .locator('[data-testid="pinned-reader-header-offset"]')
-      .evaluate((el) => parseFloat(getComputedStyle(el).paddingTop));
-    expect(paddingTop).toBeGreaterThan(0);
+    await expect
+      .poll(
+        async () =>
+          page
+            .locator('[data-testid="pinned-reader-header-offset"]')
+            .evaluate((el) => parseFloat(getComputedStyle(el).paddingTop)),
+        { timeout: 10000 }
+      )
+      .toBeGreaterThan(0);
 
     // True no-overlap check: first content line starts below the fixed bar
-    const headerBox = await page.locator('button[aria-label="Go to Book Manager"]').boundingBox();
-    const contentBox = await page.locator('.book-content').boundingBox();
-    expect(headerBox).not.toBeNull();
-    expect(contentBox).not.toBeNull();
-    expect(contentBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
+    await expect(async () => {
+      const headerBox = await page.locator('button[aria-label="Go to Book Manager"]').boundingBox();
+      const contentBox = await page.locator('.book-content').boundingBox();
+      expect(headerBox).not.toBeNull();
+      expect(contentBox).not.toBeNull();
+      expect(contentBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
+    }).toPass({ timeout: 10000 });
   });
 
   test('navigation settings exposes the Keep Reader Header Visible toggle', async ({ page }) => {

@@ -214,6 +214,7 @@ test.describe('Cloud re-auth deferred UX', () => {
               lastSourceModified: Date.now()
             });
           });
+          db.close();
         },
         { sourceName: CUSTOM_SOURCE, version: currentDbVersion }
       );
