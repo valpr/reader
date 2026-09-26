@@ -58,12 +58,40 @@ test.describe('Sync preferences (M4)', () => {
     await pull.click();
 
     // Confirmation comes first and names the destructive scope.
-    await expect(page.getByText('Replace this device from cloud?')).toBeVisible();
-    const dialog = page.locator('section', { hasText: 'Replace this device from cloud?' });
-    await expect(dialog.getByText(/including deletions/)).toBeVisible();
-    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText('Erase this device and copy from cloud?')).toBeVisible();
+    const dialog = page.locator('section', {
+      hasText: 'Erase this device and copy from cloud?'
+    });
+    await expect(dialog.getByText(/permanently lost/)).toBeVisible();
+    await expect(dialog.getByText(/newest change/)).toBeVisible();
+    const confirm = dialog.getByRole('button', { name: 'Erase this device' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
 
     // The action runs against the named target and reports back.
     await expect(page.getByText(/Recovery (complete|failed)/)).toBeVisible({ timeout: 30000 });
+  });
+
+  test('push recovery warns that cloud-only data is deleted', async ({ page }) => {
+    await page.goto('/');
+    await seedSyncConfig(page, { syncTarget: 'ttu-gdrive-default' });
+    await page.goto('/settings/data');
+    await expect(page.getByRole('tab', { name: 'Data' })).toHaveAttribute('aria-selected', 'true');
+
+    const push = page.getByRole('button', { name: 'Push…' }).first();
+    await expect(push).toBeEnabled();
+    await push.click();
+
+    await expect(page.getByText('Replace the cloud copy with this device?')).toBeVisible();
+    const dialog = page.locator('section', {
+      hasText: 'Replace the cloud copy with this device?'
+    });
+    await expect(dialog.getByText(/permanently deleted/)).toBeVisible();
+    const confirm = dialog.getByRole('button', { name: 'Replace cloud copy' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByText('Replace the cloud copy with this device?')).toHaveCount(0);
   });
 });

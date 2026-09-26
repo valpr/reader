@@ -22,7 +22,15 @@
   import SyncActivityIcon from '$lib/components/cloud/sync-activity-icon.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import Popover from '$lib/components/popover/popover.svelte';
-  import { IconButton, Tooltip, TopBar, OverflowList, CloudStatusIcon } from '@custom-ereader/ui';
+  import {
+    IconButton,
+    Tooltip,
+    TopBar,
+    OverflowList,
+    CloudStatusIcon,
+    GoalProgressChip
+  } from '@custom-ereader/ui';
+  import type { GoalProgressChipState } from '@custom-ereader/ui';
   import { pagePath } from '$lib/data/env';
   import { customReadingPointEnabled$, viewMode$ } from '$lib/data/store';
   import { ViewMode } from '$lib/data/view-mode';
@@ -38,6 +46,13 @@
   export let isBookmarkScreen: boolean;
   export let showCloudWarning = false;
   export let cloudWarningLabel = 'Cloud session expired. Reconnect to resume syncing.';
+  export let goalTimeLabel = '';
+  export let goalTimePercent = 0;
+  export let goalCharLabel = '';
+  export let goalCharPercent = 0;
+  export let goalWindowLabel = '';
+  export let goalRemainingLabel = '';
+  export let goalState: GoalProgressChipState = 'active';
 
   const dispatch = createEventDispatcher<{
     tocClick: void;
@@ -56,6 +71,7 @@
     domainHintClick: void;
     bookManagerClick: void;
     cloudReconnectClick: void;
+    goalClick: void;
   }>();
 
   let bookmarkPressTimer: any;
@@ -195,6 +211,22 @@
       {/if}
 
       <SyncActivityIcon />
+
+      {#if goalTimeLabel !== '' || goalCharLabel !== ''}
+        <GoalProgressChip
+          variant="badge"
+          size="sm"
+          timeLabel={goalTimeLabel}
+          timePercent={goalTimePercent}
+          charLabel={goalCharLabel}
+          charPercent={goalCharPercent}
+          windowLabel={goalWindowLabel}
+          remainingLabel={goalRemainingLabel}
+          state={goalState}
+          label="Current reading goal"
+          on:click={() => dispatch('goalClick')}
+        />
+      {/if}
 
       {#if $viewMode$ === ViewMode.Continuous && !$isMobile$}
         <Tooltip text="Current Autoscroll Speed">

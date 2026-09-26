@@ -35,15 +35,19 @@ for (const width of [412, 360]) {
     await expectNoHorizontalOverflow(page);
 
     await pull.tap();
-    await expect(page.getByText('Replace this device from cloud?')).toBeVisible();
-    const dialog = page.locator('section', { hasText: 'Replace this device from cloud?' });
+    await expect(page.getByText('Erase this device and copy from cloud?')).toBeVisible();
+    const dialog = page.locator('section', { hasText: 'Erase this device and copy from cloud?' });
     await expectDialogFitsViewport(dialog);
+    await expect(dialog.getByText(/permanently lost/)).toBeVisible();
+    const confirm = dialog.getByRole('button', { name: 'Erase this device' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toBeEnabled();
     // Cancel is the safe path on mobile: no network, dialog dismisses.
     const cancel = dialog.getByRole('button', { name: 'Cancel' });
     await expect(cancel).toBeVisible();
     await expect(cancel).toBeEnabled();
     await cancel.tap();
-    await expect(page.getByText('Replace this device from cloud?')).toHaveCount(0);
+    await expect(page.getByText('Erase this device and copy from cloud?')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   });
 }

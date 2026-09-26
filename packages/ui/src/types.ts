@@ -77,3 +77,6 @@ export interface OverflowListItem {
   id: string;
   [key: string]: any;
 }
+
+export type GoalProgressChipState = 'active' | 'complete' | 'overdue';
+export type GoalProgressVariant = 'chip' | 'badge';
