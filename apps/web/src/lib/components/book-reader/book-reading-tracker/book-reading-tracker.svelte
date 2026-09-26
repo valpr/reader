@@ -298,12 +298,12 @@
   let hadError = false;
   let pausedByAutoPause = false;
   let visibilityState: DocumentVisibilityState;
-  let currentReadingGoalStart = '';
-  let currentReadingGoalEnd = '';
-  let remainingTimeInReadingGoalWindow = '';
-  let currentReadingGoal: ReadingGoal | undefined;
-  let currentTimeGoal = 0;
-  let currentCharacterGoal = 0;
+  export let currentReadingGoalStart = '';
+  export let currentReadingGoalEnd = '';
+  export let remainingTimeInReadingGoalWindow = '';
+  export let currentReadingGoal: ReadingGoal | undefined = undefined;
+  export let currentTimeGoal = 0;
+  export let currentCharacterGoal = 0;
   let statistics = new Map<string, BooksDbStatistic>();
   let todayKey = getDateKey($startDayHoursForTracker$);
   let sessionStatistics = getDefaultStatistic(bookTitle, todayKey);
