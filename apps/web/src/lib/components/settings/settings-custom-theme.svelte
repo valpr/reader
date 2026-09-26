@@ -1,20 +1,62 @@
 <script lang="ts">
   import type { ToggleOption } from '$lib/components/button-toggle-group/toggle-option';
   import DialogTemplate from '$lib/components/dialog-template.svelte';
-  import Ripple from '$lib/components/ripple.svelte';
   import SettingsCustomThemeInput from '$lib/components/settings/settings-custom-theme-input.svelte';
-  import { Select } from '@custom-ereader/ui';
-  import { buttonClasses, themedInputClasses } from '$lib/css-classes';
+  import { Button, Card, Input, Select } from '@custom-ereader/ui';
   import { customThemes$, theme$ } from '$lib/data/store';
   import { availableThemes, type CustomThemeValue, type ThemeOption } from '$lib/data/theme-option';
   import { createEventDispatcher, onMount } from 'svelte';
 
-  export let selectedTheme: string;
+  export let selectedTheme: string | undefined = undefined;
   export let existingThemes: ToggleOption<string>[] = [];
 
   const dispatch = createEventDispatcher<{
     close: void;
   }>();
+
+  interface ThemeFieldMeta {
+    key: keyof ThemeOption;
+    label: string;
+    description: string;
+  }
+
+  const THEME_FIELDS: ThemeFieldMeta[] = [
+    {
+      key: 'fontColor',
+      label: 'Main text',
+      description: 'Body copy rendered in the reading view'
+    },
+    {
+      key: 'backgroundColor',
+      label: 'Page background',
+      description: 'Backdrop behind the book text'
+    },
+    {
+      key: 'selectionFontColor',
+      label: 'Selected text',
+      description: 'Text color inside a text selection'
+    },
+    {
+      key: 'selectionBackgroundColor',
+      label: 'Selection highlight',
+      description: 'Background behind selected text'
+    },
+    {
+      key: 'hintFuriganaFontColor',
+      label: 'Hidden furigana text',
+      description: 'Blurred furigana when hints are hidden'
+    },
+    {
+      key: 'hintFuriganaShadowColor',
+      label: 'Hidden furigana shadow',
+      description: 'Shadow / blur color for hidden furigana'
+    },
+    {
+      key: 'tooltipTextFontColor',
+      label: 'Footer & tooltip text',
+      description: 'Page footer, dictionary popups and hints'
+    }
+  ];
 
   let customTheme: Record<keyof ThemeOption, CustomThemeValue> = {
     fontColor: { hexExpression: '#ffffff', alphaValue: 1, rgbaExpression: 'rgba(255,255,255,1)' },
@@ -50,13 +92,21 @@
     }
   };
 
-  let themeToCopy = existingThemes[0].id;
+  let themeToCopy: string = existingThemes[0]?.id ?? '';
   let themeName = '';
-  let themeNameElm: HTMLInputElement;
+  let nameError: string | false = false;
 
+  $: isEditing = Boolean(selectedTheme && $customThemes$[selectedTheme ?? '']);
+  $: dialogTitle = isEditing ? `Edit theme “${selectedTheme}”` : 'Create custom theme';
   $: themeStyle = `color: ${customTheme.fontColor.rgbaExpression}; background-color: ${customTheme.backgroundColor.rgbaExpression}`;
+  $: selectionStyle = `color: ${customTheme.selectionFontColor.rgbaExpression}; background-color: ${customTheme.selectionBackgroundColor.rgbaExpression}`;
+  $: baseOptions = existingThemes.map((theme) => ({ value: theme.id, label: theme.id }));
 
   onMount(() => {
+    if (!selectedTheme) {
+      return;
+    }
+
     const existingThemeObject = $customThemes$[selectedTheme];
 
     if (!existingThemeObject) {
@@ -90,6 +140,10 @@
   }
 
   function handleCopyTheme() {
+    if (!themeToCopy) {
+      return;
+    }
+
     copyTheme(availableThemes.get(themeToCopy) || $customThemes$[themeToCopy]);
   }
 
@@ -129,19 +183,30 @@
     };
   }
 
-  function handleSave() {
-    themeNameElm.setCustomValidity('');
+  function handleNameInput() {
+    if (nameError) {
+      nameError = false;
+    }
+  }
 
-    if (!themeName) {
-      themeNameElm.setCustomValidity('You have to enter a Name!');
-      themeNameElm.reportValidity();
+  function handleSave() {
+    const trimmedName = themeName.trim();
+
+    if (!trimmedName) {
+      nameError = 'Enter a name for this theme.';
       return;
     }
 
-    if (availableThemes.has(themeName)) {
-      themeNameElm.setCustomValidity('This Name is reserved!');
-      themeNameElm.reportValidity();
+    if (availableThemes.has(trimmedName)) {
+      nameError = 'This name is reserved for a built-in palette.';
       return;
+    }
+
+    if (!isEditing || trimmedName !== selectedTheme) {
+      if ($customThemes$[trimmedName] && trimmedName !== selectedTheme) {
+        nameError = 'A custom theme with this name already exists.';
+        return;
+      }
     }
 
     const newTheme: any = {};
@@ -153,12 +218,12 @@
       newTheme[key] = value.rgbaExpression;
     }
 
-    if (selectedTheme && selectedTheme !== themeName) {
+    if (selectedTheme && selectedTheme !== trimmedName) {
       delete $customThemes$[selectedTheme];
     }
 
-    $customThemes$ = { ...$customThemes$, ...{ [themeName]: newTheme } };
-    $theme$ = themeName;
+    $customThemes$ = { ...$customThemes$, ...{ [trimmedName]: newTheme } };
+    $theme$ = trimmedName;
     dispatch('close');
   }
 
@@ -189,83 +254,103 @@
   }
 </script>
 
-<DialogTemplate>
-  <div slot="content">
-    <div
-      class="grid grid-cols-1 gap-2 items-center overflow-auto max-h-[60vh] max-h-[60dvh] min-w-0 sm:grid-cols-[auto_auto_5rem] sm:gap-4"
-    >
-      <Select
-        class="sm:col-span-2"
-        options={existingThemes.map((theme) => ({ value: theme.id, label: theme.id }))}
-        bind:value={themeToCopy}
-      />
-      <button class={buttonClasses} on:click={handleCopyTheme}
-        >Copy
-        <Ripple />
-      </button>
-      <span class="hidden sm:block">Attribute</span>
-      <span class="hidden sm:block">Color</span>
-      <span class="hidden sm:block">Alpha</span>
-      <SettingsCustomThemeInput
-        label="Font"
-        attribute="fontColor"
-        values={customTheme.fontColor}
-        on:color={handleColorValueChange}
-        on:alpha={handleAlphaValueChange}
-      />
-      <SettingsCustomThemeInput
-        label="Background"
-        attribute="backgroundColor"
-        values={customTheme.backgroundColor}
-        on:color={handleColorValueChange}
-        on:alpha={handleAlphaValueChange}
-      />
-      <SettingsCustomThemeInput
-        label="Furigana Partial Hide Font"
-        attribute="hintFuriganaFontColor"
-        values={customTheme.hintFuriganaFontColor}
-        on:color={handleColorValueChange}
-        on:alpha={handleAlphaValueChange}
-      />
-      <SettingsCustomThemeInput
-        label="Furigana Partial/Full Hide Shadow"
-        attribute="hintFuriganaShadowColor"
-        values={customTheme.hintFuriganaShadowColor}
-        on:color={handleColorValueChange}
-        on:alpha={handleAlphaValueChange}
-      />
-      <SettingsCustomThemeInput
-        label="Footer Font"
-        attribute="tooltipTextFontColor"
-        values={customTheme.tooltipTextFontColor}
-        on:color={handleColorValueChange}
-        on:alpha={handleAlphaValueChange}
-      />
-      <input
-        class="{themedInputClasses} sm:col-span-2"
-        type="text"
-        placeholder="Theme Name"
-        bind:value={themeName}
-        bind:this={themeNameElm}
-      />
-      <button
-        class="flex justify-center items-center rounded-md border-2 border-gray-400 p-2 text-lg"
-        style={themeStyle}
+<DialogTemplate data-testid="theme-editor-dialog">
+  <span slot="header" class="min-w-0 break-words [overflow-wrap:anywhere]">{dialogTitle}</span>
+  <div slot="content" class="flex min-w-0 max-w-full flex-col gap-5">
+    <section aria-labelledby="theme-copy-heading" class="flex min-w-0 flex-col gap-2">
+      <h3
+        id="theme-copy-heading"
+        class="text-sm font-semibold text-[var(--astryx-color-fg-primary,#18181b)]"
       >
-        ぁあ
-        <Ripple />
-      </button>
-    </div>
-    <div class="flex mt-4"></div>
+        1. Start from an existing palette
+      </h3>
+      <p
+        class="break-words text-xs text-[var(--astryx-color-fg-secondary,#52525b)] [overflow-wrap:anywhere]"
+      >
+        Copy colors from a built-in or custom palette, then fine-tune them below.
+      </p>
+      <div class="flex w-full max-w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
+        <div class="min-w-0 flex-1">
+          <Select label="Base palette" options={baseOptions} bind:value={themeToCopy} />
+        </div>
+        <Button
+          variant="secondary"
+          on:click={handleCopyTheme}
+          disabled={!themeToCopy}
+          aria-label="Copy colors from {themeToCopy || 'selected'} palette"
+        >
+          Copy colors
+        </Button>
+      </div>
+    </section>
+
+    <section aria-labelledby="theme-colors-heading" class="flex min-w-0 flex-col gap-2">
+      <h3
+        id="theme-colors-heading"
+        class="text-sm font-semibold text-[var(--astryx-color-fg-primary,#18181b)]"
+      >
+        2. Customize colors
+      </h3>
+      <p
+        class="break-words text-xs text-[var(--astryx-color-fg-secondary,#52525b)] [overflow-wrap:anywhere]"
+      >
+        Tap a swatch to pick a color, then adjust its opacity. Changes update the live preview.
+      </p>
+      <div class="grid w-full max-w-full min-w-0 grid-cols-1 gap-2">
+        {#each THEME_FIELDS as field (field.key)}
+          <SettingsCustomThemeInput
+            label={field.label}
+            description={field.description}
+            attribute={field.key}
+            values={customTheme[field.key]}
+            on:color={handleColorValueChange}
+            on:alpha={handleAlphaValueChange}
+          />
+        {/each}
+      </div>
+    </section>
+
+    <section aria-labelledby="theme-name-heading" class="flex min-w-0 flex-col gap-2">
+      <h3
+        id="theme-name-heading"
+        class="text-sm font-semibold text-[var(--astryx-color-fg-primary,#18181b)]"
+      >
+        3. Name & preview
+      </h3>
+      <Input
+        label="Theme name"
+        placeholder="e.g. Night sepia"
+        helperText={isEditing
+          ? 'Renaming creates a copy under the new name.'
+          : 'Saved to your custom palettes and applied immediately.'}
+        error={nameError}
+        bind:value={themeName}
+        on:input={handleNameInput}
+      />
+      <Card variant="flat" padding="md" class="w-full max-w-full min-w-0">
+        <span
+          class="mb-2 block text-xs font-medium text-[var(--astryx-color-fg-secondary,#52525b)]"
+        >
+          Live preview
+        </span>
+        <div
+          class="flex min-h-[88px] w-full max-w-full min-w-0 flex-col justify-center gap-1 rounded-lg border border-[var(--astryx-color-border-default,#e4e4e7)] p-4 break-words [overflow-wrap:anywhere]"
+          style={themeStyle}
+          aria-label="Preview of reader colors"
+        >
+          <span class="text-2xl leading-none">ぁあ Reading preview</span>
+          <span class="text-sm opacity-80">本文の色と背景の組み合わせを確認できます。</span>
+          <span class="mt-1 inline-block w-fit rounded px-1 text-sm" style={selectionStyle}>
+            Selected text preview
+          </span>
+        </div>
+      </Card>
+    </section>
   </div>
-  <div class="mt-2 flex grow justify-between" slot="footer">
-    <button class={buttonClasses} on:click={() => dispatch('close')}>
-      Cancel
-      <Ripple />
-    </button>
-    <button class={buttonClasses} on:click={handleSave}>
-      Save
-      <Ripple />
-    </button>
+  <div slot="footer" class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+    <Button variant="ghost" on:click={() => dispatch('close')}>Cancel</Button>
+    <Button variant="primary" on:click={handleSave}>
+      {isEditing ? 'Save changes' : 'Create theme'}
+    </Button>
   </div>
 </DialogTemplate>
