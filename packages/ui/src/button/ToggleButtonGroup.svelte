@@ -69,50 +69,58 @@
       </button>
 
       {#if option.showIcons && isSelected}
-        <div class="astryx-toggle-actions">
+        <div
+          class="astryx-toggle-actions"
+          role="group"
+          aria-label="Actions for {option.text || option.id}"
+        >
           <button
             type="button"
             class="astryx-action-mini-btn"
-            aria-label="Edit option"
-            title="Edit"
+            aria-label="Edit theme {option.id}"
+            title="Edit theme {option.id}"
             on:click|stopPropagation={() => dispatch('edit', option.id)}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
+              width="14"
+              height="14"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
+              aria-hidden="true"
               ><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path
                 d="m15 5 4 4"
               /></svg
             >
+            <span class="astryx-action-label">Edit</span>
           </button>
           <button
             type="button"
             class="astryx-action-mini-btn is-delete"
-            aria-label="Delete option"
-            title="Delete"
+            aria-label="Delete theme {option.id}"
+            title="Delete theme {option.id}"
             on:click|stopPropagation={() => dispatch('delete', option.id)}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
+              width="14"
+              height="14"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
+              aria-hidden="true"
               ><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
                 d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
               /></svg
             >
+            <span class="astryx-action-label">Delete</span>
           </button>
         </div>
       {/if}
@@ -221,39 +229,57 @@
     cursor: not-allowed;
   }
 
-  /* Mini action buttons for custom theme edit/delete */
+  /* Clearly labelled action buttons for custom theme edit/delete */
   .astryx-toggle-actions {
     display: inline-flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-left: var(--astryx-space-1, 4px);
+    flex-direction: row;
+    align-items: center;
+    gap: var(--astryx-space-1-5, 6px);
+    margin-left: var(--astryx-space-2, 8px);
   }
 
   .astryx-action-mini-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    background: var(--astryx-color-surface-subtle, #f4f4f5);
-    border: 1px solid var(--astryx-color-border-subtle, #e4e4e7);
-    border-radius: var(--astryx-radius-sm, 4px);
+    gap: var(--astryx-space-1, 4px);
+    min-height: 32px;
+    padding: 0 var(--astryx-space-2-5, 10px);
+    background: var(--astryx-color-surface, #ffffff);
+    border: 1px solid var(--astryx-color-border-default, #e4e4e7);
+    border-radius: var(--astryx-radius-md, 6px);
     color: var(--astryx-color-fg-secondary, #52525b);
+    font-size: var(--astryx-font-size-xs, 0.75rem);
+    font-weight: var(--astryx-font-weight-medium, 500);
+    line-height: 1;
+    white-space: nowrap;
     cursor: pointer;
     transition:
       background-color 100ms ease,
-      color 100ms ease;
+      color 100ms ease,
+      border-color 100ms ease;
   }
 
   .astryx-action-mini-btn:hover {
-    background-color: var(--astryx-color-surface-active, #e4e4e7);
+    background-color: var(--astryx-color-surface-subtle, #f4f4f5);
     color: var(--astryx-color-fg-primary, #18181b);
+    border-color: var(--astryx-color-border-strong, #a1a1aa);
+  }
+
+  .astryx-action-mini-btn:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--astryx-color-surface, #fff),
+      0 0 0 4px var(--astryx-color-border-focus, #18181b);
+    outline: none;
   }
 
   .astryx-action-mini-btn.is-delete:hover {
     background-color: var(--astryx-color-danger-subtle, #fee2e2);
     color: var(--astryx-color-danger, #ef4444);
     border-color: var(--astryx-color-danger, #ef4444);
+  }
+
+  .astryx-action-label {
+    line-height: 1;
   }
 </style>
