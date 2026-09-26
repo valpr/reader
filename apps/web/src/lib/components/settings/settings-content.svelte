@@ -51,7 +51,10 @@
   import { logger } from '$lib/data/logger';
   import { pagePath } from '$lib/data/env';
   import { isAppDefault } from '$lib/data/storage/storage-source-manager';
-  import { defaultStorageSources } from '$lib/data/storage/storage-types';
+  import {
+    defaultStorageSources,
+    getFriendlyStorageSourceName
+  } from '$lib/data/storage/storage-types';
   import { isStorageSourceAvailable } from '$lib/data/storage/storage-view';
   import {
     activeProfileId$,
@@ -639,7 +642,11 @@
     enableReaderWakeLock = s.enableReaderWakeLock;
   }
 
-  function confirmAction(dialogHeader: string, dialogMessage: string): Promise<boolean> {
+  function confirmAction(
+    dialogHeader: string,
+    dialogMessage: string,
+    options: { confirmLabel?: string; destructive?: boolean } = {}
+  ): Promise<boolean> {
     return new Promise<boolean>((resolver) => {
       dialogManager.dialogs$.next([
         {
@@ -648,6 +655,8 @@
             dialogHeader,
             dialogMessage,
             contentStyles: 'white-space: pre-line;',
+            confirmLabel: options.confirmLabel ?? 'Confirm',
+            destructive: options.destructive ?? false,
             resolver
           },
           disableCloseOnClick: true
@@ -662,11 +671,17 @@
     const target = $syncTarget$;
     if (!target || isRecovering) return;
 
+    const friendlyTarget = getFriendlyStorageSourceName(target) || target;
     const wasCanceled = await confirmAction(
-      direction === 'push' ? 'Use this device as the source?' : 'Replace this device from cloud?',
       direction === 'push'
-        ? 'Upload everything from this device to the sync target, replacing the cloud copy — including deletions. Use after cloud-side data loss.\n\nReading positions resolve newest-wins either way. This cannot be undone.'
-        : 'Download everything from the sync target, replacing this device — including deletions. Local changes that were never synced will be lost.\n\nReading positions resolve newest-wins either way. This cannot be undone.'
+        ? 'Replace the cloud copy with this device?'
+        : 'Erase this device and copy from cloud?',
+      direction === 'push'
+        ? `Are you sure you want to replace the cloud copy ("${friendlyTarget}") with this device?\n\n- Anything on the cloud that is not on this device will be permanently deleted.\n- Things you deleted here stay deleted there.\n- Reading position keeps the newest change from either side.\n\nThis cannot be undone.`
+        : `Are you sure you want to erase this device and copy from "${friendlyTarget}"?\n\n- Anything on this device that was never synced will be permanently lost.\n- Things deleted in the cloud stay deleted here.\n- Reading position keeps the newest change from either side.\n\nThis cannot be undone.`,
+      direction === 'push'
+        ? { confirmLabel: 'Replace cloud copy', destructive: true }
+        : { confirmLabel: 'Erase this device', destructive: true }
     );
     if (wasCanceled) return;
 
@@ -682,8 +697,8 @@
                 title: 'Recovery complete',
                 message:
                   direction === 'push'
-                    ? 'This device is now the cloud copy.'
-                    : 'This device now matches the cloud copy.'
+                    ? 'Cloud now matches this device.'
+                    : 'This device now matches the cloud.'
               }
         }
       ]);
@@ -1663,11 +1678,11 @@
     <!-- Section 5: Sync Recovery (Advanced, one-shot only) -->
     <ListSection
       title="Sync Recovery"
-      description="One-shot directional syncs with replace semantics. Normal syncs always merge — tag and bookmark removals propagate on their own, even to devices that were offline for weeks; these actions are the only ones that overwrite."
+      description="One-shot fix for divergent devices. Normal sync merges both sides together. These buttons throw one side away instead: anything that exists only on the erased side is permanently lost."
     >
       <ListItem
-        headline="Use this device as the source"
-        description="Upload everything from this device, replacing the cloud copy — including deletions."
+        headline="Make cloud match this device"
+        description="Uploads this device's library data and deletes anything on the cloud that is not here. Use after cloud-side data loss."
       >
         <div slot="suffix">
           <Button
@@ -1681,8 +1696,8 @@
         </div>
       </ListItem>
       <ListItem
-        headline="Replace this device from cloud"
-        description="Download everything from the sync target, replacing this device — including deletions."
+        headline="Make this device match cloud"
+        description="Downloads the cloud copy and deletes anything on this device that was never synced."
       >
         <div slot="suffix">
           <Button
