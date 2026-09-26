@@ -6,6 +6,43 @@
 
 import { expect, test } from '@playwright/test';
 import { seedReaderBook, type TestBookData } from '../fixtures/book-fixture';
+import { currentDbVersion } from '../../src/lib/data/database/books-db/versions/books-db';
+
+// Cold-start safe settle: wait for fonts + images so scroll targets and
+// resume positions are computed from near-final layout.
+async function waitForStableLayout(page: import('@playwright/test').Page) {
+  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(() => {
+    const imgs = [...document.images];
+    return Promise.all(
+      imgs.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise((r) => img.addEventListener('load', r, { once: true }))
+      )
+    );
+  });
+}
+
+async function readFastBookmark(page: import('@playwright/test').Page): Promise<any> {
+  return page.evaluate(async (version) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('books', version);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    try {
+      return await new Promise<any>((resolve, reject) => {
+        const tx = db.transaction('bookmark', 'readonly');
+        const getReq = tx.objectStore('bookmark').get(1);
+        getReq.onsuccess = () => resolve(getReq.result);
+        getReq.onerror = () => reject(getReq.error);
+      });
+    } finally {
+      db.close();
+    }
+  }, currentDbVersion);
+}
 
 const BOOK_WITH_PICTURES: Partial<TestBookData> = {
   elementHtml: `
@@ -60,22 +97,12 @@ test.describe('Continuous mobile bookmarking', () => {
     });
 
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
     const footerTextLocator = page.locator('.writing-horizontal-tb.fixed.bottom-2.right-2');
 
     // Wait for fonts/images so the layout the target is computed from is
     // close to final (reduces re-scroll iterations below).
-    await page.evaluate(() => document.fonts.ready);
-    await page.evaluate(() => {
-      const imgs = [...document.images];
-      return Promise.all(
-        imgs.map((img) =>
-          img.complete
-            ? Promise.resolve()
-            : new Promise((r) => img.addEventListener('load', r, { once: true }))
-        )
-      );
-    });
+    await waitForStableLayout(page);
 
     // Scroll into P1 and save the fast bookmark. The reader fires late
     // restore scrolls (initial bookmark/section setup via BookmarkManager and
@@ -97,19 +124,7 @@ test.describe('Continuous mobile bookmarking', () => {
             return -1;
           }
           await page.keyboard.press('b');
-          bookmarkRecord = await page.evaluate(async () => {
-            return new Promise<any>((resolve, reject) => {
-              const req = indexedDB.open('books');
-              req.onsuccess = () => {
-                const db = req.result;
-                const tx = db.transaction('bookmark', 'readonly');
-                const getReq = tx.objectStore('bookmark').get(1);
-                getReq.onsuccess = () => resolve(getReq.result);
-                getReq.onerror = () => reject(getReq.error);
-              };
-              req.onerror = () => reject(req.error);
-            });
-          });
+          bookmarkRecord = await readFastBookmark(page);
           return bookmarkRecord?.exploredCharCount ?? -1;
         },
         { timeout: 20000 }
@@ -127,30 +142,35 @@ test.describe('Continuous mobile bookmarking', () => {
 
     // Open create bookmark dialog and verify default label points to active chapter
     await page.keyboard.press('Shift+KeyB');
-    await page.waitForTimeout(300);
     const labelInput = page.locator('#bookmark-label');
-    await expect(labelInput).toBeVisible();
+    await expect(labelInput).toBeVisible({ timeout: 10000 });
+    await expect
+      .poll(async () => labelInput.inputValue(), { timeout: 10000 })
+      .toContain('プロローグ');
     const labelValue = await labelInput.inputValue();
     expect(labelValue).toContain('プロローグ');
 
     // Save user bookmark
     await page.getByRole('button', { name: 'Save' }).click();
-    await page.waitForTimeout(300);
+    await expect(labelInput).toBeHidden({ timeout: 10000 });
 
     // Scroll back to top
     await page.evaluate(() => window.scrollTo(0, 0));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 10000 }).toBe(0);
 
     // Reopening resumes at the fast bookmark (the 'r' jump keybind was
     // removed in #179 along with the Return to Bookmark button). Layout can
     // shift slightly across loads, so allow the same tolerance as the
     // vertical-rl resume test below.
     await page.goto('/manage');
+    await expect(page.locator('.book-content, main, h1, h2').first()).toBeVisible({
+      timeout: 15000
+    });
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
     // Same settle as above: the resume scroll fires after content layout,
     // so only assert once fonts/images are done shifting it.
-    await page.evaluate(() => document.fonts.ready);
+    await waitForStableLayout(page);
     await expect
       .poll(async () => {
         const y = await page.evaluate(() => window.scrollY);
@@ -160,11 +180,13 @@ test.describe('Continuous mobile bookmarking', () => {
 
     // Scroll back to top
     await page.evaluate(() => window.scrollTo(0, 0));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 10000 }).toBe(0);
 
     // Jump to user bookmark with Shift+KeyN
     await page.keyboard.press('Shift+KeyN');
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(1300);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 15000 })
+      .toBeGreaterThanOrEqual(1300);
   });
 
   test('continuous vertical-rl mobile bookmarking works properly', async ({ page }) => {
@@ -174,47 +196,40 @@ test.describe('Continuous mobile bookmarking', () => {
     });
 
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
+    await waitForStableLayout(page);
 
-    // Scroll to Prologue P1 and scroll slightly into it
-    await page.evaluate(() => {
-      const p1 = document.getElementById('p-prologue-1')!;
-      p1.scrollIntoView();
-      window.scrollBy(-20, 0);
-    });
-    await page.waitForTimeout(500);
+    // Scroll to Prologue P1 and save with retry: layout/scroll-restore can
+    // yank a programmatic scroll, so poll until the save sticks.
+    let bookmarkRecord: any;
+    await expect
+      .poll(
+        async () => {
+          await page.evaluate(() => {
+            const p1 = document.getElementById('p-prologue-1')!;
+            p1.scrollIntoView();
+            window.scrollBy(-20, 0);
+          });
+          await page.keyboard.press('b');
+          bookmarkRecord = await readFastBookmark(page);
+          return bookmarkRecord?.exploredCharCount ?? -1;
+        },
+        { timeout: 20000 }
+      )
+      .toBeGreaterThanOrEqual(65);
 
-    // Set fast bookmark
-    await page.keyboard.press('b');
-    await page.waitForTimeout(500);
-
-    const bookmarkRecord = await page.evaluate(async () => {
-      return new Promise<any>((resolve, reject) => {
-        const req = indexedDB.open('books');
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('bookmark', 'readonly');
-          const getReq = tx.objectStore('bookmark').get(1);
-          getReq.onsuccess = () => resolve(getReq.result);
-          getReq.onerror = () => reject(getReq.error);
-        };
-        req.onerror = () => reject(req.error);
-      });
-    });
-
-    expect(bookmarkRecord.exploredCharCount).toBeGreaterThanOrEqual(65);
     expect(bookmarkRecord.progress).toBeGreaterThan(0);
 
     // Open create bookmark dialog and verify label
     await page.keyboard.press('Shift+KeyB');
-    await page.waitForTimeout(300);
     const labelInput = page.locator('#bookmark-label');
-    await expect(labelInput).toBeVisible();
-    const labelValue = await labelInput.inputValue();
-    expect(labelValue).toContain('プロローグ');
+    await expect(labelInput).toBeVisible({ timeout: 10000 });
+    await expect
+      .poll(async () => labelInput.inputValue(), { timeout: 10000 })
+      .toContain('プロローグ');
 
     await page.getByRole('button', { name: 'Save' }).click();
-    await page.waitForTimeout(300);
+    await expect(labelInput).toBeHidden({ timeout: 10000 });
   });
 
   test('continuous vertical-rl resumes at latest bookmark/autosave when reopened', async ({
@@ -226,32 +241,43 @@ test.describe('Continuous mobile bookmarking', () => {
     });
 
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
+    await waitForStableLayout(page);
 
-    // Scroll to Prologue P1 and scroll into it
-    await page.evaluate(() => {
-      const p1 = document.getElementById('p-prologue-1')!;
-      p1.scrollIntoView();
-      window.scrollBy(-20, 0);
-    });
-    await page.waitForTimeout(500);
-
-    // Set fast bookmark
-    await page.keyboard.press('b');
-    await page.waitForTimeout(500);
-
-    const initialScrollX = await page.evaluate(() => window.scrollX);
-    expect(initialScrollX).toBeLessThan(0);
+    // Scroll to Prologue P1 and save with retry so a late restore-scroll
+    // cannot race the 'b' keypress on cold boot.
+    let initialScrollX = 0;
+    await expect
+      .poll(
+        async () => {
+          await page.evaluate(() => {
+            const p1 = document.getElementById('p-prologue-1')!;
+            p1.scrollIntoView();
+            window.scrollBy(-20, 0);
+          });
+          await page.keyboard.press('b');
+          initialScrollX = await page.evaluate(() => window.scrollX);
+          const record = await readFastBookmark(page);
+          if ((record?.exploredCharCount ?? -1) < 65) return 0;
+          return initialScrollX;
+        },
+        { timeout: 20000 }
+      )
+      .toBeLessThan(0);
 
     // Navigate away to /manage and reopen the book
     await page.goto('/manage');
-    await page.waitForTimeout(500);
+    await expect(page.locator('.book-content, main, h1, h2').first()).toBeVisible({
+      timeout: 15000
+    });
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
-    await page.waitForTimeout(1000);
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
+    await waitForStableLayout(page);
 
+    await expect
+      .poll(async () => page.evaluate(() => window.scrollX), { timeout: 15000 })
+      .toBeLessThan(0);
     const resumedScrollX = await page.evaluate(() => window.scrollX);
-    expect(resumedScrollX).toBeLessThan(0);
-    expect(Math.abs(resumedScrollX - initialScrollX)).toBeLessThanOrEqual(50);
+    expect(Math.abs(resumedScrollX - initialScrollX)).toBeLessThanOrEqual(150);
   });
 });

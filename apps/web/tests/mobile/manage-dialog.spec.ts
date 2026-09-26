@@ -54,7 +54,10 @@ test.describe('Mobile: book details dialog', () => {
     await expectDialogFitsViewport(dialog);
 
     const resetBtn = page.getByTestId('reset-progress-button');
-    await resetBtn.scrollIntoViewIfNeeded();
+    // Center the button in the scrollable dialog: scrollIntoViewIfNeeded can
+    // leave it at the bottom edge tucked under the sticky footer, which then
+    // intercepts the tap on every retry.
+    await resetBtn.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await expect(resetBtn).toBeVisible();
     await resetBtn.tap();
 
@@ -72,6 +75,7 @@ test.describe('Mobile: book details dialog', () => {
     await expect(resetBtn).toBeVisible();
 
     // Confirm tap resets and closes dialog
+    await resetBtn.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await resetBtn.tap();
     await confirmBtn.tap();
     await expect(dialog).not.toBeVisible();

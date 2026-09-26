@@ -23,7 +23,6 @@
   import type { ToggleOption } from '$lib/components/button-toggle-group/toggle-option';
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import MessageDialog from '$lib/components/message-dialog.svelte';
-  import Ripple from '$lib/components/ripple.svelte';
   import SettingsCustomTheme from '$lib/components/settings/settings-custom-theme.svelte';
   import SettingsDimensionPopover from '$lib/components/settings/settings-dimension-popover.svelte';
   import SettingsReadingGoals from '$lib/components/settings/settings-reading-goals.svelte';
@@ -959,12 +958,9 @@
                 }}
               >
                 {#if browser}
-                  <button
-                    type="button"
-                    title="Create new custom theme"
+                  <Button
+                    variant="outline"
                     aria-label="Create new custom theme"
-                    class="inline-flex items-center justify-center h-[38px] px-3.5 rounded-md border border-dashed transition-opacity cursor-pointer text-sm hover:opacity-80"
-                    style="color: var(--astryx-color-fg-primary, inherit); border-color: var(--astryx-color-border-strong, #71717a); background-color: var(--astryx-color-surface-subtle, transparent);"
                     on:click={() =>
                       dialogManager.dialogs$.next([
                         {
@@ -973,9 +969,11 @@
                         }
                       ])}
                   >
-                    <Fa icon={faPlus} class="mx-1" />
-                    <Ripple />
-                  </button>
+                    <span slot="prefix" class="inline-flex items-center" aria-hidden="true">
+                      <Fa icon={faPlus} />
+                    </span>
+                    New custom theme
+                  </Button>
                 {/if}
               </ButtonToggleGroup>
             </ListItem>

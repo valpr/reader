@@ -240,8 +240,11 @@
       </div>
 
       {#if onResetProgress}
+        <!-- pb-24: trailing content must clear the sticky dialog footer when
+          the dialog scrolls on short viewports, otherwise the reset button
+          ends up tucked under the footer and is untappable. -->
         <div
-          class="mt-6 border-t border-[var(--astryx-color-border-subtle,rgba(0,0,0,0.1))] pt-4"
+          class="mt-6 border-t border-[var(--astryx-color-border-subtle,rgba(0,0,0,0.1))] pt-4 pb-24"
           data-testid="reset-progress-section"
         >
           {#if showResetConfirm}

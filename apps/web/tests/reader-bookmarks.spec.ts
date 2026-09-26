@@ -24,9 +24,10 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
 
   test('fast bookmark key (KeyB) updates bookmark in IndexedDB', async ({ page }) => {
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
     const footerTextLocator = page.locator('.writing-horizontal-tb.fixed.bottom-2.right-2');
-    const initialText = await footerTextLocator.innerText();
+    await expect(footerTextLocator).toContainText(/\d+/, { timeout: 15000 });
+    const initialText = (await footerTextLocator.textContent()) ?? '';
 
     // Advance to next page
     await page.keyboard.press('PageDown');
@@ -47,6 +48,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
             req.onsuccess = () => {
               const db = req.result;
               const tx = db.transaction('bookmark', 'readonly');
+              tx.oncomplete = () => db.close();
               const getReq = tx.objectStore('bookmark').get(1);
               getReq.onsuccess = () => resolve(getReq.result);
               getReq.onerror = () => reject(getReq.error);
@@ -66,9 +68,10 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     page
   }) => {
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
     const footerTextLocator = page.locator('.writing-horizontal-tb.fixed.bottom-2.right-2');
-    const initialText = await footerTextLocator.innerText();
+    await expect(footerTextLocator).toContainText(/\d+/, { timeout: 15000 });
+    const initialText = (await footerTextLocator.textContent()) ?? '';
 
     // Advance 2 pages
     await page.keyboard.press('PageDown');
@@ -89,6 +92,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
             req.onsuccess = () => {
               const db = req.result;
               const tx = db.transaction('bookmark', 'readonly');
+              tx.oncomplete = () => db.close();
               const getReq = tx.objectStore('bookmark').get(1);
               getReq.onsuccess = () => resolve(getReq.result);
               getReq.onerror = () => reject(getReq.error);
@@ -141,6 +145,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
               req.onsuccess = () => {
                 const db = req.result;
                 const tx = db.transaction('userBookmark', 'readonly');
+                tx.oncomplete = () => db.close();
                 const getAllReq = tx.objectStore('userBookmark').getAll();
                 getAllReq.onsuccess = () => resolve(getAllReq.result);
                 getAllReq.onerror = () => reject(getAllReq.error);
@@ -202,6 +207,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
         req.onsuccess = () => {
           const db = req.result;
           const tx = db.transaction('userBookmark', 'readonly');
+          tx.oncomplete = () => db.close();
           const getAllReq = tx.objectStore('userBookmark').getAll();
           getAllReq.onsuccess = () => resolve(getAllReq.result);
           getAllReq.onerror = () => reject(getAllReq.error);
@@ -298,6 +304,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
         getAllReq.onsuccess = () => r(getAllReq.result);
         getAllReq.onerror = () => j(getAllReq.error);
       });
+      db.close();
 
       return {
         passedDataError,
@@ -370,6 +377,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
         req.onsuccess = () => {
           const db = req.result;
           const tx = db.transaction('userBookmark', 'readonly');
+          tx.oncomplete = () => db.close();
           const getAllReq = tx.objectStore('userBookmark').getAll();
           getAllReq.onsuccess = () => {
             const row = (getAllReq.result as any[]).find((b) => b.label === 'Neko Highlight');

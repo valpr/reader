@@ -552,7 +552,10 @@ test.describe('Sync conflicts (M3)', () => {
       const events: string[] = [];
       const slow = (label: string) => async () => {
         events.push(`${label}-start`);
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Yield to force overlap between the two queued runSerialized tasks.
+        // Timer duration is irrelevant to ordering (the queue guarantees it);
+        // keep it short so cold boots don't pay wall-clock cost.
+        await new Promise((resolve) => setTimeout(resolve, 10));
         events.push(`${label}-end`);
         return label;
       };
