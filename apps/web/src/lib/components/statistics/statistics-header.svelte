@@ -87,8 +87,8 @@
         {#if item.id === 'dataControls'}
           <Tooltip
             text={$statisticsTitleFilterEnabled$
-              ? `Advanced Filtering (${$statisticsScopeSummary$.selectedTitles} of ${$statisticsScopeSummary$.totalTitles} titles)`
-              : 'Advanced Filtering not applicable'}
+              ? `Filter (${$statisticsScopeSummary$.selectedTitles}/${$statisticsScopeSummary$.totalTitles} 📚)`
+              : 'Filter not applicable'}
           >
             <span class="relative inline-flex">
               <IconButton
@@ -230,8 +230,8 @@
                     >
                       <Fa icon={faFilter} class="w-4 text-center opacity-70" />
                       <span
-                        >Open Advanced Filtering ({$statisticsScopeSummary$.selectedTitles} of {$statisticsScopeSummary$.totalTitles}
-                        titles)</span
+                        >Filter ({$statisticsScopeSummary$.selectedTitles}/{$statisticsScopeSummary$.totalTitles}
+                        📚)</span
                       >
                     </button>
                   {:else if oItem.id === 'backToBook'}
