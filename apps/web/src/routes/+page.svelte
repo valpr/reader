@@ -1,14 +1,43 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
+  import ProfileChoiceModal from '$lib/components/profile-choice-modal.svelte';
   import { pagePath } from '$lib/data/env';
   import { logger } from '$lib/data/logger';
+  import {
+    applyProfileById,
+    detectSuggestedProfileId,
+    isFirstTimeProfileUser,
+    markProfileChoiceSeen,
+    type SuggestedProfileId
+  } from '$lib/data/profiles/profile-manager';
   import { database } from '$lib/data/store';
   import { formatPageTitle } from '$lib/functions/format-page-title';
   import { observe } from '$lib/functions/rxjs/use-observable';
+  import { isMobile } from '$lib/functions/utils';
   import { catchError, map, of, tap } from 'rxjs';
   import { onMount } from 'svelte';
 
   const targetManage = `${pagePath}/manage`;
+
+  // First-run profile choice lives ONLY on this landing route so the book
+  // library manage screen (and every spec that loads it directly) never mounts
+  // it. Desktop/laptop visitors never see it (detectSuggestedProfileId null).
+  let showProfileChoice = false;
+  let preselectedProfileId: SuggestedProfileId = 'default-mobile';
+  let choicePending = false;
+  let pendingTarget: string | null = null;
+
+  if (browser && isFirstTimeProfileUser()) {
+    const suggested = detectSuggestedProfileId(window.navigator.userAgent || '', isMobile(window));
+    if (suggested) {
+      preselectedProfileId = suggested;
+      // Set before the autoNavigate$ subscription below can emit, so the
+      // redirect below waits for the user's choice.
+      choicePending = true;
+      showProfileChoice = true;
+    }
+  }
 
   const autoNavigate$ = database.lastItem$.pipe(
     map((lastItem) => (lastItem ? `${pagePath}/b?id=${lastItem.dataId}` : targetManage)),
@@ -17,14 +46,29 @@
       return of(targetManage);
     }),
     tap((target) => {
-      goto(target);
+      pendingTarget = target;
+      if (!choicePending) {
+        goto(target);
+      }
     })
   );
+
+  function resolveChoice(selectedId: SuggestedProfileId | null) {
+    if (selectedId) {
+      applyProfileById(selectedId);
+    }
+    markProfileChoiceSeen();
+    choicePending = false;
+    showProfileChoice = false;
+    goto(pendingTarget ?? targetManage);
+  }
 
   onMount(() => {
     // Safety fallback: if autoNavigate$ does not trigger within 1.5s, navigate to manage
     const timer = setTimeout(() => {
-      goto(targetManage);
+      if (!choicePending) {
+        goto(targetManage);
+      }
     }, 1500);
 
     return () => clearTimeout(timer);
@@ -112,3 +156,10 @@
     </a>
   </footer>
 </div>
+
+<ProfileChoiceModal
+  bind:open={showProfileChoice}
+  preselectedId={preselectedProfileId}
+  on:confirm={(e) => resolveChoice(e.detail)}
+  on:close={() => resolveChoice(null)}
+/>

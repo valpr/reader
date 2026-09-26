@@ -618,6 +618,57 @@ export async function syncProfilesToCloudTarget(): Promise<string | undefined> {
 
 export const PROFILES_SCHEMA_VERSION = 3;
 
+export const PROFILE_CHOICE_SEEN_KEY = 'profileChoiceSeen';
+
+const EREADER_UA_PATTERN =
+  /kindle|silk-accelerated|kobo|tolino|onyx|boox|likebook|pocketbook|nook|e-ink|eink|ereader/i;
+
+export function isEReaderUserAgent(userAgent: string): boolean {
+  return EREADER_UA_PATTERN.test(userAgent || '');
+}
+
+export type SuggestedProfileId = 'default-mobile' | 'default-ereader';
+
+/**
+ * Binary first-run suggestion: desktop/laptop returns null (no prompt).
+ * Anything else preselects Mobile, except E-Ink UAs which preselect E-Reader.
+ * Pure function of its inputs so it is unit-testable and SSR-safe.
+ */
+export function detectSuggestedProfileId(
+  userAgent: string,
+  isMobileDevice: boolean
+): SuggestedProfileId | null {
+  if (isEReaderUserAgent(userAgent)) return 'default-ereader';
+  if (isMobileDevice) return 'default-mobile';
+  return null;
+}
+
+/**
+ * True only for first-timers: the onboarding choice was never answered and no
+ * active profile was ever persisted. Reads raw localStorage (not the stores,
+ * whose in-memory defaults would mask a fresh install).
+ */
+export function isFirstTimeProfileUser(): boolean {
+  if (!browser) return false;
+  try {
+    return (
+      localStorage.getItem(PROFILE_CHOICE_SEEN_KEY) === null &&
+      localStorage.getItem('activeProfileId') === null
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function markProfileChoiceSeen(): void {
+  if (!browser) return;
+  try {
+    localStorage.setItem(PROFILE_CHOICE_SEEN_KEY, '1');
+  } catch {
+    // Storage may be unavailable (private mode); the modal simply may reappear.
+  }
+}
+
 const EREADER_PRE_V3_DESCRIPTION =
   'High contrast & medium font weight for E-Ink devices (20px font, 500 weight)';
 
