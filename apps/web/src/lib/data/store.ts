@@ -24,7 +24,11 @@ import {
 import { BlurMode } from '$lib/data/blur-mode';
 import type { UserFont } from '$lib/data/fonts';
 import { MergeMode } from '$lib/data/merge-mode';
-import { defaultReaderProfiles, type ReaderProfile } from '$lib/data/profiles/profile-types';
+import {
+  defaultReaderProfiles,
+  buildDefaultReaderProfiles,
+  type ReaderProfile
+} from '$lib/data/profiles/profile-types';
 import type { ReadingGoal } from '$lib/data/reading-goal';
 import { SortDirection, type SortOption } from '$lib/data/sort-types';
 import type { LibraryFilters } from '$lib/data/library-filters';
@@ -57,7 +61,11 @@ import {
   writableObjectLocalStorageSubject
 } from './internal/writable-object-local-storage-subject';
 import type { TextMarginMode } from './text-margin-mode';
-import type { ThemeOption } from './theme-option';
+import {
+  getSystemPreferredReaderTheme,
+  LIGHT_READER_THEME,
+  type ThemeOption
+} from './theme-option';
 import type { VerticalTextOrientation } from './vertical-text-orientation';
 import { ViewMode } from './view-mode';
 import type { WritingMode } from './writing-mode';
@@ -71,7 +79,7 @@ export const appThemeMode$ = writableStringLocalStorageSubject<AppThemeMode>()(
   'appTheme',
   'system'
 );
-export const theme$ = writableStringLocalStorageSubject()('theme', 'light-theme');
+export const theme$ = writableStringLocalStorageSubject()('theme', getSystemPreferredReaderTheme());
 export const customThemes$ = writableObjectLocalStorageSubject<Record<string, ThemeOption>>()(
   'customThemes',
   {}
@@ -460,9 +468,15 @@ export const lastReadingGoalsModified$ = writableNumberLocalStorageSubject()(
   0
 );
 
+function getInitialReaderProfiles(): ReaderProfile[] {
+  const preferred = getSystemPreferredReaderTheme();
+  if (preferred === LIGHT_READER_THEME) return defaultReaderProfiles;
+  return buildDefaultReaderProfiles(preferred);
+}
+
 export const readerProfiles$ = writableArrayLocalStorageSubject<ReaderProfile>()(
   'readerProfiles',
-  defaultReaderProfiles
+  getInitialReaderProfiles()
 );
 
 export const activeProfileId$ = writableStringLocalStorageSubject()(

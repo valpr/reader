@@ -250,3 +250,19 @@ export const defaultReaderProfiles: ReaderProfile[] = [
     settings: defaultEReaderSettings
   }
 ];
+
+/**
+ * Fresh default profile list for first-run seeding. Mirrors
+ * `defaultReaderProfiles` but swaps the reader palette to the given theme for
+ * every profile except E-Reader, which stays forced-light: E-Ink panels are
+ * reflective with a front light, so a dark palette blooms and wastes power.
+ * Pass `getSystemPreferredReaderTheme()` to seed new users from their OS
+ * preference. Stored profiles always win, so existing users are unaffected.
+ */
+export function buildDefaultReaderProfiles(readerTheme: string): ReaderProfile[] {
+  return defaultReaderProfiles.map((profile) =>
+    profile.id === 'default-ereader'
+      ? profile
+      : { ...profile, settings: { ...profile.settings, theme: readerTheme } }
+  );
+}

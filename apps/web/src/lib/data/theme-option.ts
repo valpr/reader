@@ -188,3 +188,29 @@ export const availableThemes = new Map(
     themeObjValueToStringValue(value)
   ])
 );
+
+export const LIGHT_READER_THEME = 'light-theme';
+export const DARK_READER_THEME = 'gray-theme';
+
+/**
+ * New-user default reader palette. The app shell (`appThemeMode$ = 'system'`)
+ * already follows the OS, but the reader palette (`theme$`) is an independent
+ * setting that was always seeded as `light-theme` — so dark-OS users got a
+ * dark library with a white reader. Seed from `prefers-color-scheme` instead.
+ * Only used for initial defaults; a stored value always wins, so existing
+ * users are never migrated.
+ */
+export function getSystemPreferredReaderTheme(): string {
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches
+    ) {
+      return DARK_READER_THEME;
+    }
+  } catch {
+    // No matchMedia (SSR, odd WebViews) — fall through to light.
+  }
+  return LIGHT_READER_THEME;
+}
