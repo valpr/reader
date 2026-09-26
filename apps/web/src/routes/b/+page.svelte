@@ -114,6 +114,7 @@
     isTrackerMenuOpen$,
     isTrackerPaused$
   } from '$lib/components/book-reader/book-reading-tracker/book-reading-tracker';
+  import type { GoalProgressChipState } from '@custom-ereader/ui';
   import BookReadingTracker from '$lib/components/book-reader/book-reading-tracker/book-reading-tracker.svelte';
   import {
     getChapterData,
@@ -189,10 +190,11 @@
     executeReplicate$,
     type ReplicationContext
   } from '$lib/functions/replication/replication-progress';
-  import { getDateKey } from '$lib/functions/statistic-util';
+  import { getDateKey, secondsToMinutes } from '$lib/functions/statistic-util';
   import { clickOutside } from '$lib/functions/use-click-outside';
   import {
     convertRemToPixels,
+    caluclatePercentage,
     dummyFn,
     isMobile$,
     limitToRange,
@@ -249,6 +251,28 @@
   let showTrackerIcon = false;
   let wasTrackerPaused = true;
   let frozenPosition = -1;
+  let readerGoal: import('$lib/data/reading-goal').ReadingGoal | undefined;
+  let readerGoalTime = 0;
+  let readerGoalChars = 0;
+  let readerGoalStart = '';
+  let readerGoalEnd = '';
+  let readerGoalRemaining = '';
+  let readerGoalBadgeState: GoalProgressChipState = 'active';
+
+  $: readerGoalTimePercent = readerGoal?.timeGoal
+    ? caluclatePercentage(readerGoalTime, readerGoal.timeGoal)
+    : 0;
+  $: readerGoalCharPercent = readerGoal?.characterGoal
+    ? caluclatePercentage(readerGoalChars, readerGoal.characterGoal)
+    : 0;
+  $: readerGoalBadgeState =
+    readerGoal &&
+    ((readerGoal.timeGoal && readerGoalTimePercent < 100) ||
+      (readerGoal.characterGoal && readerGoalCharPercent < 100))
+      ? 'active'
+      : readerGoal
+        ? 'complete'
+        : 'active';
   let skipFirstFreezeChange = false;
   let bookCompleted = false;
   let confettiWidthModifier = 36;
@@ -2373,6 +2397,20 @@
         ? `Cloud session expired for ${getFriendlyStorageSourceName(expiredSyncTarget)}. Reconnect to resume syncing.`
         : 'Cloud session expired. Reconnect to resume syncing.'}
       on:cloudReconnectClick={handleCloudReconnect}
+      goalTimeLabel={readerGoal?.timeGoal
+        ? `${secondsToMinutes(readerGoalTime)} / ${secondsToMinutes(readerGoal.timeGoal)} Min (${readerGoalTimePercent}%)`
+        : ''}
+      goalTimePercent={readerGoalTimePercent}
+      goalCharLabel={readerGoal?.characterGoal
+        ? `${readerGoalChars} / ${readerGoal.characterGoal} Characters (${readerGoalCharPercent}%)`
+        : ''}
+      goalCharPercent={readerGoalCharPercent}
+      goalWindowLabel={readerGoalStart && readerGoalEnd && readerGoalStart !== readerGoalEnd
+        ? `${readerGoalStart} - ${readerGoalEnd}`
+        : readerGoalStart}
+      goalRemainingLabel={readerGoalRemaining}
+      goalState={readerGoalBadgeState}
+      on:goalClick={() => isTrackerMenuOpen$.next(true)}
     />
   </div>
 {/if}
@@ -2391,6 +2429,12 @@
       {blockDataUpdates}
       bind:wasTrackerPaused
       bind:this={trackerElm}
+      bind:currentReadingGoal={readerGoal}
+      bind:currentTimeGoal={readerGoalTime}
+      bind:currentCharacterGoal={readerGoalChars}
+      bind:currentReadingGoalStart={readerGoalStart}
+      bind:currentReadingGoalEnd={readerGoalEnd}
+      bind:remainingTimeInReadingGoalWindow={readerGoalRemaining}
       on:freezeCurrentLocation={freezeTrackerPosition}
       on:statisticsSaved={() => {
         if (!blockDataUpdates) {

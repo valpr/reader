@@ -27,5 +27,6 @@ export { default as Tabs } from './tabs/Tabs.svelte';
 export { default as TopBar } from './top-bar/TopBar.svelte';
 export { default as CloudStatusIcon } from './cloud-status/CloudStatusIcon.svelte';
 export { default as OverflowList } from './overflow-list/OverflowList.svelte';
+export { default as GoalProgressChip } from './goal-progress/GoalProgressChip.svelte';
 
 export * from './types';

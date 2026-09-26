@@ -14,24 +14,27 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/settings/reader/profiles');
 
-    // Ensure Reader Profiles section is loaded
-    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
-    // Tooltips require JS hydration
-    await page.waitForLoadState('networkidle');
+    // Ensure Reader Profiles section is loaded (also signals JS hydration;
+    // networkidle never settles reliably under Vite HMR).
+    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 15000 });
 
     // Find Rename profile button on the default profile card
     const renameButton = page.getByRole('button', { name: 'Rename profile' }).first();
-    await expect(renameButton).toBeVisible();
+    await expect(renameButton).toBeVisible({ timeout: 15000 });
 
     const buttonBox = await renameButton.boundingBox();
     expect(buttonBox).not.toBeNull();
 
-    // Hover over the rename button
-    await renameButton.hover();
-
-    // Wait for tooltip to appear
+    // Hover with retry: on cold boot the first hover can land before Svelte
+    // hydration swaps the DOM, leaving the pointer "inside" with no fresh
+    // mouseenter. Moving away first guarantees each retry fires mouseenter,
+    // then the delayed (150ms) tooltip shows.
     const tooltip = page.locator('.astryx-tooltip', { hasText: 'Rename profile' });
-    await expect(tooltip).toBeVisible();
+    await expect(async () => {
+      await page.mouse.move(0, 0);
+      await renameButton.hover();
+      await expect(tooltip).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
 
     const tooltipBox = await tooltip.boundingBox();
     expect(tooltipBox).not.toBeNull();
@@ -59,18 +62,19 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/settings/reader/profiles');
 
-    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 10000 });
-    // Tooltips require JS hydration
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('text=Reader Profiles').first()).toBeVisible({ timeout: 15000 });
 
     const duplicateButton = page.getByRole('button', { name: 'Duplicate profile' }).first();
-    await expect(duplicateButton).toBeVisible();
+    await expect(duplicateButton).toBeVisible({ timeout: 15000 });
 
-    await duplicateButton.hover();
     const tooltip = page.locator('.astryx-tooltip', {
       hasText: 'Duplicate profile'
     });
-    await expect(tooltip).toBeVisible();
+    await expect(async () => {
+      await page.mouse.move(0, 0);
+      await duplicateButton.hover();
+      await expect(tooltip).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
 
     const tooltipBox = await tooltip.boundingBox();
     expect(tooltipBox).not.toBeNull();
@@ -88,14 +92,16 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await seedLibraryItem(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/manage');
-    await page.waitForLoadState('networkidle');
 
     const importButton = page.getByTestId('library-import-button');
-    await expect(importButton).toBeVisible();
+    await expect(importButton).toBeVisible({ timeout: 15000 });
 
-    await importButton.hover();
     const importTooltip = page.locator('.astryx-tooltip', { hasText: 'Import Books or Backup' });
-    await expect(importTooltip).toBeVisible();
+    await expect(async () => {
+      await page.mouse.move(0, 0);
+      await importButton.hover();
+      await expect(importTooltip).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
 
     // Opening the dropdown must dismiss the trigger tooltip so it cannot
     // overlap the menu (native title behavior).
@@ -110,14 +116,18 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await seedLibraryItem(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/manage');
-    await page.waitForLoadState('networkidle');
 
     const importButton = page.getByTestId('library-import-button');
-    await expect(importButton).toBeVisible();
+    await expect(importButton).toBeVisible({ timeout: 15000 });
 
-    await importButton.focus();
     const importTooltip = page.locator('.astryx-tooltip', { hasText: 'Import Books or Backup' });
-    await expect(importTooltip).toBeVisible();
+    await expect(async () => {
+      // Blur first: re-focusing an already-focused element fires no focusin,
+      // which stalls retries when the first focus lands pre-hydration.
+      await importButton.evaluate((el) => (el as HTMLElement).blur()).catch(() => {});
+      await importButton.focus();
+      await expect(importTooltip).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
 
     await importButton.press('Enter');
     await expect(page.getByRole('button', { name: 'Import File(s)' })).toBeVisible();
@@ -130,16 +140,23 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/settings/reader');
 
-    // Find "Manage Installed Web Fonts" button if available in the DOM
+    // Find "Manage Installed Web Fonts" button if available in the DOM.
+    // The button only renders when the fonts section is present, so skip
+    // gracefully when absent instead of failing cold boots.
     const fontButton = page.getByRole('button', { name: 'Manage Installed Web Fonts' }).first();
-    if (await fontButton.isVisible()) {
+    if ((await fontButton.count()) === 0) return;
+    await expect(fontButton).toBeVisible({ timeout: 15000 });
+    await page.evaluate(() => document.fonts.ready);
+    {
       const buttonBox = await fontButton.boundingBox();
       expect(buttonBox).not.toBeNull();
 
-      await fontButton.hover();
-
       const tooltip = page.locator('.astryx-tooltip', { hasText: 'Manage Installed Web Fonts' });
-      await expect(tooltip).toBeVisible();
+      await expect(async () => {
+        await page.mouse.move(0, 0);
+        await fontButton.hover();
+        await expect(tooltip).toBeVisible({ timeout: 2000 });
+      }).toPass({ timeout: 15000 });
 
       const tooltipBox = await tooltip.boundingBox();
       expect(tooltipBox).not.toBeNull();
@@ -160,12 +177,14 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await page.goto('/ui-showcase');
 
     const bookmarkButton = page.getByRole('button', { name: 'Bookmark' }).first();
-    await expect(bookmarkButton).toBeVisible();
-
-    await bookmarkButton.hover();
+    await expect(bookmarkButton).toBeVisible({ timeout: 15000 });
 
     const tooltip = page.locator('.astryx-tooltip', { hasText: 'Bookmark Page (B)' });
-    await expect(tooltip).toBeVisible();
+    await expect(async () => {
+      await page.mouse.move(0, 0);
+      await bookmarkButton.hover();
+      await expect(tooltip).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
 
     const tooltipBox = await tooltip.boundingBox();
     expect(tooltipBox).not.toBeNull();
@@ -183,18 +202,22 @@ test.describe('Astryx Tooltip Component & Settings Page Tooltips', () => {
     await page.goto('/b?id=1');
 
     // Wait for book content and open header
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
+    await page.evaluate(() => document.fonts.ready);
     const topTrigger = page.locator('button.fixed.inset-x-0.top-0');
     await topTrigger.click();
 
     const completeBtn = page.locator('button[aria-label="Complete Book"]');
-    await expect(completeBtn).toBeVisible({ timeout: 5000 });
+    await expect(completeBtn).toBeVisible({ timeout: 10000 });
 
-    // Hover over Complete Book button
-    await completeBtn.hover();
-
+    // Hover over Complete Book button (retry for cold hydration; move away
+    // first so each retry fires a fresh mouseenter)
     const tooltip = page.locator('.astryx-tooltip', { hasText: 'Complete Book' });
-    await expect(tooltip).toBeVisible();
+    await expect(async () => {
+      await page.mouse.move(0, 0);
+      await completeBtn.hover();
+      await expect(tooltip).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
 
     // Verify writing-mode is horizontal-tb (not vertical-rl)
     const writingMode = await tooltip.evaluate((el) => window.getComputedStyle(el).writingMode);

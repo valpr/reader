@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onKeyUpStatisticsTab } from '../../../routes/b/on-keydown-reader';
-  import { BookLoader } from '@custom-ereader/ui';
+  import { BookLoader, GoalProgressChip } from '@custom-ereader/ui';
+  import type { GoalProgressChipState } from '@custom-ereader/ui';
   import { getDefaultStatistic } from '$lib/components/book-reader/book-reading-tracker/book-reading-tracker';
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import MessageDialog from '$lib/components/message-dialog.svelte';
@@ -40,7 +41,8 @@
   import { calculateProfileBreakdown } from '$lib/components/statistics/statistics-lookback/lookback-calculator';
   import { dialogManager } from '$lib/data/dialog-manager';
   import { logger } from '$lib/data/logger';
-  import { getDateRangeLabel } from '$lib/data/reading-goal';
+  import { getDateRangeLabel, getReadingGoalWindow } from '$lib/data/reading-goal';
+  import { caluclatePercentage } from '$lib/functions/utils';
   import { getStorageHandler } from '$lib/data/storage/storage-handler-factory';
   import { StorageDataType, StorageKey } from '$lib/data/storage/storage-types';
   import {
@@ -263,6 +265,46 @@
   let statisticsForSelection: BookStatistic[] = [];
   let aggregratedStatistics: BookStatistic[] = [];
   let readingGoals: BooksDbReadingGoal[] = [];
+
+  $: openStatsGoal = readingGoals.filter((goal) => !goal.goalEndDate).at(-1);
+  $: statsGoalWindow =
+    openStatsGoal && todayKey >= openStatsGoal.goalStartDate
+      ? getReadingGoalWindow(todayKey, $startDayHoursForTracker$, openStatsGoal)
+      : undefined;
+  $: statsGoalTotals = statsGoalWindow
+    ? statisticsData.reduce(
+        (totals, statistic) => {
+          if (statistic.dateKey >= statsGoalWindow[0] && statistic.dateKey <= statsGoalWindow[1]) {
+            totals.time += statistic.readingTime || 0;
+            totals.chars += statistic.charactersRead || 0;
+          }
+          return totals;
+        },
+        { time: 0, chars: 0 }
+      )
+    : { time: 0, chars: 0 };
+  $: statsGoalTimePercent = openStatsGoal?.timeGoal
+    ? caluclatePercentage(statsGoalTotals.time, openStatsGoal.timeGoal)
+    : 0;
+  $: statsGoalCharPercent = openStatsGoal?.characterGoal
+    ? caluclatePercentage(statsGoalTotals.chars, openStatsGoal.characterGoal)
+    : 0;
+  $: statsGoalTimeLabel = openStatsGoal?.timeGoal
+    ? `${secondsToMinutes(statsGoalTotals.time)} / ${secondsToMinutes(openStatsGoal.timeGoal)} Min (${statsGoalTimePercent}%)`
+    : '';
+  $: statsGoalCharLabel = openStatsGoal?.characterGoal
+    ? `${statsGoalTotals.chars} / ${openStatsGoal.characterGoal} Characters (${statsGoalCharPercent}%)`
+    : '';
+  $: statsGoalWindowLabel =
+    statsGoalWindow && statsGoalWindow[0] !== statsGoalWindow[1]
+      ? `${statsGoalWindow[0]} - ${statsGoalWindow[1]}`
+      : (statsGoalWindow?.[0] ?? '');
+  $: statsGoalState = ((): GoalProgressChipState => {
+    if (!openStatsGoal) return 'active';
+    const timeDone = !openStatsGoal.timeGoal || statsGoalTimePercent >= 100;
+    const charsDone = !openStatsGoal.characterGoal || statsGoalCharPercent >= 100;
+    return timeDone && charsDone ? 'complete' : 'active';
+  })();
 
   $: statisticsDateRangeLabel = getDateRangeLabel(
     $lastStatisticsStartDate$,
@@ -1026,6 +1068,20 @@
     </div>
   {/if}
   {#if $lastStatisticsTab$ === StatisticsTab.OVERVIEW}
+    {#if openStatsGoal && (statsGoalTimeLabel !== '' || statsGoalCharLabel !== '')}
+      <div class="mb-4 flex w-full max-w-full justify-start">
+        <GoalProgressChip
+          timeLabel={statsGoalTimeLabel}
+          timePercent={statsGoalTimePercent}
+          charLabel={statsGoalCharLabel}
+          charPercent={statsGoalCharPercent}
+          windowLabel={statsGoalWindowLabel}
+          remainingLabel={statsGoalWindow?.[2] ?? ''}
+          state={statsGoalState}
+          label="Current reading goal"
+        />
+      </div>
+    {/if}
     <StatisticsHeatmap
       {statisticsData}
       {readingGoals}

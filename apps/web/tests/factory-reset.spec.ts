@@ -14,7 +14,7 @@ test.describe('Factory reset', () => {
     await seedReaderBook(page);
     await page.goto('/settings/data');
     // Wait for JS hydration so settings actions are interactive.
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('factory-reset')).toBeVisible({ timeout: 15000 });
 
     // Flip a real setting through the UI so subject and storage agree.
     const cacheSwitch = page
@@ -94,8 +94,7 @@ test.describe('Factory reset', () => {
     });
     await page.goto('/settings/reader');
     // Wait for JS hydration so profile actions are interactive.
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByText('Mobile / Phone')).toBeVisible();
+    await expect(page.getByText('Mobile / Phone')).toBeVisible({ timeout: 15000 });
 
     // Seed a connected custom GDrive source with a plain (unencrypted)
     // RemoteContext so no unlock dialog is ever needed. The settings mount

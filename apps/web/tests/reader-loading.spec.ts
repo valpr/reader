@@ -35,7 +35,9 @@ test.describe('Reader Loading & Initialization', () => {
     // Wait for JS hydration so file inputs and the book list are interactive.
     // Without this, setInputFiles can fire before Svelte attaches the
     // use:inputFile actions (slow CI), and the upload is silently dropped.
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('input[type="file"][accept*=".txt"]').first()).toBeAttached({
+      timeout: 15000
+    });
 
     // Prepare a mock .txt file
     const fileContent = 'これはテスト本の本文です。\n第二段落の内容です。';
@@ -67,7 +69,7 @@ test.describe('Reader Loading & Initialization', () => {
     await seedReaderBook(page);
     await page.goto('/manage');
     // Wait for JS hydration so the book list is rendered and interactive.
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('.aspect-w-2').first()).toBeVisible({ timeout: 15000 });
 
     const bookCard = page.locator('.aspect-w-2:has-text("吾輩は猫である")').first();
     await expect(bookCard).toBeVisible({ timeout: 10000 });
@@ -86,7 +88,7 @@ test.describe('Reader Loading & Initialization', () => {
     // Debug mode surfaces the stage string; flavor mode shows rotating lines.
     await page.addInitScript(() => window.localStorage.setItem('loaderMode', 'debug'));
     await page.goto('/manage');
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('.aspect-w-2').first()).toBeVisible({ timeout: 15000 });
 
     const bookCard = page.locator('.aspect-w-2:has-text("吾輩は猫である")').first();
     await expect(bookCard).toBeVisible({ timeout: 10000 });
@@ -118,10 +120,12 @@ test.describe('Reader Loading & Initialization', () => {
           }
         });
         observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        // Cold boot can delay the loader flash; keep polling headroom while
+        // still resolving early when the stage appears.
         setTimeout(() => {
           observer.disconnect();
           resolve(snapshot());
-        }, 3000);
+        }, 8000);
       });
     });
     await bookCard.click();
