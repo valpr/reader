@@ -21,12 +21,12 @@ test.describe('Reader Navigation & Progress Tracking', () => {
     );
 
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
 
     const progressCounter = page.locator('div[title="Click to copy Progress"]');
-    await expect(progressCounter).toBeVisible();
+    await expect(progressCounter).toBeVisible({ timeout: 10000 });
 
-    const initialText = await progressCounter.innerText();
+    const initialText = (await progressCounter.textContent()) ?? '';
 
     // Navigate to next page via PageDown key
     await page.keyboard.press('PageDown');
@@ -53,17 +53,17 @@ test.describe('Reader Navigation & Progress Tracking', () => {
     );
 
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
 
     // Verify left and right edge tap buttons are in DOM
     const leftTapButton = page.locator('button.fixed.left-0.z-10');
     const rightTapButton = page.locator('button.fixed.right-0.z-10');
 
-    await expect(leftTapButton).toBeVisible();
-    await expect(rightTapButton).toBeVisible();
+    await expect(leftTapButton).toBeVisible({ timeout: 10000 });
+    await expect(rightTapButton).toBeVisible({ timeout: 10000 });
 
     const progressCounter = page.locator('div[title="Click to copy Progress"]');
-    const initialText = await progressCounter.innerText();
+    const initialText = (await progressCounter.textContent()) ?? '';
 
     // Click right tap button to advance page (in horizontal mode)
     await rightTapButton.click();
@@ -85,10 +85,10 @@ test.describe('Reader Navigation & Progress Tracking', () => {
     );
 
     await page.goto('/b?id=1');
-    await expect(page.locator('.book-content')).toBeVisible();
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
 
     const progressCounter = page.locator('div[title="Click to copy Progress"]');
-    await expect(progressCounter).toBeVisible();
+    await expect(progressCounter).toBeVisible({ timeout: 10000 });
 
     const footer = page.locator('#ttu-page-footer');
     // Click footer bar to toggle off

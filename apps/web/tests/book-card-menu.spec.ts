@@ -7,6 +7,7 @@
 import { expect, test } from '@playwright/test';
 import { SAMPLE_BOOK, seedLibraryItem, seedSyncConfig } from './fixtures/book-fixture';
 import { mockGoogleDrive } from './helpers/cloud-mocks';
+import { currentDbVersion } from '../src/lib/data/database/books-db/versions/books-db';
 
 test.describe('Book Card Options Menu', () => {
   test('shows an always-visible options button that opens upload and details actions', async ({
@@ -113,34 +114,38 @@ test.describe('Book Card Options Menu', () => {
 
     // Seed a connected custom GDrive source with a plain (unencrypted)
     // RemoteContext so listing never needs an unlock dialog.
-    await page.evaluate(async () => {
+    await page.evaluate(async (version) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open('books');
+        const request = indexedDB.open('books', version);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
 
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction('storageSource', 'readwrite');
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.objectStore('storageSource').put({
-          name: 'test-gdrive-cloud',
-          type: 'gdrive',
-          data: {
-            clientId: 'test-client-id',
-            clientSecret: 'test-client-secret',
-            refreshToken: 'test-refresh-token',
-            accountEmail: 'test@example.com',
-            accountName: 'Test'
-          },
-          storedInManager: false,
-          encryptionDisabled: true,
-          lastSourceModified: Date.now(),
-          disconnected: false
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction('storageSource', 'readwrite');
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.objectStore('storageSource').put({
+            name: 'test-gdrive-cloud',
+            type: 'gdrive',
+            data: {
+              clientId: 'test-client-id',
+              clientSecret: 'test-client-secret',
+              refreshToken: 'test-refresh-token',
+              accountEmail: 'test@example.com',
+              accountName: 'Test'
+            },
+            storedInManager: false,
+            encryptionDisabled: true,
+            lastSourceModified: Date.now(),
+            disconnected: false
+          });
         });
-      });
-    });
+      } finally {
+        db.close();
+      }
+    }, currentDbVersion);
 
     // Mock a Drive library holding one title that exists only in the cloud:
     // root folder lookup, title-folder listing, then the bookdata file inside it.
@@ -205,24 +210,28 @@ test.describe('Book Card Options Menu', () => {
 
   test('view details allows resetting reading progress and statistics', async ({ page }) => {
     await seedLibraryItem(page);
-    await page.evaluate(async () => {
+    await page.evaluate(async (version) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const req = indexedDB.open('books');
+        const req = indexedDB.open('books', version);
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(['bookmark'], 'readwrite');
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.objectStore('bookmark').put({
-          dataId: 1,
-          exploredCharCount: 600,
-          progress: 0.5,
-          lastBookmarkModified: Date.now()
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(['bookmark'], 'readwrite');
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.objectStore('bookmark').put({
+            dataId: 1,
+            exploredCharCount: 600,
+            progress: 0.5,
+            lastBookmarkModified: Date.now()
+          });
         });
-      });
-    });
+      } finally {
+        db.close();
+      }
+    }, currentDbVersion);
 
     await page.goto('/manage');
 
@@ -267,24 +276,28 @@ test.describe('Book Card Options Menu', () => {
 
     await seedLibraryItem(page);
     await seedLibraryItem(page, SECOND_BOOK);
-    await page.evaluate(async () => {
+    await page.evaluate(async (version) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const req = indexedDB.open('books');
+        const req = indexedDB.open('books', version);
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(['bookmark'], 'readwrite');
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.objectStore('bookmark').put({
-          dataId: 1,
-          exploredCharCount: 600,
-          progress: 0.5,
-          lastBookmarkModified: Date.now()
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(['bookmark'], 'readwrite');
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.objectStore('bookmark').put({
+            dataId: 1,
+            exploredCharCount: 600,
+            progress: 0.5,
+            lastBookmarkModified: Date.now()
+          });
         });
-      });
-    });
+      } finally {
+        db.close();
+      }
+    }, currentDbVersion);
 
     // Open book 1 then book 2 in quick succession: exercises the reader
     // bootstrap + updateLastRead path for two contexts back-to-back.
