@@ -618,6 +618,84 @@ export async function syncProfilesToCloudTarget(): Promise<string | undefined> {
 
 export const PROFILES_SCHEMA_VERSION = 3;
 
+export const PROFILE_CHOICE_SEEN_KEY = 'profileChoiceSeen';
+
+const EREADER_UA_PATTERN =
+  /kindle|silk-accelerated|kobo|tolino|onyx|boox|likebook|pocketbook|nook|e-ink|eink|ereader/i;
+
+export function isEReaderUserAgent(userAgent: string): boolean {
+  return EREADER_UA_PATTERN.test(userAgent || '');
+}
+
+export type SuggestedProfileId = 'default-mobile' | 'default-tablet' | 'default-ereader';
+
+export function isTabletUserAgent(userAgent: string, maxTouchPoints = 0): boolean {
+  const ua = userAgent || '';
+  if (/iPad/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && maxTouchPoints > 1) return true;
+  if (/Android/i.test(ua) && !/Mobile/i.test(ua)) return true;
+  return false;
+}
+
+export interface DetectProfileOptions {
+  maxTouchPoints?: number;
+  minScreenDimension?: number;
+  isTablet?: boolean;
+}
+
+/**
+ * Binary first-run suggestion: desktop/laptop returns null (no prompt).
+ * Preselects Tablet for tablet devices/UAs, E-Reader for E-Ink UAs,
+ * and Mobile for phones/handheld devices.
+ * Pure function of its inputs so it is unit-testable and SSR-safe.
+ */
+export function detectSuggestedProfileId(
+  userAgent: string,
+  isMobileDevice: boolean,
+  options?: DetectProfileOptions
+): SuggestedProfileId | null {
+  if (isEReaderUserAgent(userAgent)) return 'default-ereader';
+
+  const touchPoints = options?.maxTouchPoints ?? 0;
+  const isTablet =
+    options?.isTablet ??
+    (isTabletUserAgent(userAgent, touchPoints) ||
+      (touchPoints > 0 &&
+        options?.minScreenDimension !== undefined &&
+        options.minScreenDimension >= 600 &&
+        options.minScreenDimension < 1024));
+
+  if (isTablet) return 'default-tablet';
+  if (isMobileDevice) return 'default-mobile';
+  return null;
+}
+
+/**
+ * True only for first-timers: the onboarding choice was never answered and no
+ * active profile was ever persisted. Reads raw localStorage (not the stores,
+ * whose in-memory defaults would mask a fresh install).
+ */
+export function isFirstTimeProfileUser(): boolean {
+  if (!browser) return false;
+  try {
+    return (
+      localStorage.getItem(PROFILE_CHOICE_SEEN_KEY) === null &&
+      localStorage.getItem('activeProfileId') === null
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function markProfileChoiceSeen(): void {
+  if (!browser) return;
+  try {
+    localStorage.setItem(PROFILE_CHOICE_SEEN_KEY, '1');
+  } catch {
+    // Storage may be unavailable (private mode); the modal simply may reappear.
+  }
+}
+
 const EREADER_PRE_V3_DESCRIPTION =
   'High contrast & medium font weight for E-Ink devices (20px font, 500 weight)';
 
