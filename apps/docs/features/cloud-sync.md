@@ -36,8 +36,19 @@ Valpr Reader allows you to synchronize your library, reading positions, bookmark
 - **Offline-First:** You never lose reading progress if your internet connection drops. All changes are queued in browser IndexedDB and reconciled once you reconnect.
 - **Smart Conflict Resolution:**
   - **Reading Position:** Automatically takes the latest reading position timestamp.
-  - **Statistics & Goals:** In **Settings > Statistics > Remote Sync Behavior**, you can configure whether statistics merge entry-by-entry or use newest-wins logic.
+  - **Bookmarks, Tags, Statistics, Goals, Profiles:** Normal sync always merges both sides together, so changes from every device are kept.
   - **Profiles:** Custom device profiles are synchronized so your tuned layouts roam automatically between devices.
+
+---
+
+## Sync Recovery (Settings > Data)
+
+Normal sync never throws anything away. Sync Recovery is the one-shot exception for when your devices have diverged and you want one side to win:
+
+- **Make cloud match this device (Push):** Replaces the cloud copy with this device. Anything on the cloud that is not on this device is permanently deleted. Use after cloud-side data loss.
+- **Make this device match cloud (Pull):** Erases this device and copies from the cloud. Anything on this device that was never synced is permanently lost.
+
+Both actions ask `Are you sure…?` first, with a red destructive confirm button (`Replace cloud copy` / `Erase this device`). Reading position always keeps the newest change from either side. This cannot be undone.
 
 ---
 
