@@ -10,7 +10,13 @@ import { dialogManager } from '$lib/data/dialog-manager';
 import { getFriendlyStorageSourceName } from '$lib/data/storage/storage-types';
 import { StorageOAuthManager } from '$lib/data/storage/storage-oauth-manager';
 import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
+import { markPendingCloudSync, pushTransientNotice } from '$lib/data/store';
+import { logger } from '$lib/data/logger';
+import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
 import { triggerCloudSync } from '$lib/functions/replication/cloud-sync';
+
+/** Single delayed retry for transient network failures — never a loop. */
+const NETWORK_RETRY_DELAY_MS = 5000;
 
 async function syncAfterReconnect(
   window: Window,
@@ -18,19 +24,64 @@ async function syncAfterReconnect(
   storageSources: BooksDbStorageSource[]
 ): Promise<boolean> {
   const error = await triggerCloudSync(window, sourceName, storageSources);
-  if (error) {
+  if (!error) return true;
+
+  // Transient network failure (any data type — profiles, goals, tags, books):
+  // keep the pending marker, toast once, retry once after a short delay when
+  // the browser still reports connectivity. Auth failures fall through to the
+  // manual-retry prompt below with no automatic traffic.
+  if (isNetworkUnreachableError(error) && window.navigator?.onLine !== false) {
+    markPendingCloudSync(sourceName, error);
+    pushTransientNotice(error);
+    logger.warn(`Sync after reconnect deferred (retrying once): ${error}`);
+    await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAY_MS));
+    const retryError = await triggerCloudSync(window, sourceName, storageSources);
+    if (!retryError) return true;
+    return promptManualRetry(window, sourceName, storageSources, retryError);
+  }
+
+  if (isNetworkUnreachableError(error)) {
+    markPendingCloudSync(sourceName, error);
+  }
+  return promptManualRetry(window, sourceName, storageSources, error);
+}
+
+async function promptManualRetry(
+  window: Window,
+  sourceName: string,
+  storageSources: BooksDbStorageSource[],
+  error: string
+): Promise<boolean> {
+  const wasCanceled = await new Promise<boolean>((resolve) => {
     dialogManager.dialogs$.next([
       {
-        component: MessageDialog,
+        component: ConfirmDialog,
         props: {
-          title: 'Sync Failed',
-          message: `Reconnected, but sync failed: ${error}`
+          dialogHeader: 'Sync Failed',
+          dialogMessage: `Reconnected, but sync failed: ${error}\n\nYour local progress is safe. Retry now?`,
+          contentStyles: 'white-space: pre-line;',
+          confirmLabel: 'Retry Sync',
+          resolver: resolve
         }
       }
     ]);
-    return false;
-  }
-  return true;
+  });
+
+  if (wasCanceled) return false;
+
+  const retryError = await triggerCloudSync(window, sourceName, storageSources);
+  if (!retryError) return true;
+
+  dialogManager.dialogs$.next([
+    {
+      component: MessageDialog,
+      props: {
+        title: 'Sync Failed',
+        message: `Reconnected, but sync failed: ${retryError}`
+      }
+    }
+  ]);
+  return false;
 }
 
 /**

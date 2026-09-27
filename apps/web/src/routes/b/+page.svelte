@@ -75,6 +75,7 @@
     loaderMode$,
     syncTarget$,
     pendingCloudSync$,
+    markPendingCloudSync,
     pushTransientNotice,
     autoReplication$,
     skipKeyDownListener$,
@@ -174,6 +175,7 @@
     type ExitSyncSnapshot
   } from '$lib/functions/replication/exit-sync';
   import { reconnectAndSyncNow } from '$lib/functions/replication/cloud-reauth';
+  import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
   import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
   import { BOOK_SCOPED_DATA_TYPES } from '$lib/functions/replication/cloud-sync';
   import {
@@ -387,9 +389,10 @@
         }
       } catch (error: any) {
         // Expired cloud sessions surface via banner/icon + reconnect and
-        // must never modal or bounce the reader: the local copy already
+        // transient network failures via toast + pending retry — both must
+        // never modal or bounce the reader: the local copy already
         // loaded above is fully readable, so continue with it.
-        if (bookData && isSessionExpiredError(error)) {
+        if (bookData && (isSessionExpiredError(error) || isNetworkUnreachableError(error))) {
           logger.warn(`Cloud sync skipped for "${bookData.title}": ${error.message}`);
 
           return bookData;
@@ -1439,7 +1442,8 @@
     await storageHandler.updateLastRead(dataToReturn, context).catch((error: any) => {
       // Expired sessions surface via banner/icon + reconnect; a modal here
       // would interrupt reading for a background write that retries later.
-      if (isSessionExpiredError(error)) {
+      // Transient network failures are toast + pending retry for the same reason.
+      if (isSessionExpiredError(error) || isNetworkUnreachableError(error)) {
         logger.warn(`Skipped external last-read update: ${error.message}`);
         return;
       }
@@ -1948,6 +1952,16 @@
         if (!isSilent) {
           dialogManager.dialogs$.next([]);
         }
+      } else if (isNetworkUnreachableError(error)) {
+        // Transient network failure (any data type): toast + pending retry,
+        // never a modal — the next online sync heals it.
+        logger.warn(error);
+        markPendingCloudSync(currentHandlerStorageSource, error);
+
+        if (!isSilent) {
+          dialogManager.dialogs$.next([]);
+          pushTransientNotice(error);
+        }
       } else if (!isSilent) {
         const showReport = logger.errorCount > 1;
 
@@ -2115,9 +2129,10 @@
       // screen, even when token reconnection is required.
       pendingExitSync = capturePendingExitSync();
     } catch (error: any) {
-      // Auth failures already surface via banner/icon; don't block leaving
-      // the reader with a modal for them.
-      if (isSessionExpiredError(error)) {
+      // Auth failures already surface via banner/icon, and transient network
+      // failures via toast + pending retry; don't block leaving
+      // the reader with a modal for either.
+      if (isSessionExpiredError(error) || isNetworkUnreachableError(error)) {
         logger.warn(error?.message || error);
       } else {
         dialogManager.dialogs$.next([]);

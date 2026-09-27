@@ -58,6 +58,7 @@ import {
   convertAuthErrorResponse,
   ConflictError,
   handleErrorDuringReplication,
+  isNetworkUnreachableError,
   withConflictRetry
 } from '$lib/functions/replication/error-handler';
 import { AbortError, throwIfAborted } from '$lib/functions/replication/replication-error';
@@ -1506,6 +1507,17 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
         reject(new AbortError());
       });
 
+      xhr.addEventListener('error', () => {
+        // Network-level XHR failure may not always reach readystatechange
+        // with status 0 (browser-dependent). Retain pending state here too so
+        // every data type shares the same offline retry path.
+        const message =
+          'Network unreachable — your local progress is safe and will sync when you reconnect.';
+        markPendingCloudSync(self.storageSourceName, message);
+        logger.warn(`Network unreachable for "${self.storageSourceName}": ${message}`);
+        reject(new Error(message));
+      });
+
       if (options.trackDownload) {
         const progressState = { lastValue: 0, base: progressBase };
 
@@ -1555,6 +1567,14 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
                     `Cloud file changed during sync (${errorMessage || 'precondition failed'}).`
                   )
                 );
+              } else if (this.status === 0 || isNetworkUnreachableError(errorMessage)) {
+                // Network-level failure (no HTTP response): transient, not
+                // auth. Keep tokens + CONNECTED state so the UI shows an
+                // offline toast + retry instead of a session-expired banner,
+                // but retain the pending marker so the next online run heals.
+                markPendingCloudSync(self.storageSourceName, errorMessage || 'network unreachable');
+                logger.warn(`Network unreachable for "${self.storageSourceName}": ${errorMessage}`);
+                reject(new Error(errorMessage));
               } else {
                 reject(new Error(errorMessage));
               }

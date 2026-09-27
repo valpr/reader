@@ -17,7 +17,9 @@
   let activeTab: 'bookmarks' | 'autosaves' = 'autosaves';
   let bookmarkFilter = '';
 
-  $: manualBookmarks = bookmarks.filter((b) => !b.isAutosave);
+  $: manualBookmarks = bookmarks
+    .filter((b) => !b.isAutosave)
+    .sort((a, b) => b.createdAt - a.createdAt);
   $: filteredManualBookmarks = bookmarkFilter
     ? manualBookmarks.filter(
         (b) =>

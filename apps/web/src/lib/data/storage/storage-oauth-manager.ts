@@ -32,8 +32,16 @@ import {
   type StorageUnlockAction
 } from '$lib/data/storage/storage-source-manager';
 import { StorageSourceDefault, StorageKey } from '$lib/data/storage/storage-types';
-import { clearPendingCloudSync, database, syncTarget$ } from '$lib/data/store';
-import { convertAuthErrorResponse } from '$lib/functions/replication/error-handler';
+import {
+  clearPendingCloudSync,
+  database,
+  markPendingCloudSync,
+  syncTarget$
+} from '$lib/data/store';
+import {
+  convertAuthErrorResponse,
+  isNetworkUnreachableError
+} from '$lib/functions/replication/error-handler';
 import { writableSubject } from '$lib/functions/svelte/store';
 import { isMobile } from '$lib/functions/utils';
 
@@ -547,6 +555,7 @@ export class StorageOAuthManager {
       form.append('client_secret', this.remoteData.clientSecret);
     }
 
+    let networkDeferred = false;
     const response = await fetch(this.refreshEndpoint, { method: 'POST', body: form })
       .then(async (httpResponse) => {
         if (!httpResponse.ok) {
@@ -556,11 +565,24 @@ export class StorageOAuthManager {
         return httpResponse.json();
       })
       .catch((error) => {
+        // Network-level failure: transient, not an expired grant. Keep the
+        // refresh token + connection state so the next online run retries
+        // silently instead of forcing a reconnect.
+        if (isNetworkUnreachableError(error)) {
+          logger.warn(`Token refresh deferred (offline) for ${this.storageSourceName}`);
+          markPendingCloudSync(this.storageSourceName, error?.message || 'network unreachable');
+          networkDeferred = true;
+          return undefined;
+        }
         logger.error(`Unable to refresh token for ${this.storageSourceName}: ${error.message}`);
         return undefined;
       });
 
     if (!response) {
+      // Network deferral above already retained credentials — do not wipe.
+      if (networkDeferred) {
+        return undefined;
+      }
       setConnectionState(this.storageSourceName, StorageConnectionState.NEEDS_RECONNECT);
       this.remoteData.refreshToken = undefined;
       return undefined;
