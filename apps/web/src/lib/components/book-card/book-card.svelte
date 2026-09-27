@@ -1,12 +1,18 @@
 <script lang="ts">
   import { faImage } from '@fortawesome/free-regular-svg-icons';
-  import { faCheck } from '@fortawesome/free-solid-svg-icons';
+  import { faArrowsRotate, faCheck } from '@fortawesome/free-solid-svg-icons';
   import { onDestroy } from 'svelte';
   import Fa from 'svelte-fa';
 
   export let imagePath: string | Blob;
   export let title: string;
   export let progress: number;
+  /**
+   * Read-ready state for prioritized sync: `synced` once phase-1 reading
+   * state (position + bookmarks) downloaded, `syncing` while this title is
+   * still pending, `idle` for deferred books and when no priority sync ran.
+   */
+  export let readReadyState: 'idle' | 'syncing' | 'synced' = 'idle';
 
   let objectUrl = '';
 
@@ -131,5 +137,22 @@
         </div>
       {/if}
     </div>
+    {#if readReadyState !== 'idle'}
+      <div
+        role="status"
+        data-testid="read-ready-badge"
+        aria-label={readReadyState === 'synced'
+          ? `Reading state synced for ${title}`
+          : `Syncing reading state for ${title}`}
+        title={readReadyState === 'synced' ? 'Reading state synced' : 'Syncing reading state'}
+        class="absolute top-1.5 right-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-gray-800 bg-opacity-80 text-[10px] text-white shadow"
+      >
+        {#if readReadyState === 'synced'}
+          <Fa icon={faCheck} />
+        {:else}
+          <Fa icon={faArrowsRotate} class="animate-spin" />
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>

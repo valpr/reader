@@ -12,6 +12,7 @@
   import { CLOSE_POPOVER } from '$lib/data/events';
   import { StorageKey } from '$lib/data/storage/storage-types';
   import { dummyFn } from '$lib/functions/utils';
+  import { readReady$ } from '$lib/functions/replication/replication-progress';
   import { IconButton, List, ListItem } from '@custom-ereader/ui';
   import { createEventDispatcher } from 'svelte';
   import Fa from 'svelte-fa';
@@ -57,11 +58,30 @@
     closeMenu(event);
     dispatch('detailsClick', { id });
   }
+
+  /**
+   * Per-card read-ready state. Store values arrive as explicit args so the
+   * `$readReady$` read stays lexically visible in markup and re-evaluates.
+   */
+  function readReadyStateFor(
+    readyTitles: string[],
+    pendingTitles: string[],
+    title: string
+  ): 'idle' | 'syncing' | 'synced' {
+    if (readyTitles.includes(title)) return 'synced';
+    if (pendingTitles.includes(title)) return 'syncing';
+    return 'idle';
+  }
 </script>
 
 <div class="grid grid-cols-3 justify-between gap-5 pb-4 md:grid-cols-4 lg:grid-cols-5">
   {#each bookCards as bookCard (bookCard.title)}
     {@const isSelected = selectedBookIds.has(bookCard.id)}
+    {@const readState = readReadyStateFor(
+      $readReady$.readyTitles,
+      $readReady$.pendingTitles,
+      bookCard.title
+    )}
     <div
       role="banner"
       class="relative"
@@ -74,7 +94,11 @@
         class:rounded-tl-xl={bookCard.id === currentBookId}
         class:mdc-elevation--z4={isSelected || bookCard.id === currentBookId}
       >
-        <BookCard {...bookCard} on:click={() => onBookCardClick(bookCard.id)} />
+        <BookCard
+          {...bookCard}
+          readReadyState={readState}
+          on:click={() => onBookCardClick(bookCard.id)}
+        />
         {#if bookCard.tags && bookCard.tags.length}
           <div
             class="pointer-events-none absolute left-10 right-8 top-1.5 z-10 flex max-h-10 flex-wrap gap-1 overflow-hidden"
