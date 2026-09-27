@@ -90,7 +90,7 @@
   }
 </script>
 
-<div class="flex h-full max-h-[100dvh] w-full flex-col overflow-hidden">
+<div class="flex h-full max-h-screen max-h-[100dvh] w-full flex-col overflow-hidden">
   <!-- Header with Segmented Tabs -->
   <div
     class="flex shrink-0 items-center justify-between border-b border-gray-700/20 px-4 py-3 dark:border-gray-300/20"
