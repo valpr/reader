@@ -239,9 +239,10 @@ export async function importBackup(
 
 export interface ReplicateDataOptions {
   /**
-   * Called once per book context after its data types replicate without
-   * error. Used by prioritized sync to advance per-book read-ready state;
-   * global (non-book) operations never trigger it.
+   * Called once per book context after its per-book pass completes without
+   * error — including no-op up-to-date skips, which also mean the target
+   * already reflects the latest. Used by prioritized sync to advance
+   * per-book read-ready state; global (non-book) operations never trigger it.
    */
   onBookComplete?: (title: string) => void;
 }

@@ -1850,24 +1850,27 @@
     if (!raw?.id || !offer || !bookmarkManager) return;
     dismissedJumpKeys.add(jumpOfferKey(raw.title, offer.exploredCharCount));
     jumpOffer = null;
-    // Tap-time revalidation: the lead may have evaporated while the offer
-    // sat visible (reader kept going, newer sync landed). Never jump backwards.
+    // Tap-time revalidation: the lead may have shifted while the offer sat
+    // visible (reader kept going, newer sync landed). Retarget to the
+    // furthest point still ahead; only dismiss silently when nothing
+    // qualifies anymore — never jump backwards.
     const fresh = findJumpCandidate(exploredCharCount || 0, bookCharCount, [
       ...liveBookmarkCandidates(),
       { ...offer }
     ]);
-    if (!fresh || fresh.exploredCharCount !== offer.exploredCharCount) return;
+    if (!fresh) return;
+    dismissedJumpKeys.add(jumpOfferKey(raw.title, fresh.exploredCharCount));
     pauseTracker(true);
     handleNavigateUserBookmark({
       dataId: raw.id,
-      exploredCharCount: Math.max(1, offer.exploredCharCount),
+      exploredCharCount: Math.max(1, fresh.exploredCharCount),
       progress:
-        typeof offer.progress === 'number'
-          ? offer.progress
+        typeof fresh.progress === 'number'
+          ? fresh.progress
           : bookCharCount
-            ? Math.min(1, offer.exploredCharCount / bookCharCount)
+            ? Math.min(1, fresh.exploredCharCount / bookCharCount)
             : 0,
-      label: offer.label,
+      label: fresh.label || offer.label,
       color: 'gray',
       note: '',
       createdAt: Date.now(),

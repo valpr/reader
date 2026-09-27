@@ -10,7 +10,7 @@ import type { ReplicationContext } from '$lib/functions/replication/replication-
 
 /**
  * Books whose reading state is older than this are never priority, even when
- * in-progress. A title touched 25+ days ago is not what the reader reaches
+ * in-progress. A title untouched for 30+ days is not what the reader reaches
  * for first; it still syncs, just in phase 2 with everything else.
  */
 export const PRIORITY_RECENCY_DAYS = 30;

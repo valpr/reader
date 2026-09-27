@@ -4,7 +4,8 @@
  * All rights reserved.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { seedReaderBook } from './fixtures/book-fixture';
 
 test.describe('Sync priority (read-ready)', () => {
   test('currently-reading books rank first, finished/unread/stale defer', async ({ page }) => {
@@ -68,5 +69,79 @@ test.describe('Sync priority (read-ready)', () => {
     expect(ready.phase).toBe('ready');
     expect(ready.readyTitles).toEqual(['a', 'b']);
     expect(reset.phase).toBe('idle');
+  });
+});
+
+test.describe('Read-ready indicators', () => {
+  const BOOK_ONE = 'Read Ready Alpha';
+  const BOOK_TWO = 'Read Ready Beta';
+
+  async function seedLibrary(page: Page) {
+    await seedReaderBook(page, { id: 1, title: BOOK_ONE });
+    await seedReaderBook(page, { id: 2, title: BOOK_TWO });
+  }
+
+  test('badges assert their own syncing/synced state per book', async ({ page }) => {
+    await seedLibrary(page);
+    await page.goto('/manage');
+    await expect(page.getByText(BOOK_ONE)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(BOOK_TWO)).toBeVisible();
+
+    await page.evaluate(async (title) => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+      mod.beginPriorityPhase([title]);
+    }, BOOK_ONE);
+
+    // Only the priority title carries a badge, in its syncing state.
+    const badge = page.getByTestId('read-ready-badge');
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveAttribute('aria-label', `Syncing reading state for ${BOOK_ONE}`);
+
+    await page.evaluate(async (title) => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+      mod.markPriorityBookComplete(title);
+      mod.markPriorityReady();
+    }, BOOK_ONE);
+
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveAttribute('aria-label', `Reading state synced for ${BOOK_ONE}`);
+  });
+
+  test('header reports reading-state progress, then synced', async ({ page }) => {
+    await seedLibrary(page);
+    await page.goto('/manage');
+    await expect(page.getByText(BOOK_ONE)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('sync-activity-icon')).toBeHidden();
+
+    await page.evaluate(async (title) => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+      mod.beginSyncActivity('Downloading Progress, Bookmarks');
+      mod.beginPriorityPhase([title]);
+    }, BOOK_ONE);
+
+    const icon = page.getByTestId('sync-activity-icon');
+    await expect(icon).toBeVisible();
+    await icon.hover();
+    await expect(page.getByTestId('read-ready-status')).toContainText('Reading state 0 of 1');
+
+    await page.evaluate(async (title) => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+      mod.markPriorityBookComplete(title);
+      mod.markPriorityReady();
+    }, BOOK_ONE);
+
+    await expect(page.getByTestId('read-ready-status')).toContainText('Reading state synced');
+
+    await page.evaluate(async () => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+      mod.endSyncActivity(mod.syncActivity$.getValue().runId);
+      mod.resetReadReady();
+    });
+    await expect(icon).toBeHidden();
   });
 });

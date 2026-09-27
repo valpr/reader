@@ -30,8 +30,8 @@ import {
   buildSyncLabel,
   endSyncActivity,
   markPriorityBookComplete,
-  markPriorityDegraded,
   markPriorityReady,
+  resetReadReady,
   updateSyncActivity
 } from '$lib/functions/replication/replication-progress';
 import {
@@ -253,7 +253,8 @@ export async function triggerCloudSync(
         { onBookComplete: markPriorityBookComplete }
       );
       if (priorityDownError) {
-        markPriorityDegraded();
+        // Never leave a ready badge standing on a failed sync.
+        resetReadReady();
         endSyncActivity(runId);
         return finish(priorityDownError);
       }
@@ -275,6 +276,9 @@ export async function triggerCloudSync(
         true
       );
       if (priorityUpError) {
+        // The download succeeded but the sync as a whole failed: clear the
+        // badge rather than claim "synced" while the cloud goes stale.
+        resetReadReady();
         endSyncActivity(runId);
         return finish(priorityUpError);
       }

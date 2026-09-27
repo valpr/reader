@@ -45,7 +45,7 @@ export const executeReplicate$ = new Subject<void>();
  * cards can keep their badge across views. They describe the last completed
  * download, never an upload acknowledgement.
  */
-export type ReadReadyPhase = 'idle' | 'priority-syncing' | 'ready' | 'degraded';
+export type ReadReadyPhase = 'idle' | 'priority-syncing' | 'ready';
 
 export interface ReadReadyState {
   phase: ReadReadyPhase;
@@ -99,12 +99,6 @@ export function markPriorityReady(): void {
     total: current.total,
     completed: current.completed
   });
-}
-
-export function markPriorityDegraded(): void {
-  const current = readReady$.getValue();
-  if (current.phase !== 'priority-syncing') return;
-  readReady$.next({ ...current, phase: 'degraded', pendingTitles: [] });
 }
 
 export function resetReadReady(): void {
