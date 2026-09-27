@@ -3,7 +3,11 @@
   import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
   import { BookLoader } from '@custom-ereader/ui';
   import { loaderMode$ } from '$lib/data/store';
-  import { convertAuthErrorResponse } from '$lib/functions/replication/error-handler';
+  import {
+    convertAuthErrorResponse,
+    NETWORK_UNREACHABLE_MESSAGE,
+    isNetworkUnreachableError
+  } from '$lib/functions/replication/error-handler';
   import Fa from 'svelte-fa';
 
   let errorMessage = '';
@@ -70,7 +74,10 @@
           );
         })
         .catch((error) => {
-          reportError(url.origin, 'Code authorization request failed', error.message);
+          const detail = isNetworkUnreachableError(error)
+            ? NETWORK_UNREACHABLE_MESSAGE
+            : error.message;
+          reportError(url.origin, 'Code authorization request failed', detail);
         });
     } else if (hashParams.has('access_token')) {
       checkAuthResponse(
