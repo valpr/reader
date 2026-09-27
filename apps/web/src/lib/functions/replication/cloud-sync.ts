@@ -16,6 +16,7 @@ import {
   clearPendingCloudSync,
   database,
   markLastSync,
+  markPendingCloudSync,
   pushTransientNotice,
   readingGoalsMergeMode$,
   replicationSaveBehavior$,
@@ -33,6 +34,7 @@ import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity
 import { recordSyncRun } from '$lib/functions/replication/sync-diagnostics';
 import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
+import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
 import { ApiStorageHandler } from '$lib/data/storage/handler/api-handler';
 import { logger } from '$lib/data/logger';
 import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
@@ -114,6 +116,12 @@ export async function triggerCloudSync(
   const dataTypes = requestedTypes?.length ? requestedTypes : SYNC_DATA_TYPES;
   let deletionCounts: { deletedBookmarks: number; removedTagTitles: number } | undefined;
   const finish = (error = '') => {
+    // Safety net: transient network failures (any data type) must retain the
+    // pending marker even if the per-request handler never ran, so the next
+    // online sync heals without forcing a reconnect.
+    if (error && isNetworkUnreachableError(error)) {
+      markPendingCloudSync(sourceName, error);
+    }
     recordSyncRun({
       startedAt,
       durationMs: Date.now() - startedAt,

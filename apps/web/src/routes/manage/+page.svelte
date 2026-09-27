@@ -66,6 +66,7 @@
     syncTarget$
   } from '$lib/data/store';
   import { reconnectAndSync, reconnectAndSyncNow } from '$lib/functions/replication/cloud-reauth';
+  import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
   import { getAllTagsFromDict } from '$lib/data/book-tags';
   import {
     DEFAULT_LIBRARY_FILTERS,
@@ -771,15 +772,18 @@
   }
 
   /**
-   * Session-expired failures surface via banner/icon + reconnect affordances,
-   * so a modal would be a dead end. Returns true when the error contains only
-   * auth failures (caller should log and stay silent); mixed errors still
-   * need the modal.
+   * Session-expired and transient-network failures surface via banner/icon +
+   * reconnect affordances (or a toast + pending retry), so a modal would be a
+   * dead end. Returns true when the error contains only auth/network failures
+   * (caller should log and stay silent); mixed errors still need the modal.
    */
   function isAuthOnlyError(error: string) {
     const lines = error.split('\n').filter((line) => line.trim());
 
-    return lines.length > 0 && lines.every((line) => isSessionExpiredError(line));
+    return (
+      lines.length > 0 &&
+      lines.every((line) => isSessionExpiredError(line) || isNetworkUnreachableError(line))
+    );
   }
 
   function initializeReplicationProgressData() {

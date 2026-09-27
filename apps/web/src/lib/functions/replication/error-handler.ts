@@ -39,6 +39,28 @@ export function isCloneSuspectError(error: unknown): error is CloneSuspectError 
   );
 }
 
+/**
+ * Network-level failure with no HTTP response (XHR `status 0`, `Failed to
+ * fetch`, `NetworkError`, offline). Covers every cloud data type because all
+ * API traffic funnels through `ApiStorageHandler.request()` — profiles,
+ * goals, tags, books, statistics, and listings all surface here.
+ */
+export const NETWORK_UNREACHABLE_MESSAGE =
+  'Network unreachable — your local progress is safe and will sync when you reconnect.';
+
+export function isNetworkUnreachableError(error: unknown): boolean {
+  if (!error) return false;
+  const status =
+    typeof error === 'object' && error !== null
+      ? (error as { status?: unknown }).status
+      : undefined;
+  if (status === 0) return true;
+  const message = error instanceof Error ? error.message : `${error ?? ''}`;
+  return /received status 0\b|network unreachable|failed to fetch|fetch failed|networkerror|load failed|offline|network request failed/i.test(
+    message
+  );
+}
+
 /** Bounded retry for read-modify-write cycles: re-runs the whole attempt
  * (which re-fetches and re-merges) on conflict, then surfaces a visible
  * error instead of losing data silently. */
@@ -98,6 +120,10 @@ export async function convertAuthErrorResponse(
 ): Promise<string> {
   const isXHR = response instanceof XMLHttpRequest;
 
+  if (response.status === 0) {
+    return NETWORK_UNREACHABLE_MESSAGE;
+  }
+
   let error = `Received Status ${response.status} `;
 
   try {
@@ -114,10 +140,15 @@ export async function convertAuthErrorResponse(
         jsonResponse.error ||
         error;
     } else {
-      error = isXHR ? response.responseText : await response.text();
+      const text = isXHR ? response.responseText : await response.text();
+      error = text?.trim() ? text : error;
     }
   } catch (_) {
     // no-op
+  }
+
+  if (!error?.trim() || /received status 0\b/i.test(error)) {
+    return NETWORK_UNREACHABLE_MESSAGE;
   }
 
   return error;

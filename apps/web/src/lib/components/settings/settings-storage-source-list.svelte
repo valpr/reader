@@ -62,11 +62,13 @@
     gDriveStorageSource$,
     isOnline$,
     lastSyncBySource$,
+    markPendingCloudSync,
     oneDriveStorageSource$,
     syncTarget$
   } from '$lib/data/store';
   import { AutoReplicationType } from '$lib/functions/replication/replication-options';
   import { triggerCloudSync } from '$lib/functions/replication/cloud-sync';
+  import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
   import { formatRelativeTime } from '$lib/functions/time-util';
   import { logger } from '$lib/data/logger';
   import { onDestroy, onMount } from 'svelte';
@@ -365,6 +367,12 @@
       updateRelativeTime();
     } catch (err: any) {
       logger.error(`Manual sync failed: ${err.message}`);
+      // Transient network failures (any data type) keep the pending marker
+      // so the next online run heals; the dialog copy itself is already the
+      // friendly offline message with no raw status codes.
+      if (isNetworkUnreachableError(err?.message || err)) {
+        markPendingCloudSync(sourceName, err?.message || 'network unreachable');
+      }
       dialogManager.dialogs$.next([
         {
           component: MessageDialog,
