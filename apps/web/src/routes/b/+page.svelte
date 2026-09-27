@@ -190,8 +190,10 @@
   import { multiClickHandler } from '$lib/functions/multi-click-handler';
   import {
     executeReplicate$,
+    progressSeen$,
     type ReplicationContext
   } from '$lib/functions/replication/replication-progress';
+  import { findJumpCandidate, type JumpCandidate } from '$lib/functions/replication/sync-priority';
   import { getDateKey, secondsToMinutes } from '$lib/functions/statistic-util';
   import { clickOutside } from '$lib/functions/use-click-outside';
   import {
@@ -250,6 +252,14 @@
   let blockDataUpdates = false;
   let trackerElm: BookReadingTracker;
   let userBookmarks: BooksDbUserBookmarkData[] = [];
+  /**
+   * Mid-read jump offer: a synced position (cloud sighting or manual
+   * bookmark) materially ahead of the live reading position. Never
+   * auto-navigates — the reader taps Jump or dismisses. One offer per
+   * title+position; dismissal never re-fires for the same point.
+   */
+  let jumpOffer: (JumpCandidate & { label: string }) | null = null;
+  let dismissedJumpKeys = new Set<string>();
   let showTrackerIcon = false;
   let wasTrackerPaused = true;
   let frozenPosition = -1;
@@ -817,6 +827,43 @@
   }
 
   onMount(() => document.addEventListener('ttu-action', handleAction, false));
+
+  onMount(() => {
+    if (!browser) return;
+    // Mid-read sync sightings for the open book: a download may carry a
+    // position further ahead that still loses last-write-wins on timestamp.
+    const seenSub = progressSeen$.subscribe((seen) => {
+      const raw = $rawBookData$;
+      if (!seen || !raw || seen.title !== raw.title) return;
+      maybeOfferJump([
+        {
+          exploredCharCount: seen.exploredCharCount,
+          progress: seen.progress,
+          label: 'synced reading position',
+          source: 'cloud' as const
+        }
+      ]);
+    });
+    return () => seenSub.unsubscribe();
+  });
+
+  // Re-evaluate the offer as the reader moves or synced bookmarks arrive.
+  // maybeOfferJump only writes jumpOffer (untracked below), so this cannot loop.
+  $: {
+    const jumpBook = $rawBookData$;
+    const jumpManager = bookmarkManager;
+    const jumpBookmarks = userBookmarks;
+    const jumpPosition = exploredCharCount;
+    if (
+      browser &&
+      jumpBook &&
+      jumpManager &&
+      bookCharCount > 0 &&
+      (jumpBookmarks || jumpPosition >= 0)
+    ) {
+      maybeOfferJump();
+    }
+  }
 
   onDestroy(() => {
     if (browser) {
@@ -1728,6 +1775,91 @@
       .catch(() => undefined);
   }
 
+  function jumpOfferKey(title: string, position: number): string {
+    return `${title}::${position}`;
+  }
+
+  function liveBookmarkCandidates(): JumpCandidate[] {
+    return (userBookmarks || [])
+      .filter((b) => !b.isAutosave && (b.exploredCharCount || 0) > 0)
+      .map((b) => ({
+        exploredCharCount: b.exploredCharCount,
+        progress: typeof b.progress === 'number' ? b.progress : undefined,
+        label: b.label || 'bookmark',
+        source: 'bookmark' as const
+      }));
+  }
+
+  /**
+   * Offer a jump when synced state sits materially ahead of the live
+   * position (see findJumpCandidate). Behind/equal-ish stays silent; each
+   * title+position offers at most once until dismissed or jumped to.
+   */
+  function maybeOfferJump(extra: JumpCandidate[] = []) {
+    const raw = $rawBookData$;
+    if (!raw || !raw.id || !bookCharCount || !bookmarkManager) return;
+    const candidate = findJumpCandidate(exploredCharCount || 0, bookCharCount, [
+      ...liveBookmarkCandidates(),
+      ...extra
+    ]);
+    if (!candidate) {
+      // Clear an offer the reader already reached; anything still pending
+      // stays until dismissed or jumped to.
+      if (jumpOffer && (exploredCharCount || 0) >= jumpOffer.exploredCharCount) {
+        jumpOffer = null;
+      }
+      return;
+    }
+    const key = jumpOfferKey(raw.title, candidate.exploredCharCount);
+    if (dismissedJumpKeys.has(key)) return;
+    if (jumpOffer && jumpOffer.exploredCharCount >= candidate.exploredCharCount) return;
+    jumpOffer = {
+      ...candidate,
+      label:
+        candidate.label || (candidate.source === 'cloud' ? 'synced reading position' : 'bookmark')
+    };
+  }
+
+  async function acceptJumpOffer() {
+    const raw = $rawBookData$;
+    const offer = jumpOffer;
+    if (!raw?.id || !offer || !bookmarkManager) return;
+    dismissedJumpKeys.add(jumpOfferKey(raw.title, offer.exploredCharCount));
+    jumpOffer = null;
+    // Tap-time revalidation: the lead may have evaporated while the offer
+    // sat visible (reader kept going, newer sync landed). Never jump backwards.
+    const fresh = findJumpCandidate(exploredCharCount || 0, bookCharCount, [
+      ...liveBookmarkCandidates(),
+      { ...offer }
+    ]);
+    if (!fresh || fresh.exploredCharCount !== offer.exploredCharCount) return;
+    pauseTracker(true);
+    handleNavigateUserBookmark({
+      dataId: raw.id,
+      exploredCharCount: Math.max(1, offer.exploredCharCount),
+      progress:
+        typeof offer.progress === 'number'
+          ? offer.progress
+          : bookCharCount
+            ? Math.min(1, offer.exploredCharCount / bookCharCount)
+            : 0,
+      label: offer.label,
+      color: 'gray',
+      note: '',
+      createdAt: Date.now(),
+      lastModified: Date.now()
+    });
+    scheduleReplication(StorageDataType.PROGRESS);
+  }
+
+  function dismissJumpOffer() {
+    const raw = $rawBookData$;
+    if (raw && jumpOffer) {
+      dismissedJumpKeys.add(jumpOfferKey(raw.title, jumpOffer.exploredCharCount));
+    }
+    jumpOffer = null;
+  }
+
   async function handleDeleteUserBookmark(item: BooksDbUserBookmarkData) {
     if (item.id !== undefined) {
       await database.deleteUserBookmark(item.id);
@@ -2427,6 +2559,49 @@
       goalState={readerGoalBadgeState}
       on:goalClick={() => isTrackerMenuOpen$.next(true)}
     />
+  </div>
+{/if}
+
+{#if jumpOffer && $rawBookData$}
+  {@const jumpPercent =
+    bookCharCount > 0
+      ? Math.min(100, Math.round((jumpOffer.exploredCharCount / bookCharCount) * 100))
+      : 0}
+  <div
+    class="pointer-events-none fixed inset-x-0 bottom-20 z-30 flex justify-center px-4 pb-[env(safe-area-inset-bottom)]"
+  >
+    <div
+      data-testid="jump-offer"
+      role="status"
+      class="pointer-events-auto flex w-full max-w-md min-w-0 items-center gap-2 rounded-2xl px-4 py-2 shadow-lg"
+      style="background-color: var(--astryx-color-fg-primary, #18181b); color: var(--astryx-color-surface, #ffffff);"
+    >
+      <span
+        class="min-w-0 flex-1 truncate text-sm font-medium"
+        title="Synced {jumpOffer.label} at {jumpPercent}%"
+      >
+        Further ahead: {jumpOffer.label} ({jumpPercent}%)
+      </span>
+      <button
+        type="button"
+        data-testid="jump-offer-accept"
+        aria-label="Jump to synced position at {jumpPercent}%"
+        class="min-h-[44px] shrink-0 rounded-full px-4 text-sm font-semibold"
+        style="background-color: var(--astryx-color-surface, #ffffff); color: var(--astryx-color-fg-primary, #18181b);"
+        on:click={acceptJumpOffer}
+      >
+        Jump
+      </button>
+      <button
+        type="button"
+        data-testid="jump-offer-dismiss"
+        aria-label="Dismiss jump offer"
+        class="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-sm"
+        on:click={dismissJumpOffer}
+      >
+        Not now
+      </button>
+    </div>
   </div>
 {/if}
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Popover from '$lib/components/popover/popover.svelte';
-  import { syncActivity$ } from '$lib/functions/replication/replication-progress';
+  import { readReady$, syncActivity$ } from '$lib/functions/replication/replication-progress';
   import { IconButton } from '@custom-ereader/ui';
   import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
   import { onDestroy } from 'svelte';
@@ -71,6 +71,21 @@
         {#if $syncActivity$.total !== undefined && ($syncActivity$.total ?? 0) > 1}
           <span class="mt-0.5 block text-xs font-normal text-[var(--astryx-color-fg-muted)]">
             {($syncActivity$.completed ?? 0) + 1} of {$syncActivity$.total}
+          </span>
+        {/if}
+        {#if $readReady$.phase === 'priority-syncing'}
+          <span
+            data-testid="read-ready-status"
+            class="mt-0.5 block text-xs font-normal text-[var(--astryx-color-fg-muted)]"
+          >
+            Reading state {$readReady$.completed} of {$readReady$.total}
+          </span>
+        {:else if $readReady$.phase === 'ready'}
+          <span
+            data-testid="read-ready-status"
+            class="mt-0.5 block text-xs font-normal text-[var(--astryx-color-fg-muted)]"
+          >
+            Reading state synced
           </span>
         {/if}
       </div>

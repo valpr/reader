@@ -25,11 +25,20 @@ import {
 import { MergeMode } from '$lib/data/merge-mode';
 import { replicateData } from '$lib/functions/replication/replicator';
 import {
+  beginPriorityPhase,
   beginSyncActivity,
   buildSyncLabel,
   endSyncActivity,
+  markPriorityBookComplete,
+  markPriorityDegraded,
+  markPriorityReady,
   updateSyncActivity
 } from '$lib/functions/replication/replication-progress';
+import {
+  READ_READY_DATA_TYPES,
+  splitSyncContexts,
+  type PrioritizableContext
+} from '$lib/functions/replication/sync-priority';
 import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
 import { recordSyncRun } from '$lib/functions/replication/sync-diagnostics';
 import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
@@ -169,13 +178,36 @@ export async function triggerCloudSync(
 
     const db = await database.db;
     const books = await db.getAll('data');
-    const contexts = books
+    // Priority ranking needs local reading signals alongside the context:
+    // progress + recency decide which books sync their reading state first.
+    // Best-effort: a missing bookmark store still yields plain contexts.
+    const bookmarksById = new Map<
+      number,
+      { progress?: number | string; lastBookmarkModified?: number }
+    >();
+    try {
+      const bookmarks = await db.getAll('bookmark');
+      for (const bookmark of bookmarks || []) {
+        if (bookmark && typeof bookmark.dataId === 'number') {
+          bookmarksById.set(bookmark.dataId, bookmark);
+        }
+      }
+    } catch {
+      // no-op: contexts below fall back to book-level signals only.
+    }
+    const contexts: PrioritizableContext[] = books
       .filter((b) => b && typeof b.title === 'string' && b.title.trim().length > 0)
-      .map((b) => ({
-        id: b.id,
-        title: b.title,
-        imagePath: b.coverImage || ''
-      }));
+      .map((b) => {
+        const bookmark = typeof b.id === 'number' ? bookmarksById.get(b.id) : undefined;
+        return {
+          id: b.id,
+          title: b.title,
+          imagePath: b.coverImage || '',
+          progress: bookmark?.progress ?? 0,
+          lastBookOpen: b.lastBookOpen || 0,
+          lastBookmarkModified: bookmark?.lastBookmarkModified || 0
+        };
+      });
 
     const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
     const runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
@@ -190,6 +222,62 @@ export async function triggerCloudSync(
       await targetHandler.getBookList();
     } catch (listError: any) {
       logger.warn(`Cloud book list warm-up failed for ${sourceName}: ${listError?.message}`);
+    }
+
+    // Two-phase prioritized sync. Phase 1 downloads reading position +
+    // manual bookmarks for currently-reading books first — the payload the
+    // reader needs before starting to read — and flips read-ready. Phase 2
+    // runs immediately after: the deferred upload for those books, then the
+    // full download/upload for everything. Download-before-upload is
+    // preserved within each step, so deferring the upload can only leave
+    // other devices briefly stale, never clobber local progress (LWW and
+    // union merges guard every write).
+    const readReadyTypes = READ_READY_DATA_TYPES.filter((t) => dataTypes.includes(t));
+    const { priority, deferred } = splitSyncContexts(contexts);
+    const usePriorityPhases =
+      readReadyTypes.length > 0 && priority.length > 0 && deferred.length > 0;
+
+    if (usePriorityPhases) {
+      beginPriorityPhase(priority.map((c) => c.title));
+      updateSyncActivity(runId, {
+        label: `${buildSyncLabel('Downloading', readReadyTypes)} — ${friendlyTarget}`
+      });
+      const priorityDownError = await replicateData(
+        targetHandler,
+        localStorageHandler,
+        false,
+        priority,
+        readReadyTypes,
+        undefined,
+        true,
+        { onBookComplete: markPriorityBookComplete }
+      );
+      if (priorityDownError) {
+        markPriorityDegraded();
+        endSyncActivity(runId);
+        return finish(priorityDownError);
+      }
+      markPriorityReady();
+      pushTransientNotice('Reading state synced — finishing remaining sync');
+
+      // Deferred upload for priority books: local edits queued during phase
+      // 1 ride along here, bounding cloud staleness to seconds.
+      updateSyncActivity(runId, {
+        label: `${buildSyncLabel('Uploading', readReadyTypes)} — ${friendlyTarget}`
+      });
+      const priorityUpError = await replicateData(
+        localStorageHandler,
+        targetHandler,
+        false,
+        priority,
+        readReadyTypes,
+        undefined,
+        true
+      );
+      if (priorityUpError) {
+        endSyncActivity(runId);
+        return finish(priorityUpError);
+      }
     }
 
     // Always pull and merge before publishing. A sync direction preference

@@ -31,6 +31,103 @@ export interface ReplicationDeleteResult {
 export const replicationProgress$ = new Subject<ReplicationProgress>();
 export const executeReplicate$ = new Subject<void>();
 
+/**
+ * Read-ready state for prioritized sync.
+ *
+ * Phase 1 of a cloud sync downloads reading position + manual bookmarks for
+ * currently-reading books first (see `sync-priority.ts`). That payload is
+ * what the reader needs before starting to read, so its completion flips
+ * `phase` to `'ready'` — explicitly *not* full-sync completion. The deferred
+ * upload and the remaining data types still run in phase 2 immediately
+ * after; `markLastSync` still only fires when everything is done.
+ *
+ * `readyTitles` persist until the next priority phase begins so library
+ * cards can keep their badge across views. They describe the last completed
+ * download, never an upload acknowledgement.
+ */
+export type ReadReadyPhase = 'idle' | 'priority-syncing' | 'ready' | 'degraded';
+
+export interface ReadReadyState {
+  phase: ReadReadyPhase;
+  /** Priority titles still waiting for their phase-1 download. */
+  pendingTitles: string[];
+  /** Priority titles whose phase-1 download completed. */
+  readyTitles: string[];
+  total: number;
+  completed: number;
+}
+
+const idleReadReady: ReadReadyState = {
+  phase: 'idle',
+  pendingTitles: [],
+  readyTitles: [],
+  total: 0,
+  completed: 0
+};
+
+export const readReady$ = writableSubject<ReadReadyState>(idleReadReady);
+
+export function beginPriorityPhase(titles: string[]): void {
+  readReady$.next({
+    phase: 'priority-syncing',
+    pendingTitles: [...titles],
+    readyTitles: [],
+    total: titles.length,
+    completed: 0
+  });
+}
+
+export function markPriorityBookComplete(title: string): void {
+  const current = readReady$.getValue();
+  if (current.phase !== 'priority-syncing') return;
+  if (!current.pendingTitles.includes(title)) return;
+  readReady$.next({
+    ...current,
+    pendingTitles: current.pendingTitles.filter((t) => t !== title),
+    readyTitles: [...current.readyTitles, title],
+    completed: current.completed + 1
+  });
+}
+
+export function markPriorityReady(): void {
+  const current = readReady$.getValue();
+  if (current.phase !== 'priority-syncing') return;
+  readReady$.next({
+    phase: 'ready',
+    pendingTitles: [],
+    readyTitles: current.readyTitles,
+    total: current.total,
+    completed: current.completed
+  });
+}
+
+export function markPriorityDegraded(): void {
+  const current = readReady$.getValue();
+  if (current.phase !== 'priority-syncing') return;
+  readReady$.next({ ...current, phase: 'degraded', pendingTitles: [] });
+}
+
+export function resetReadReady(): void {
+  readReady$.next(idleReadReady);
+}
+
+/**
+ * A reading position observed on the download path, reported before
+ * last-write-wins is applied. An incoming record can be further ahead in
+ * position yet older in timestamp (late sync, clock skew) and lose the
+ * merge silently — the local bookmark then never reflects genuinely
+ * further reading. The reader uses these sightings (plus synced manual
+ * bookmarks) to offer a jump without ever changing merge outcomes.
+ */
+export interface SeenProgress {
+  title: string;
+  exploredCharCount: number;
+  progress?: number;
+  lastBookmarkModified?: number;
+}
+
+export const progressSeen$ = new Subject<SeenProgress>();
+
 export interface SyncActivity {
   active: boolean;
   runId: number;

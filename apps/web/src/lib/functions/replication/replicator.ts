@@ -25,6 +25,7 @@ import {
   beginSyncActivity,
   buildSyncLabel,
   endSyncActivity,
+  progressSeen$,
   replicationProgress$,
   syncActivity$,
   syncVerbForHandlers,
@@ -236,6 +237,15 @@ export async function importBackup(
   );
 }
 
+export interface ReplicateDataOptions {
+  /**
+   * Called once per book context after its data types replicate without
+   * error. Used by prioritized sync to advance per-book read-ready state;
+   * global (non-book) operations never trigger it.
+   */
+  onBookComplete?: (title: string) => void;
+}
+
 export async function replicateData(
   sourceHandler: BaseStorageHandler,
   targetHandler: BaseStorageHandler,
@@ -243,7 +253,8 @@ export async function replicateData(
   contexts: ReplicationContext[],
   dataToReplicate: StorageDataType[],
   cancelSignal?: AbortSignal,
-  skipTimestamp = false
+  skipTimestamp = false,
+  options?: ReplicateDataOptions
 ) {
   return runSerialized(async () => {
     const parentActivity = syncActivity$.getValue();
@@ -361,6 +372,27 @@ export async function replicateData(
                 checkCancelAndProgress(cancelSignal, !dataProcessed);
 
                 if (progressData) {
+                  // Report downloads before the merge: an incoming position
+                  // further ahead can still lose last-write-wins on timestamp
+                  // (late sync, clock skew). The reader needs the sighting to
+                  // offer a jump; the merge outcome below is unchanged.
+                  if (
+                    targetHandler.storageType === StorageKey.BROWSER &&
+                    !(progressData instanceof File)
+                  ) {
+                    const seenCount = Number(progressData.exploredCharCount) || 0;
+                    if (seenCount > 0) {
+                      progressSeen$.next({
+                        title: context.title,
+                        exploredCharCount: seenCount,
+                        progress:
+                          typeof progressData.progress === 'number'
+                            ? progressData.progress
+                            : undefined,
+                        lastBookmarkModified: progressData.lastBookmarkModified
+                      });
+                    }
+                  }
                   await targetHandler.saveProgress(progressData, context);
 
                   dataProcessed = true;
@@ -525,6 +557,7 @@ export async function replicateData(
             }
 
             processed += 1;
+            options?.onBookComplete?.(context.title);
           } catch (error: any) {
             errorMessage = handleErrorDuringReplication(
               error,
