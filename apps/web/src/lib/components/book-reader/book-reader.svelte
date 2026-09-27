@@ -131,6 +131,8 @@
 
   let wakeLock: WakeLockSentinel | undefined;
 
+  let wakeLockRequestTimer: ReturnType<typeof setTimeout> | undefined;
+
   let visibilityState: DocumentVisibilityState;
 
   const mutationObserver: MutationObserver = new MutationObserver(handleMutation);
@@ -147,13 +149,19 @@
       : 0;
 
   $: if ($enableReaderWakeLock$ && visibilityState === 'visible') {
-    setTimeout(requestWakeLock, 500);
+    scheduleWakeLock();
+  } else {
+    // Covers hidden tab AND toggle-off while visible: never hold a lock
+    // the user disabled, and never leave a stale schedule behind.
+    cancelScheduledWakeLock();
+    void releaseWakeLock();
   }
 
   onDestroy(() => {
     mutationObserver.disconnect();
 
-    releaseWakeLock();
+    cancelScheduledWakeLock();
+    void releaseWakeLock();
   });
 
   const computedStyle$ = combineLatest([
@@ -220,10 +228,34 @@
 
   // rAF-gated computedStyle$ stalls while the tab is hidden, leaving child
   // width/height at 0 and the loading overlay stuck. Re-emit on visible so
-  // layout recomputes after a tab-out during load.
-  $: if (visibilityState === 'visible') {
+  // layout recomputes after a tab-out during load — but only with valid
+  // (> 0) dimensions so a sleep/wake 0-size event can't stick.
+  $: if (visibilityState === 'visible' && width > 0 && height > 0) {
     width$.next(width);
     height$.next(height);
+  }
+
+  function scheduleWakeLock() {
+    cancelScheduledWakeLock();
+    wakeLockRequestTimer = setTimeout(() => {
+      void requestWakeLock();
+    }, 500);
+  }
+
+  function cancelScheduledWakeLock() {
+    if (wakeLockRequestTimer) {
+      clearTimeout(wakeLockRequestTimer);
+      wakeLockRequestTimer = undefined;
+    }
+  }
+
+  function handleWakeLockRelease() {
+    wakeLock = undefined;
+    // Device sleep releases the sentinel without a visibility event on
+    // some e-ink browsers; re-arm while still visible and enabled.
+    if ($enableReaderWakeLock$ && visibilityState === 'visible') {
+      scheduleWakeLock();
+    }
   }
 
   function getAdjustedWidth(widthValue: number) {
@@ -254,7 +286,15 @@
   }
 
   async function requestWakeLock() {
+    if (!$enableReaderWakeLock$ || visibilityState !== 'visible') {
+      return;
+    }
+
     if (wakeLock && !wakeLock.released) {
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) {
       return;
     }
 
@@ -265,7 +305,7 @@
     });
 
     if (wakeLock) {
-      wakeLock.addEventListener('release', releaseWakeLock, false);
+      wakeLock.addEventListener('release', handleWakeLockRelease, false);
     }
   }
 

@@ -90,10 +90,10 @@
   }
 </script>
 
-<div class="flex h-full w-full flex-col">
+<div class="flex h-full max-h-screen max-h-[100dvh] w-full flex-col overflow-hidden">
   <!-- Header with Segmented Tabs -->
   <div
-    class="flex items-center justify-between border-b border-gray-700/20 px-4 py-3 dark:border-gray-300/20"
+    class="flex shrink-0 items-center justify-between border-b border-gray-700/20 px-4 py-3 dark:border-gray-300/20"
   >
     <div class="flex items-center gap-1 rounded-lg bg-black/5 p-1 dark:bg-white/10">
       <button
@@ -128,7 +128,7 @@
   {#if activeTab === 'autosaves'}
     <!-- Autosaves Header Bar -->
     <div
-      class="flex items-center justify-between border-b border-gray-700/10 px-4 py-2 text-xs opacity-75 dark:border-gray-300/10"
+      class="flex shrink-0 items-center justify-between border-b border-gray-700/10 px-4 py-2 text-xs opacity-75 dark:border-gray-300/10"
     >
       <span>Recent checkpoints. Click any to restore your position.</span>
       {#if autosaves.length > 0}
@@ -167,7 +167,7 @@
     </div>
   {:else}
     <!-- Add Bookmark button -->
-    <div class="border-b border-gray-700/10 p-3 dark:border-gray-300/10">
+    <div class="shrink-0 border-b border-gray-700/10 p-3 dark:border-gray-300/10">
       <button
         type="button"
         class="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none"
@@ -180,7 +180,7 @@
 
     <!-- Filter input for long bookmark lists -->
     {#if manualBookmarks.length > 5}
-      <div class="border-b border-gray-700/10 px-3 py-2 dark:border-gray-300/10">
+      <div class="shrink-0 border-b border-gray-700/10 px-3 py-2 dark:border-gray-300/10">
         <input
           type="text"
           placeholder="Filter bookmarks by title or note..."
