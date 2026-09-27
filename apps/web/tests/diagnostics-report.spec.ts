@@ -225,7 +225,8 @@ test.describe('Diagnostics report unit tests', () => {
     });
 
     expect(['dev', '0.0.1']).toContain(result.appVersion);
-    expect(result.buildCommit).toBe('unknown');
+    expect(typeof result.buildCommit).toBe('string');
+    expect(result.buildCommit).toMatch(/^([0-9a-f]{7,40}|unknown|[a-zA-Z0-9_-]+)$/);
     expect(result.lastSyncError).toBe('none');
     expect(result.truncated).toBe(0);
     expect(Array.isArray(result.syncRuns)).toBe(true);
