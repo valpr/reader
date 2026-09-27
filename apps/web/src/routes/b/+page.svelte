@@ -2,6 +2,7 @@
   import {
     auditTime,
     debounceTime,
+    distinctUntilChanged,
     EMPTY,
     filter,
     fromEvent,
@@ -225,6 +226,8 @@
   let showFooter = true;
   let exploredCharCount = 0;
   let bookCharCount = 0;
+  // Fullscreen state store alias for template auto-subscription.
+  const isReaderFullscreen$ = fullscreenManager.isFullscreen$;
   let autoScroller: AutoScroller | undefined;
   let bookmarkManager: BookmarkManager | undefined;
   let pageManager: PageManager | undefined;
@@ -608,19 +611,37 @@
     shareReplay({ refCount: true, bufferSize: 1 })
   );
 
+  // visualViewport shrinks/grows on fullscreen, keyboard, URL-bar, and
+  // e-ink status-bar changes — but fires 0/stale sizes across device
+  // sleep/wake and fullscreen transitions. Fall back to window dims,
+  // ignore hidden-tab zeros, and debounce so the pinned-header height
+  // feedback loop (headerHeight -> viewport -> re-layout -> resize) settles
+  // instead of flickering.
   const resize$ = iffBrowser(() =>
-    visualViewport ? fromEvent(visualViewport, 'resize') : of()
+    merge(visualViewport ? fromEvent(visualViewport, 'resize') : of(), fromEvent(window, 'resize'))
   ).pipe(share());
+
+  const readViewportWidth = () =>
+    visualViewport?.width || (typeof window !== 'undefined' ? window.innerWidth : 0) || 0;
+
+  const readViewportHeight = () =>
+    visualViewport?.height || (typeof window !== 'undefined' ? window.innerHeight : 0) || 0;
 
   const containerViewportWidth$ = resize$.pipe(
     startWith(0),
-    map(() => visualViewport?.width || 0),
+    map(() => readViewportWidth()),
+    filter((w) => w > 0),
+    debounceTime(100),
+    distinctUntilChanged(),
     takeWhenBrowser()
   );
 
   const containerViewportHeight$ = resize$.pipe(
     startWith(0),
-    map(() => visualViewport?.height || 0),
+    map(() => readViewportHeight()),
+    filter((h) => h > 0),
+    debounceTime(100),
+    distinctUntilChanged(),
     takeWhenBrowser()
   );
 
@@ -824,6 +845,9 @@
       wasTrackerPaused = true;
       isTrackerPaused$.next(true);
       document.removeEventListener('ttu-action', handleAction, false);
+      // Safety net for non-leaveReader exits (browser back, missing book
+      // redirect): never leak fullscreen onto pages without its control.
+      void fullscreenManager.exitIfActive();
     }
   });
 
@@ -1797,10 +1821,10 @@
     transientShowHeader = false;
 
     if (!fullscreenManager.fullscreenElement) {
-      fullscreenManager.requestFullscreen(document.documentElement);
+      void fullscreenManager.requestFullscreen(document.documentElement);
       return;
     }
-    fullscreenManager.exitFullscreen();
+    void fullscreenManager.exitFullscreen();
   }
 
   function onDomainHintClick() {
@@ -2142,6 +2166,10 @@
       }
     }
 
+    // Fullscreen has no controls outside the reader: always leave it when
+    // navigating away so manage/library/settings never get stuck in it.
+    await fullscreenManager.exitIfActive();
+
     await goto(`${pagePath}${routeId}`);
 
     if (pendingExitSync) {
@@ -2302,11 +2330,20 @@
 
   async function handleCloudReconnect() {
     if (!expiredSyncTarget || cloudReconnecting) return;
+    // Snapshot fullscreen: opening the OAuth popup typically drops the
+    // browser out of fullscreen. Restore afterwards on success only.
+    const wasFullscreen = browser && !!fullscreenManager.fullscreenElement;
     // Open synchronously in the click handler so mobile browsers don't block it.
     const preOpened = StorageOAuthManager.openAuthWindowSync(window);
     cloudReconnecting = true;
     try {
-      await reconnectAndSyncNow(window, expiredSyncTarget, preOpened);
+      const ok = await reconnectAndSyncNow(window, expiredSyncTarget, preOpened);
+      if (ok && wasFullscreen && !fullscreenManager.fullscreenElement) {
+        const restored = await fullscreenManager.requestFullscreen(document.documentElement);
+        if (!restored) {
+          pushTransientNotice('Sync complete — tap fullscreen to return');
+        }
+      }
     } finally {
       cloudReconnecting = false;
     }
@@ -2346,6 +2383,7 @@
           (!isPaginated && customReadingPointLeft > -1 && customReadingPointTop > -1))
       )}
       showFullscreenButton={fullscreenManager.fullscreenEnabled}
+      isFullscreen={$isReaderFullscreen$}
       autoScrollMultiplier={$multiplier$}
       bind:isBookmarkScreen
       on:tocClick={() => {
@@ -2567,7 +2605,7 @@
 
 {#if $bookmarkPanelIsOpen$}
   <div
-    class="writing-horizontal-tb fixed top-0 left-0 z-[60] flex h-full w-full max-w-xl flex-col justify-between"
+    class="writing-horizontal-tb fixed top-0 left-0 z-[60] flex h-full max-h-[100dvh] w-full max-w-xl flex-col justify-between overflow-hidden pt-[env(safe-area-inset-top,0px)]"
     style:color={$themeOption$?.fontColor}
     style:background-color={$backgroundColor$}
     in:fly|local={{ x: -100, duration: 100, easing: quintInOut }}

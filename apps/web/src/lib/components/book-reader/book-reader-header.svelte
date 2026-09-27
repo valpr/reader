@@ -6,6 +6,7 @@
     faBookmark as fasBookmark,
     faChartLine,
     faCog,
+    faCompress,
     faCrosshairs,
     faEllipsis,
     faExpand,
@@ -43,6 +44,7 @@
   export let autoScrollMultiplier: number;
   export let hasCustomReadingPoint: boolean;
   export let showFullscreenButton: boolean;
+  export let isFullscreen = false;
   export let isBookmarkScreen: boolean;
   export let showCloudWarning = false;
   export let cloudWarningLabel = 'Cloud session expired. Reconnect to resume syncing.';
@@ -272,15 +274,15 @@
         </Tooltip>
 
         {#if showFullscreenButton}
-          <Tooltip text="Toggle Fullscreen">
+          <Tooltip text={isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen'}>
             <IconButton
               nativeTooltip={false}
-              label="Toggle Fullscreen"
+              label={isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen'}
               size="md"
               variant="ghost"
               on:click={() => dispatch('fullscreenClick')}
             >
-              <Fa icon={faExpand} class="text-base" />
+              <Fa icon={isFullscreen ? faCompress : faExpand} class="text-base" />
             </IconButton>
           </Tooltip>
         {/if}

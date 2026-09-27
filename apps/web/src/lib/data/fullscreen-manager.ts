@@ -5,8 +5,11 @@
  */
 
 import { browser } from '$app/environment';
+import { writable } from 'svelte/store';
 
 class FullscreenManager {
+  readonly isFullscreen$ = writable(false);
+
   get fullscreenEnabled() {
     return this.fallbackSpec('fullscreenEnabled', 'webkitFullscreenEnabled') ?? false;
   }
@@ -17,18 +20,44 @@ class FullscreenManager {
 
   constructor(document: Document) {
     this.fallbackSpec = fallbackSpec(document);
+
+    if (browser && typeof document.addEventListener === 'function') {
+      const sync = () => this.isFullscreen$.set(!!this.fullscreenElement);
+      document.addEventListener('fullscreenchange', sync);
+      // Safari < 16 prefix
+      document.addEventListener('webkitfullscreenchange', sync as EventListener);
+      sync();
+    }
   }
 
   async requestFullscreen(el: Element, fullscreenOptions?: FullscreenOptions) {
     const fn = fallbackSpec(el)('requestFullscreen', 'webkitRequestFullscreen');
-    if (!fn) return;
-    await fn(fullscreenOptions);
+    if (!fn) return false;
+    try {
+      await fn(fullscreenOptions);
+      this.isFullscreen$.set(true);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async exitFullscreen() {
     const fn = this.fallbackSpec('exitFullscreen', 'webkitExitFullscreen');
     if (!fn) return;
-    await fn();
+    try {
+      await fn();
+    } catch {
+      // no-op: already exited or rejected by browser
+    } finally {
+      this.isFullscreen$.set(false);
+    }
+  }
+
+  /** Best-effort exit used on navigation; never throws. */
+  async exitIfActive() {
+    if (!this.fullscreenElement) return;
+    await this.exitFullscreen();
   }
 
   private fallbackSpec: <P extends keyof Document>(specName: P, alias: string) => Document[P];
