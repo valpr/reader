@@ -150,7 +150,9 @@
 
   $: if ($enableReaderWakeLock$ && visibilityState === 'visible') {
     scheduleWakeLock();
-  } else if (visibilityState === 'hidden') {
+  } else {
+    // Covers hidden tab AND toggle-off while visible: never hold a lock
+    // the user disabled, and never leave a stale schedule behind.
     cancelScheduledWakeLock();
     void releaseWakeLock();
   }

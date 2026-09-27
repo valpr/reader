@@ -2605,7 +2605,7 @@
 
 {#if $bookmarkPanelIsOpen$}
   <div
-    class="writing-horizontal-tb fixed top-0 left-0 z-[60] flex h-full max-h-[100dvh] w-full max-w-xl flex-col justify-between overflow-hidden pt-[env(safe-area-inset-top,0px)]"
+    class="writing-horizontal-tb fixed top-0 left-0 z-[60] flex h-full max-h-screen max-h-[100dvh] w-full max-w-xl flex-col justify-between overflow-hidden pt-[env(safe-area-inset-top,0px)]"
     style:color={$themeOption$?.fontColor}
     style:background-color={$backgroundColor$}
     in:fly|local={{ x: -100, duration: 100, easing: quintInOut }}
