@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a problem in the reader
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Steps to reproduce, what you expected, and what you saw instead.
+      placeholder: Steps / expected / actual
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics (auto)
+      description: One-line summary filled in by the "Copy Report & Report Issue" button.
+      placeholder: 'app: 0.0.1 (abc123) | route: /manage | errors: 2 | last sync error: none'
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste the copied report below, or attach the downloaded log.json file.
+      placeholder: Paste report JSON here
+    validations:
+      required: false
