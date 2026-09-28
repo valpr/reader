@@ -19,7 +19,17 @@ test.describe('BookLoader showcase', () => {
     const loader = page.getByTestId('showcase-loader-flavor').getByTestId('book-loader');
     await expect(loader).toBeVisible();
     await expect(loader).toHaveAttribute('data-mode', 'flavor');
-    await expect(loader.getByTestId('book-loader-flavor')).toBeVisible();
+    const flavorText = loader.getByTestId('book-loader-flavor');
+    await expect(flavorText).toBeVisible();
+    await expect(flavorText).toHaveText('筆を整えています…');
+
+    const transitionProp = await flavorText.evaluate(
+      (el) => window.getComputedStyle(el).transitionProperty
+    );
+    expect(transitionProp).toContain('opacity');
+
+    // Asserts smooth rotation from line 1 to line 2 (fade-out then fade-in)
+    await expect(flavorText).toHaveText('文庫本を開いています…', { timeout: 6000 });
   });
 
   test('debug mode shows stage text and determinate progress', async ({ page }) => {
