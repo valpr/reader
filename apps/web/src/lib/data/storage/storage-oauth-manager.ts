@@ -716,6 +716,18 @@ export class StorageOAuthManager {
     }
 
     try {
+      // Ask the popup to close itself first: a popup can often honor its own
+      // window.close() even when the parent can no longer close it (e.g. a
+      // Firefox Android home-screen Custom Tab). The parent close below is
+      // kept for regular browser popups.
+      const targetOrigin = this.parentWindow?.location.origin;
+      if (targetOrigin) {
+        try {
+          this.authWindow?.postMessage({ type: 'close' }, targetOrigin);
+        } catch {
+          // no-op: the popup may already have navigated away
+        }
+      }
       if (!this.authWindow?.closed) {
         this.authWindow?.close();
       }

@@ -11,9 +11,46 @@
   import Fa from 'svelte-fa';
 
   let errorMessage = '';
+  let signedIn = false;
+  let closeListenerAttached = false;
 
   $: if (browser) {
-    handleAuthRequest();
+    attachCloseListener();
+    handleAuthRequest().catch((error: any) => {
+      try {
+        reportError(
+          window.location.origin,
+          'Sign-in setup failed',
+          error?.message || String(error)
+        );
+      } catch {
+        errorMessage = 'Sign-in setup failed';
+      }
+    });
+  }
+
+  /**
+   * Honor a parent-initiated close: after the app receives the token it posts
+   * {type:'close'} (see StorageOAuthManager.clearAuthData). A popup can often
+   * close itself even when the parent can no longer close it — e.g. a Firefox
+   * Android home-screen launch opens the auth page in a Custom Tab that the
+   * parent's window.close() cannot dismiss, leaving "Completing sign-in…"
+   * stuck on screen until the user closes it manually.
+   */
+  function attachCloseListener() {
+    if (closeListenerAttached) {
+      return;
+    }
+    closeListenerAttached = true;
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'close') {
+        try {
+          window.close();
+        } catch {
+          // no-op: the fallback "Signed in" UI below lets the user close manually
+        }
+      }
+    });
   }
 
   async function handleAuthRequest() {
@@ -160,6 +197,11 @@
     refreshToken?: string | null
   ) {
     if (!window.opener) {
+      reportError(
+        origin,
+        'Sign-in incomplete',
+        'The login window lost connection to the app (e.g. it was opened in a separate browser tab via "Open in Firefox").\n\nPlease close this window and retry sync from the app.'
+      );
       return;
     }
 
@@ -186,17 +228,48 @@
       },
       origin
     );
+
+    // The token is now with the app: try to get out of the way immediately so
+    // the popup only flashes briefly (non-PWA behavior). Where the parent can
+    // no longer close us (e.g. Firefox Android Custom Tabs), this self-close
+    // is the only programmatic dismiss; if it fails, the "Signed in" fallback
+    // below lets the user close manually.
+    signedIn = true;
+    try {
+      window.close();
+    } catch {
+      // no-op: fallback UI covers manual close
+    }
   }
 
-  function getDataFromOpener(origin: string, payload: any): Promise<any> {
+  /**
+   * Ask the opener for data over a MessageChannel. Never hangs forever: an
+   * orphaned login window (no opener, e.g. via "Open in Firefox") or an
+   * unresponsive app rejects so the caller surfaces an error with a Close
+   * button instead of sitting on "Completing sign-in…" indefinitely.
+   */
+  function getDataFromOpener(origin: string, payload: any, timeoutMs = 10000): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!window.opener) {
+        reject(
+          new Error(
+            'The login window lost connection to the app (e.g. it was opened in a separate browser tab via "Open in Firefox"). Close this window and retry sync from the app.'
+          )
+        );
         return;
       }
 
       const channel = new MessageChannel();
 
+      const timer = window.setTimeout(() => {
+        channel.port1.close();
+        reject(
+          new Error('Timed out waiting for the app. Close this window and retry sync from the app.')
+        );
+      }, timeoutMs);
+
       channel.port1.onmessage = ({ data }) => {
+        window.clearTimeout(timer);
         channel.port1.close();
 
         if (data.error) {
@@ -206,7 +279,13 @@
         }
       };
 
-      window.opener.postMessage(payload, origin, [channel.port2]);
+      try {
+        window.opener.postMessage(payload, origin, [channel.port2]);
+      } catch (error: any) {
+        window.clearTimeout(timer);
+        channel.port1.close();
+        reject(error);
+      }
     });
   }
 </script>
@@ -221,6 +300,23 @@
     <h2 class="text-lg font-semibold mb-2">Authentication Failed</h2>
     <pre
       class="text-xs text-zinc-600 dark:text-zinc-400 max-w-md whitespace-pre-wrap mb-6 font-mono bg-zinc-100 dark:bg-zinc-800 p-3 rounded text-left border border-zinc-200 dark:border-zinc-700">{errorMessage}</pre>
+    <button
+      class="px-4 py-2 text-sm font-medium rounded-lg bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 transition-opacity"
+      on:click={() => window.close()}
+    >
+      Close Window
+    </button>
+  </div>
+{:else if signedIn}
+  <div
+    class="fixed inset-0 flex flex-col items-center justify-center p-6 text-center text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900"
+  >
+    <h2 class="text-lg font-semibold mb-2">Signed in</h2>
+    <p
+      class="text-sm text-zinc-600 dark:text-zinc-400 max-w-md min-w-0 break-words [overflow-wrap:anywhere] mb-6"
+    >
+      Sync is continuing in the app. You can close this window.
+    </p>
     <button
       class="px-4 py-2 text-sm font-medium rounded-lg bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 transition-opacity"
       on:click={() => window.close()}
