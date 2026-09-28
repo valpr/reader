@@ -29,26 +29,93 @@
     '栞を挟んでいます…'
   ];
 
+  const FADE_DURATION = 200;
+  const DISPLAY_DURATION = 2000;
+
   let flavorIndex = 0;
-  let flavorTimer: ReturnType<typeof setInterval> | undefined;
+  let displayedFlavorLine = flavorLines[0] ?? '';
+  let isFlavorFading = false;
+  let rotateTimeout: ReturnType<typeof setTimeout> | undefined;
+  let fadeTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  let displayedStage = stage;
+  let isStageFading = false;
+  let stageFadeTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  let mounted = false;
 
   const maskId = `astryx-bookloader-mask-${(bookLoaderMaskCount += 1)}`;
 
-  $: currentFlavorLine = flavorLines.length
-    ? (flavorLines[flavorIndex % flavorLines.length] ?? '')
-    : '';
+  function clearFlavorTimeouts() {
+    if (rotateTimeout) {
+      clearTimeout(rotateTimeout);
+      rotateTimeout = undefined;
+    }
+    if (fadeTimeout) {
+      clearTimeout(fadeTimeout);
+      fadeTimeout = undefined;
+    }
+  }
+
+  function scheduleFlavorRotation() {
+    clearFlavorTimeouts();
+    if (!mounted || mode !== 'flavor' || flavorLines.length <= 1) return;
+
+    rotateTimeout = setTimeout(() => {
+      isFlavorFading = true;
+      fadeTimeout = setTimeout(() => {
+        flavorIndex = (flavorIndex + 1) % flavorLines.length;
+        displayedFlavorLine = flavorLines[flavorIndex] ?? '';
+        isFlavorFading = false;
+        scheduleFlavorRotation();
+      }, FADE_DURATION);
+    }, DISPLAY_DURATION);
+  }
+
+  $: if (flavorLines.length && !flavorLines.includes(displayedFlavorLine)) {
+    flavorIndex = 0;
+    displayedFlavorLine = flavorLines[0] ?? '';
+  }
+
+  $: if (mounted) {
+    if (mode === 'flavor' && flavorLines.length > 1) {
+      if (!rotateTimeout && !fadeTimeout) {
+        scheduleFlavorRotation();
+      }
+    } else {
+      clearFlavorTimeouts();
+      isFlavorFading = false;
+    }
+  }
+
+  $: if (stage !== displayedStage) {
+    if (!mounted || !displayedStage || !stage) {
+      displayedStage = stage;
+      isStageFading = false;
+      if (stageFadeTimeout) {
+        clearTimeout(stageFadeTimeout);
+        stageFadeTimeout = undefined;
+      }
+    } else {
+      if (stageFadeTimeout) clearTimeout(stageFadeTimeout);
+      isStageFading = true;
+      stageFadeTimeout = setTimeout(() => {
+        displayedStage = stage;
+        isStageFading = false;
+      }, FADE_DURATION);
+    }
+  }
+
   $: clampedProgress = progress === null ? null : Math.min(1, Math.max(0, progress));
 
   onMount(() => {
-    if (flavorLines.length > 1) {
-      flavorTimer = setInterval(() => {
-        flavorIndex += 1;
-      }, 2400);
-    }
+    mounted = true;
+    scheduleFlavorRotation();
   });
 
   onDestroy(() => {
-    if (flavorTimer) clearInterval(flavorTimer);
+    clearFlavorTimeouts();
+    if (stageFadeTimeout) clearTimeout(stageFadeTimeout);
   });
 </script>
 
@@ -160,8 +227,14 @@
     </svg>
   </div>
   {#if mode === 'debug'}
-    {#if stage}
-      <p class="astryx-bookloader-stage" data-testid="book-loader-stage">{stage}</p>
+    {#if displayedStage}
+      <p
+        class="astryx-bookloader-stage"
+        class:is-fading={isStageFading}
+        data-testid="book-loader-stage"
+      >
+        {displayedStage}
+      </p>
     {/if}
     {#if clampedProgress !== null}
       <div
@@ -170,7 +243,7 @@
         aria-valuemin="0"
         aria-valuemax="100"
         aria-valuenow={Math.round(clampedProgress * 100)}
-        aria-label={stage || 'Loading progress'}
+        aria-label={displayedStage || stage || 'Loading progress'}
       >
         <div class="astryx-bookloader-fill" style:width="{clampedProgress * 100}%"></div>
       </div>
@@ -178,8 +251,14 @@
     {#if detail}
       <p class="astryx-bookloader-detail">{detail}</p>
     {/if}
-  {:else if currentFlavorLine}
-    <p class="astryx-bookloader-flavor" data-testid="book-loader-flavor">{currentFlavorLine}</p>
+  {:else if displayedFlavorLine}
+    <p
+      class="astryx-bookloader-flavor"
+      class:is-fading={isFlavorFading}
+      data-testid="book-loader-flavor"
+    >
+      {displayedFlavorLine}
+    </p>
   {/if}
 </div>
 
@@ -389,16 +468,35 @@
     margin: 0;
     font-size: var(--astryx-font-size-sm, 0.875rem);
     line-height: 1.5;
+    min-height: 1.5em;
     opacity: 0.8;
     overflow-wrap: anywhere;
+    animation: astryx-text-fade-in var(--astryx-duration-normal, 200ms) var(--astryx-ease, ease);
+    transition: opacity var(--astryx-duration-normal, 200ms) var(--astryx-ease, ease);
+  }
+
+  .astryx-bookloader-stage.is-fading,
+  .astryx-bookloader-flavor.is-fading {
+    opacity: 0;
+  }
+
+  @keyframes astryx-text-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 0.8;
+    }
   }
 
   .astryx-bookloader-detail {
     margin: 0;
     font-size: var(--astryx-font-size-xs, 0.75rem);
     line-height: 1.5;
+    min-height: 1.5em;
     opacity: 0.6;
     overflow-wrap: anywhere;
+    animation: astryx-text-fade-in var(--astryx-duration-normal, 200ms) var(--astryx-ease, ease);
   }
 
   .astryx-bookloader-track {
@@ -428,6 +526,12 @@
     }
     .bm {
       opacity: 1;
+    }
+    .astryx-bookloader-stage,
+    .astryx-bookloader-flavor,
+    .astryx-bookloader-detail {
+      animation: none;
+      transition: none;
     }
   }
 </style>
