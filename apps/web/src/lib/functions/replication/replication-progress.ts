@@ -5,7 +5,7 @@
  */
 
 import type { Entry } from '@zip.js/zip.js';
-import { Subject } from 'rxjs';
+import { filter, firstValueFrom, Subject, timeout } from 'rxjs';
 import { writableSubject } from '$lib/functions/svelte/store';
 import { StorageDataType, StorageKey } from '$lib/data/storage/storage-types';
 
@@ -103,6 +103,39 @@ export function markPriorityReady(): void {
 
 export function resetReadReady(): void {
   readReady$.next(idleReadReady);
+}
+
+/**
+ * Whether a title has completed its phase-1 reading-state download and is
+ * safe to open immediately without blocking on cloud sync.
+ */
+export function isTitleReadReady(title: string): boolean {
+  if (!title) return false;
+  return readReady$.getValue().readyTitles.includes(title);
+}
+
+/**
+ * Await phase-1 priority download completion for a title currently in progress.
+ * Resolves true if the title is/becomes ready, or false if it was not priority,
+ * timed out, or priority sync aborted.
+ */
+export async function waitForPriorityBookReady(title: string, timeoutMs = 8000): Promise<boolean> {
+  if (!title) return false;
+  const current = readReady$.getValue();
+  if (current.readyTitles.includes(title)) return true;
+  if (!current.pendingTitles.includes(title)) return false;
+
+  try {
+    const ready = await firstValueFrom(
+      readReady$.pipe(
+        filter((state) => state.readyTitles.includes(title) || state.phase !== 'priority-syncing'),
+        timeout({ each: timeoutMs })
+      )
+    );
+    return ready.readyTitles.includes(title);
+  } catch {
+    return readReady$.getValue().readyTitles.includes(title);
+  }
 }
 
 /**

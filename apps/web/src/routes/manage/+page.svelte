@@ -85,8 +85,9 @@
   import { waitForExitSync } from '$lib/functions/replication/exit-sync';
   import { throwIfAborted } from '$lib/functions/replication/replication-error';
   import {
-    replicationProgress$,
     executeReplicate$,
+    isTitleReadReady,
+    replicationProgress$,
     type ReplicationProgress
   } from '$lib/functions/replication/replication-progress';
   import { pluralize } from '$lib/functions/utils';
@@ -607,8 +608,9 @@
           }
         }
 
+        const isReadReady = !!bookItem && isTitleReadReady(bookItem.title);
         dialogManager.dialogs$.next([]);
-        openBook(idToOpen, downloadedInThisClick);
+        openBook(idToOpen, downloadedInThisClick, isReadReady);
         return;
       } catch (error: any) {
         const message = `Error opening book: ${error.message}`;
@@ -698,17 +700,20 @@
     return !replicationToProgress && connectivityPass;
   }
 
-  function openBook(bookId: number, justDownloaded = false) {
+  function openBook(bookId: number, justDownloaded = false, isReadReady = false) {
     if (!bookId) {
       return;
     }
 
     database.putLastItem(bookId);
-    gotoBook(bookId, justDownloaded);
+    gotoBook(bookId, justDownloaded, isReadReady);
   }
 
-  async function gotoBook(id: number, justDownloaded = false) {
-    await goto(`${pagePath}/b?id=${id}${justDownloaded ? '&justDownloaded=1' : ''}`);
+  async function gotoBook(id: number, justDownloaded = false, isReadReady = false) {
+    const params = new URLSearchParams({ id: String(id) });
+    if (justDownloaded) params.set('justDownloaded', '1');
+    if (isReadReady) params.set('readReady', '1');
+    await goto(`${pagePath}/b?${params.toString()}`);
   }
 
   async function onFilesChange(fileList: FileList | File[]) {
@@ -818,7 +823,9 @@
   function backToCurrentBook() {
     const currentBookId = $currentBookId$;
     if (!currentBookId) return;
-    gotoBook(currentBookId);
+    const bookItem = $bookCards$?.find((book) => book.id === currentBookId);
+    const isReadReady = !!bookItem && isTitleReadReady(bookItem.title);
+    gotoBook(currentBookId, false, isReadReady);
   }
 
   async function removeBooks(bookIds: number[]) {
