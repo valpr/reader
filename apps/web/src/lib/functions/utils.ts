@@ -35,6 +35,19 @@ export function isMobile(window: Window) {
   return userAgentRegex.test(UA);
 }
 
+export function isStandalonePwa(window: Window): boolean {
+  if (!window) return false;
+  if ((window as any).__forceStandalonePwa !== undefined) {
+    return Boolean((window as any).__forceStandalonePwa);
+  }
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    window.matchMedia?.('(display-mode: fullscreen)').matches ||
+    window.matchMedia?.('(display-mode: minimal-ui)').matches ||
+    Boolean((window.navigator as any)?.standalone)
+  );
+}
+
 export function isOnOldUrl(window: Window) {
   return window.location.href.startsWith('https://ttu-ebook.web.app');
 }

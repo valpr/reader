@@ -7,12 +7,19 @@
   import { basePath, clearConsoleOnReload } from '$lib/data/env';
   import { dialogManager, type Dialog } from '$lib/data/dialog-manager';
   import { userFontsCacheName, type UserFont } from '$lib/data/fonts';
-  import { appThemeMode$, fontFamilyGroupOne$, isOnline$, userFonts$ } from '$lib/data/store';
+  import {
+    appThemeMode$,
+    database,
+    fontFamilyGroupOne$,
+    isOnline$,
+    userFonts$
+  } from '$lib/data/store';
   import { restoreCloudSessions } from '$lib/data/storage/storage-oauth-manager';
   import {
     startProactiveRefresh,
     stopProactiveRefresh
   } from '$lib/data/storage/token-refresh-scheduler';
+  import { triggerCloudSync } from '$lib/functions/replication/cloud-sync';
   import { applyAppTheme } from '$lib/functions/app-theme';
   import { dummyFn, isMobile, isMobile$ } from '$lib/functions/utils';
   import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
@@ -110,6 +117,20 @@
     }
 
     startProactiveRefresh();
+
+    // Trigger sync if returning from a PWA same-window OAuth redirect
+    const pwaSyncTarget = window.localStorage.getItem('pwa_sync_after_redirect');
+    if (pwaSyncTarget) {
+      window.localStorage.removeItem('pwa_sync_after_redirect');
+      void database.db.then(async (db) => {
+        try {
+          const sources = await db.getAll('storageSource');
+          void triggerCloudSync(window, pwaSyncTarget, sources);
+        } catch {
+          // no-op
+        }
+      });
+    }
 
     // Session state is in-memory, so after a refresh we silently re-validate
     // each persisted cloud source using its stored refresh token. Skipped
