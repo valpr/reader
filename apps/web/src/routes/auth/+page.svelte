@@ -2,19 +2,44 @@
   import { browser } from '$app/environment';
   import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
   import { BookLoader } from '@custom-ereader/ui';
-  import { loaderMode$ } from '$lib/data/store';
+  import { loaderMode$, syncTarget$ } from '$lib/data/store';
+  import { gDriveRevokeEndpoint } from '$lib/data/env';
   import {
     convertAuthErrorResponse,
     NETWORK_UNREACHABLE_MESSAGE,
     isNetworkUnreachableError
   } from '$lib/functions/replication/error-handler';
+  import {
+    StorageOAuthManager,
+    getPwaOAuthState,
+    clearPwaOAuthState,
+    storageOAuthTokens,
+    setConnectionState,
+    StorageConnectionState,
+    type PwaOAuthState,
+    type OAuthTokenData
+  } from '$lib/data/storage/storage-oauth-manager';
+  import { StorageKey } from '$lib/data/storage/storage-types';
+  import { database, clearPendingCloudSync } from '$lib/data/store';
+  import {
+    encrypt,
+    setStorageSourceDefault,
+    type RemoteContext
+  } from '$lib/data/storage/storage-source-manager';
   import Fa from 'svelte-fa';
 
   let errorMessage = '';
   let signedIn = false;
   let closeListenerAttached = false;
+  let pwaState: PwaOAuthState | null = null;
+  let mismatchWarning = false;
+  let mismatchPreviousEmail = '';
+  let mismatchCurrentEmail = '';
+  let mismatchPendingAction: (() => Promise<void>) | null = null;
+  let mismatchCancelAction: (() => void) | null = null;
 
   $: if (browser) {
+    pwaState = getPwaOAuthState();
     attachCloseListener();
     handleAuthRequest().catch((error: any) => {
       try {
@@ -56,23 +81,51 @@
   async function handleAuthRequest() {
     const url = new URL(window.location.href);
     const hashParams = new URLSearchParams(url.hash.substring(1));
-    const hashError = hashParams.has('error_description') || hashParams.has('error');
+    const hashError =
+      hashParams.has('error_description') ||
+      hashParams.has('error') ||
+      url.searchParams.has('error_description') ||
+      url.searchParams.has('error');
     const redirectUri = `${url.origin}${url.pathname}`;
 
     if (hashError) {
       reportError(
         url.origin,
         'Authorization failed',
-        hashParams.get('error_description') || hashParams.get('error') || 'Unknown error'
+        hashParams.get('error_description') ||
+          hashParams.get('error') ||
+          url.searchParams.get('error_description') ||
+          url.searchParams.get('error') ||
+          'Unknown error'
       );
     } else if (url.searchParams.has('code')) {
       const params = new URLSearchParams();
-      const { clientId, clientSecret, sendSecret, tokenEndpoint } = await getDataFromOpener(
-        url.origin,
-        {
+      let clientId: string;
+      let clientSecret: string | undefined;
+      let sendSecret: boolean;
+      let tokenEndpoint: string;
+      let codeVerifier: string;
+
+      if (window.opener) {
+        const authVars = await getDataFromOpener(url.origin, {
           type: 'getAuthVariables'
-        }
-      );
+        });
+        clientId = authVars.clientId;
+        clientSecret = authVars.clientSecret;
+        sendSecret = authVars.sendSecret;
+        tokenEndpoint = authVars.tokenEndpoint;
+        codeVerifier = await getDataFromOpener(url.origin, { type: 'getCodeVerifier' });
+      } else if (pwaState) {
+        clientId = pwaState.clientId;
+        clientSecret = pwaState.clientSecret;
+        sendSecret = pwaState.sendSecret;
+        tokenEndpoint = pwaState.tokenEndpoint;
+        codeVerifier = pwaState.codeVerifier;
+      } else {
+        throw new Error(
+          'The login window lost connection to the app (e.g. it was opened in a separate browser tab via "Open in Firefox").\n\nPlease close this window and retry sync from the app.'
+        );
+      }
 
       params.append('grant_type', 'authorization_code');
       params.append('redirect_uri', redirectUri);
@@ -83,10 +136,7 @@
       }
 
       params.append('code', url.searchParams.get('code') || '');
-      params.append(
-        'code_verifier',
-        await getDataFromOpener(url.origin, { type: 'getCodeVerifier' })
-      );
+      params.append('code_verifier', codeVerifier);
 
       fetch(tokenEndpoint, {
         method: 'POST',
@@ -101,7 +151,7 @@
           return response.json();
         })
         .then((tokenData) => {
-          checkAuthResponse(
+          void checkAuthResponse(
             url.origin,
             tokenData.access_token,
             tokenData.expires_in,
@@ -117,7 +167,7 @@
           reportError(url.origin, 'Code authorization request failed', detail);
         });
     } else if (hashParams.has('access_token')) {
-      checkAuthResponse(
+      void checkAuthResponse(
         url.origin,
         hashParams.get('access_token'),
         hashParams.get('expires_in'),
@@ -188,7 +238,7 @@
     );
   }
 
-  function checkAuthResponse(
+  async function checkAuthResponse(
     origin: string,
     accessToken: string | null,
     expiration: string | null,
@@ -196,15 +246,6 @@
     withRefreshToken = false,
     refreshToken?: string | null
   ) {
-    if (!window.opener) {
-      reportError(
-        origin,
-        'Sign-in incomplete',
-        'The login window lost connection to the app (e.g. it was opened in a separate browser tab via "Open in Firefox").\n\nPlease close this window and retry sync from the app.'
-      );
-      return;
-    }
-
     if (!accessToken || !expiration || !scope || (withRefreshToken && !refreshToken)) {
       reportError(
         origin,
@@ -216,29 +257,161 @@
       return;
     }
 
-    window.opener.postMessage(
-      {
-        type: 'auth',
-        payload: {
-          accessToken,
-          scope,
-          expiration: Date.now() + (Number.parseInt(expiration, 10) - 600) * 1000,
-          refreshToken
-        }
-      },
-      origin
-    );
+    if (window.opener) {
+      window.opener.postMessage(
+        {
+          type: 'auth',
+          payload: {
+            accessToken,
+            scope,
+            expiration: Date.now() + (Number.parseInt(expiration, 10) - 600) * 1000,
+            refreshToken
+          }
+        },
+        origin
+      );
 
-    // The token is now with the app: try to get out of the way immediately so
-    // the popup only flashes briefly (non-PWA behavior). Where the parent can
-    // no longer close us (e.g. Firefox Android Custom Tabs), this self-close
-    // is the only programmatic dismiss; if it fails, the "Signed in" fallback
-    // below lets the user close manually.
-    signedIn = true;
+      // The token is now with the app: try to get out of the way immediately so
+      // the popup only flashes briefly (non-PWA behavior). Where the parent can
+      // no longer close us (e.g. Firefox Android Custom Tabs), this self-close
+      // is the only programmatic dismiss; if it fails, the "Signed in" fallback
+      // below lets the user close manually.
+      signedIn = true;
+      try {
+        window.close();
+      } catch {
+        // no-op: fallback UI covers manual close
+      }
+      return;
+    }
+
+    if (pwaState) {
+      await completePwaAuth(accessToken, expiration, scope, refreshToken);
+      return;
+    }
+
+    reportError(
+      origin,
+      'Sign-in incomplete',
+      'The login window lost connection to the app (e.g. it was opened in a separate browser tab via "Open in Firefox").\n\nPlease close this window and retry sync from the app.'
+    );
+  }
+
+  async function completePwaAuth(
+    accessToken: string,
+    expiration: string,
+    scope: string,
+    refreshToken?: string | null
+  ) {
+    if (!pwaState) return;
+
+    const tokenData: OAuthTokenData = {
+      accessToken,
+      scope,
+      expiration: Date.now() + (Number.parseInt(expiration, 10) - 600) * 1000,
+      refreshToken: refreshToken || undefined
+    };
+
+    let accountEmail = '';
+    let accountName = '';
     try {
-      window.close();
+      const accountInfo =
+        pwaState.storageType === StorageKey.GDRIVE
+          ? await StorageOAuthManager.fetchGoogleAccount(accessToken)
+          : await StorageOAuthManager.fetchOneDriveAccount(accessToken);
+      accountEmail = accountInfo.email || '';
+      accountName = accountInfo.name || '';
     } catch {
-      // no-op: fallback UI covers manual close
+      // Continue even if account lookup is unavailable
+    }
+
+    const previousEmail = pwaState.previousEmail;
+    if (
+      previousEmail &&
+      accountEmail &&
+      previousEmail.trim().toLowerCase() !== accountEmail.trim().toLowerCase()
+    ) {
+      mismatchPreviousEmail = previousEmail;
+      mismatchCurrentEmail = accountEmail;
+      mismatchWarning = true;
+      mismatchPendingAction = async () => {
+        await persistPwaAuth(tokenData, accountEmail, accountName);
+      };
+      mismatchCancelAction = () => {
+        if (tokenData.refreshToken && pwaState?.storageType === StorageKey.GDRIVE) {
+          StorageOAuthManager.revokeToken(gDriveRevokeEndpoint, tokenData.refreshToken);
+        }
+        const returnUrl = pwaState?.returnUrl || '/';
+        clearPwaOAuthState();
+        window.location.replace(returnUrl);
+      };
+      return;
+    }
+
+    await persistPwaAuth(tokenData, accountEmail, accountName);
+  }
+
+  async function persistPwaAuth(
+    tokenData: OAuthTokenData,
+    accountEmail: string,
+    accountName: string
+  ) {
+    if (!pwaState) return;
+
+    try {
+      const db = await database.db;
+      const existing = pwaState.existingStorageSourceData ||
+        (await db.get('storageSource', pwaState.storageSourceName)) || {
+          storedInManager: false,
+          encryptionDisabled: false
+        };
+
+      const finalRefreshToken = tokenData.refreshToken || existing.data?.refreshToken;
+      const remoteContext: RemoteContext = {
+        clientId: pwaState.clientId,
+        clientSecret: pwaState.clientSecret || '',
+        refreshToken: finalRefreshToken,
+        accountEmail: accountEmail || existing.data?.accountEmail,
+        accountName: accountName || existing.data?.accountName
+      };
+
+      const newData = existing.encryptionDisabled
+        ? remoteContext
+        : pwaState.secret
+          ? await encrypt(window, JSON.stringify(remoteContext), pwaState.secret)
+          : existing.data;
+
+      await db.put('storageSource', {
+        ...existing,
+        name: pwaState.storageSourceName,
+        type: pwaState.storageType,
+        data: newData,
+        disconnected: false,
+        lastSourceModified: Date.now()
+      });
+
+      storageOAuthTokens.set(pwaState.storageSourceName, tokenData);
+      setConnectionState(pwaState.storageSourceName, StorageConnectionState.CONNECTED);
+      clearPendingCloudSync(pwaState.storageSourceName);
+
+      if (pwaState.setAsSyncTarget) {
+        $syncTarget$ = pwaState.storageSourceName;
+        setStorageSourceDefault(pwaState.storageSourceName, pwaState.storageType);
+      }
+
+      if (pwaState.triggerSyncOnReturn) {
+        window.localStorage.setItem('pwa_sync_after_redirect', pwaState.storageSourceName);
+      }
+
+      const returnUrl = pwaState.returnUrl || '/';
+      clearPwaOAuthState();
+      window.location.replace(returnUrl);
+    } catch (err: any) {
+      reportError(
+        window.location.origin,
+        'Failed to save storage credentials',
+        err?.message || String(err)
+      );
     }
   }
 
@@ -300,12 +473,55 @@
     <h2 class="text-lg font-semibold mb-2">Authentication Failed</h2>
     <pre
       class="text-xs text-zinc-600 dark:text-zinc-400 max-w-md whitespace-pre-wrap mb-6 font-mono bg-zinc-100 dark:bg-zinc-800 p-3 rounded text-left border border-zinc-200 dark:border-zinc-700">{errorMessage}</pre>
-    <button
-      class="px-4 py-2 text-sm font-medium rounded-lg bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 transition-opacity"
-      on:click={() => window.close()}
+    {#if pwaState}
+      <button
+        class="px-4 py-2 text-sm font-medium rounded-lg bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 transition-opacity"
+        on:click={() => {
+          const returnUrl = pwaState?.returnUrl || '/';
+          clearPwaOAuthState();
+          window.location.replace(returnUrl);
+        }}
+      >
+        Return to App
+      </button>
+    {:else}
+      <button
+        class="px-4 py-2 text-sm font-medium rounded-lg bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 transition-opacity"
+        on:click={() => window.close()}
+      >
+        Close Window
+      </button>
+    {/if}
+  </div>
+{:else if mismatchWarning}
+  <div
+    class="fixed inset-0 flex flex-col items-center justify-center p-6 text-center text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900"
+  >
+    <div class="text-amber-500 text-5xl mb-4">
+      <Fa icon={faTriangleExclamation} />
+    </div>
+    <h2 class="text-lg font-semibold mb-2">Account Mismatch Warning</h2>
+    <p
+      class="text-sm text-zinc-600 dark:text-zinc-400 max-w-md min-w-0 break-words [overflow-wrap:anywhere] mb-6"
     >
-      Close Window
-    </button>
+      This storage source was previously linked to "{mismatchPreviousEmail}", but you just
+      authenticated as "{mismatchCurrentEmail}". Connecting a different account may cause books,
+      reading progress, and statistics to be mixed across accounts.
+    </p>
+    <div class="flex gap-3">
+      <button
+        class="px-4 py-2 text-sm font-medium rounded-lg border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        on:click={() => mismatchCancelAction?.()}
+      >
+        Cancel
+      </button>
+      <button
+        class="px-4 py-2 text-sm font-medium rounded-lg bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 transition-opacity"
+        on:click={() => mismatchPendingAction?.()}
+      >
+        Switch Account
+      </button>
+    </div>
   </div>
 {:else if signedIn}
   <div

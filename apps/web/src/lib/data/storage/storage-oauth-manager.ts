@@ -12,12 +12,14 @@ import { dialogManager } from '$lib/data/dialog-manager';
 import {
   gDriveAuthEndpoint,
   gDriveClientId,
+  gDriveClientSecret,
   gDriveRefreshEndpoint,
   gDriveRevokeEndpoint,
   gDriveScope,
   gDriveTokenEndpoint,
   oneDriveAuthEndpoint,
   oneDriveClientId,
+  oneDriveClientSecret,
   oneDriveScope,
   oneDriveTokenEndpoint,
   pagePath
@@ -43,7 +45,7 @@ import {
   isNetworkUnreachableError
 } from '$lib/functions/replication/error-handler';
 import { writableSubject } from '$lib/functions/svelte/store';
-import { isMobile } from '$lib/functions/utils';
+import { isMobile, isStandalonePwa } from '$lib/functions/utils';
 
 export enum StorageConnectionState {
   CONNECTED = 'connected',
@@ -151,11 +153,63 @@ export function setConnectionState(storageSourceName: string, state: StorageConn
   }
 }
 
-interface OAuthTokenData {
+export interface OAuthTokenData {
   accessToken: string;
   expiration: number;
   scope: string;
   refreshToken?: string;
+}
+
+export const PWA_OAUTH_STATE_KEY = 'pwa_oauth_state';
+
+export interface PwaOAuthState {
+  storageSourceName: string;
+  storageType: StorageKey;
+  clientId: string;
+  clientSecret?: string;
+  sendSecret: boolean;
+  tokenEndpoint: string;
+  codeVerifier: string;
+  returnUrl: string;
+  secret?: string;
+  existingStorageSourceData?: any;
+  previousEmail?: string;
+  setAsSyncTarget?: boolean;
+  triggerSyncOnReturn?: boolean;
+  timestamp: number;
+}
+
+export function getPwaOAuthState(): PwaOAuthState | null {
+  try {
+    const raw =
+      (typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem(PWA_OAUTH_STATE_KEY)
+        : null) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem(PWA_OAUTH_STATE_KEY) : null);
+    if (!raw) return null;
+    const parsed: PwaOAuthState = JSON.parse(raw);
+    // Ignore states older than 15 minutes
+    if (Date.now() - parsed.timestamp > 15 * 60 * 1000) {
+      clearPwaOAuthState();
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPwaOAuthState() {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(PWA_OAUTH_STATE_KEY);
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(PWA_OAUTH_STATE_KEY);
+    }
+  } catch {
+    // no-op
+  }
 }
 
 export interface StorageAuthOptions {
@@ -363,6 +417,20 @@ export class StorageOAuthManager {
       this.authWindow = authWindow;
       this.authWindow.location.assign(`${pagePath}/auth?ttu-init-auth=1`);
     } else if (shallUnlock && allowInteractive) {
+      if (this.parentWindow && isStandalonePwa(this.parentWindow)) {
+        await StorageOAuthManager.startPwaRedirectAuth(
+          this.parentWindow,
+          storageSourceName,
+          this.storageType,
+          unlockResult,
+          storageSource,
+          {
+            setAsSyncTarget: false,
+            triggerSyncOnReturn: true
+          }
+        );
+        return undefined;
+      }
       this.authWindow = StorageOAuthManager.createWindow(
         `${pagePath}/auth?ttu-init-auth=1`,
         'auth',
@@ -613,17 +681,17 @@ export class StorageOAuthManager {
     return token;
   }
 
-  private base64Url(buffer: ArrayBuffer | Uint8Array) {
-    if (!this.parentWindow) {
-      throw new Error('Parent window not defined');
-    }
-
+  static base64Url(buffer: ArrayBuffer | Uint8Array, win?: Window) {
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-    return this.parentWindow
-      .btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
+    const winObj = win || (typeof window !== 'undefined' ? window : null);
+    if (winObj) {
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i += 1) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return winObj.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    return Buffer.from(bytes).toString('base64url');
   }
 
   private waitForAuth(window: Window): Promise<OAuthTokenData> {
@@ -680,15 +748,16 @@ export class StorageOAuthManager {
           const arr = new Uint8Array(32);
 
           this.parentWindow.crypto.getRandomValues(arr);
-          this.codeVerifier = this.base64Url(arr);
+          this.codeVerifier = StorageOAuthManager.base64Url(arr, this.parentWindow);
         }
 
         event.ports[0].postMessage({
-          result: this.base64Url(
+          result: StorageOAuthManager.base64Url(
             await this.parentWindow.crypto.subtle.digest(
               'SHA-256',
               new TextEncoder().encode(this.codeVerifier)
-            )
+            ),
+            this.parentWindow
           )
         });
         break;
@@ -864,6 +933,9 @@ export class StorageOAuthManager {
    * navigate it to the provider. Returns null when blocked.
    */
   static openAuthWindowSync(window: Window): Window | null {
+    if (isStandalonePwa(window)) {
+      return null;
+    }
     return StorageOAuthManager.createWindow(
       `${pagePath}/auth?ttu-init-wait=1`,
       'auth',
@@ -942,10 +1014,111 @@ export class StorageOAuthManager {
     }
   }
 
+  /**
+   * PWA same-window redirect OAuth: instead of opening a child popup that
+   * cannot be closed on mobile browsers (e.g. Firefox for Android Custom Tabs
+   * / standalone activities), save the pending auth context in sessionStorage
+   * and navigate top-level window directly to the provider's authorization endpoint.
+   */
+  static async startPwaRedirectAuth(
+    window: Window,
+    storageSourceName: string,
+    storageSourceType: StorageKey,
+    unlockResult?: StorageUnlockAction,
+    storageSource?: BooksDbStorageSource,
+    options?: {
+      setAsSyncTarget?: boolean;
+      triggerSyncOnReturn?: boolean;
+    }
+  ): Promise<never> {
+    const isDefault = isAppDefault(storageSourceName);
+    let clientId: string;
+    let clientSecret: string | undefined;
+
+    if (isDefault) {
+      clientId =
+        storageSourceName === StorageSourceDefault.GDRIVE_DEFAULT
+          ? gDriveClientId
+          : oneDriveClientId;
+      clientSecret =
+        storageSourceName === StorageSourceDefault.GDRIVE_DEFAULT
+          ? gDriveClientSecret
+          : oneDriveClientSecret;
+    } else {
+      clientId = unlockResult?.clientId || '';
+      clientSecret = unlockResult?.clientSecret || '';
+    }
+
+    const authVars = StorageOAuthManager.getAuthVariables(storageSourceType);
+    const sendSecret = storageSourceType === StorageKey.GDRIVE && !isAppDefault(storageSourceName);
+
+    const arr = new Uint8Array(32);
+    window.crypto.getRandomValues(arr);
+    const codeVerifier = StorageOAuthManager.base64Url(arr, window);
+    const digest = await window.crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(codeVerifier)
+    );
+    const codeChallenge = StorageOAuthManager.base64Url(digest, window);
+
+    const redirectUri = `${window.location.origin}${pagePath}/auth`;
+    const params = new URLSearchParams();
+    params.append('client_id', clientId);
+    params.append('redirect_uri', redirectUri);
+    if (authVars.scope) {
+      params.append('scope', authVars.scope);
+    }
+
+    if (clientSecret && authVars.tokenEndpoint) {
+      params.append('response_type', 'code');
+      params.append('access_type', 'offline');
+      params.append('code_challenge_method', 'S256');
+      params.append('code_challenge', codeChallenge);
+      params.append('prompt', 'consent');
+    } else {
+      params.append('response_type', 'token');
+    }
+
+    const stateData: PwaOAuthState = {
+      storageSourceName,
+      storageType: storageSourceType,
+      clientId,
+      clientSecret: clientSecret || undefined,
+      sendSecret,
+      tokenEndpoint: authVars.tokenEndpoint || '',
+      codeVerifier,
+      returnUrl: window.location.pathname + window.location.search + window.location.hash,
+      secret: unlockResult?.secret,
+      existingStorageSourceData: storageSource,
+      previousEmail: unlockResult?.accountEmail,
+      setAsSyncTarget: options?.setAsSyncTarget ?? false,
+      triggerSyncOnReturn: options?.triggerSyncOnReturn ?? true,
+      timestamp: Date.now()
+    };
+
+    try {
+      sessionStorage.setItem(PWA_OAUTH_STATE_KEY, JSON.stringify(stateData));
+    } catch {
+      // no-op
+    }
+    try {
+      localStorage.setItem(PWA_OAUTH_STATE_KEY, JSON.stringify(stateData));
+    } catch {
+      // no-op
+    }
+
+    window.location.assign(`${authVars.authEndpoint}?${params.toString()}`);
+    return new Promise<never>(() => {});
+  }
+
   static async reconnect(
     window: Window,
     storageSourceName: string,
-    preOpenedWindow?: Window | null
+    preOpenedWindow?: Window | null,
+    options?: {
+      setAsSyncTarget?: boolean;
+      enableAutoSync?: boolean;
+    }
   ): Promise<boolean> {
     // Close a caller-pre-opened window when bailing out early so no stray
     // blank tab is left behind (e.g. unconfigured provider, cancelled unlock).
@@ -1029,6 +1202,22 @@ export class StorageOAuthManager {
         abortPreOpened();
         return false;
       }
+    }
+
+    if (isStandalonePwa(window)) {
+      abortPreOpened();
+      await StorageOAuthManager.startPwaRedirectAuth(
+        window,
+        storageSourceName,
+        storageSourceType,
+        unlockResult,
+        storageSource,
+        {
+          setAsSyncTarget: options?.setAsSyncTarget ?? false,
+          triggerSyncOnReturn: true
+        }
+      );
+      return false;
     }
 
     const authWindow =

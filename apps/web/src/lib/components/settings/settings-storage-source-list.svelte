@@ -302,7 +302,9 @@
     actionLoading = { ...actionLoading };
 
     try {
-      const connected = await StorageOAuthManager.reconnect(window, source.name, preOpened);
+      const connected = await StorageOAuthManager.reconnect(window, source.name, preOpened, {
+        setAsSyncTarget: true
+      });
       if (connected) {
         $syncTarget$ = source.name;
         setStorageSourceDefault(source.name, source.type);
