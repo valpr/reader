@@ -29,18 +29,14 @@
     '栞を挟んでいます…'
   ];
 
-  const FADE_DURATION = 200;
-  const DISPLAY_DURATION = 2000;
+  const FLAVOR_FADE_DURATION = 700;
+  const FLAVOR_DISPLAY_DURATION = 3500;
 
   let flavorIndex = 0;
   let displayedFlavorLine = flavorLines[0] ?? '';
   let isFlavorFading = false;
   let rotateTimeout: ReturnType<typeof setTimeout> | undefined;
   let fadeTimeout: ReturnType<typeof setTimeout> | undefined;
-
-  let displayedStage = stage;
-  let isStageFading = false;
-  let stageFadeTimeout: ReturnType<typeof setTimeout> | undefined;
 
   let mounted = false;
 
@@ -68,8 +64,8 @@
         displayedFlavorLine = flavorLines[flavorIndex] ?? '';
         isFlavorFading = false;
         scheduleFlavorRotation();
-      }, FADE_DURATION);
-    }, DISPLAY_DURATION);
+      }, FLAVOR_FADE_DURATION);
+    }, FLAVOR_DISPLAY_DURATION);
   }
 
   $: if (flavorLines.length && !flavorLines.includes(displayedFlavorLine)) {
@@ -88,24 +84,6 @@
     }
   }
 
-  $: if (stage !== displayedStage) {
-    if (!mounted || !displayedStage || !stage) {
-      displayedStage = stage;
-      isStageFading = false;
-      if (stageFadeTimeout) {
-        clearTimeout(stageFadeTimeout);
-        stageFadeTimeout = undefined;
-      }
-    } else {
-      if (stageFadeTimeout) clearTimeout(stageFadeTimeout);
-      isStageFading = true;
-      stageFadeTimeout = setTimeout(() => {
-        displayedStage = stage;
-        isStageFading = false;
-      }, FADE_DURATION);
-    }
-  }
-
   $: clampedProgress = progress === null ? null : Math.min(1, Math.max(0, progress));
 
   onMount(() => {
@@ -115,7 +93,6 @@
 
   onDestroy(() => {
     clearFlavorTimeouts();
-    if (stageFadeTimeout) clearTimeout(stageFadeTimeout);
   });
 </script>
 
@@ -227,14 +204,8 @@
     </svg>
   </div>
   {#if mode === 'debug'}
-    {#if displayedStage}
-      <p
-        class="astryx-bookloader-stage"
-        class:is-fading={isStageFading}
-        data-testid="book-loader-stage"
-      >
-        {displayedStage}
-      </p>
+    {#if stage}
+      <p class="astryx-bookloader-stage" data-testid="book-loader-stage">{stage}</p>
     {/if}
     {#if clampedProgress !== null}
       <div
@@ -243,7 +214,7 @@
         aria-valuemin="0"
         aria-valuemax="100"
         aria-valuenow={Math.round(clampedProgress * 100)}
-        aria-label={displayedStage || stage || 'Loading progress'}
+        aria-label={stage || 'Loading progress'}
       >
         <div class="astryx-bookloader-fill" style:width="{clampedProgress * 100}%"></div>
       </div>
@@ -463,7 +434,14 @@
     }
   }
 
-  .astryx-bookloader-stage,
+  .astryx-bookloader-stage {
+    margin: 0;
+    font-size: var(--astryx-font-size-sm, 0.875rem);
+    line-height: 1.5;
+    opacity: 0.8;
+    overflow-wrap: anywhere;
+  }
+
   .astryx-bookloader-flavor {
     margin: 0;
     font-size: var(--astryx-font-size-sm, 0.875rem);
@@ -471,11 +449,11 @@
     min-height: 1.5em;
     opacity: 0.8;
     overflow-wrap: anywhere;
-    animation: astryx-text-fade-in var(--astryx-duration-normal, 200ms) var(--astryx-ease, ease);
-    transition: opacity var(--astryx-duration-normal, 200ms) var(--astryx-ease, ease);
+    animation: astryx-text-fade-in var(--astryx-duration-slower, 700ms)
+      var(--astryx-ease-in-out, ease-in-out);
+    transition: opacity var(--astryx-duration-slower, 700ms) var(--astryx-ease-in-out, ease-in-out);
   }
 
-  .astryx-bookloader-stage.is-fading,
   .astryx-bookloader-flavor.is-fading {
     opacity: 0;
   }
@@ -493,10 +471,8 @@
     margin: 0;
     font-size: var(--astryx-font-size-xs, 0.75rem);
     line-height: 1.5;
-    min-height: 1.5em;
     opacity: 0.6;
     overflow-wrap: anywhere;
-    animation: astryx-text-fade-in var(--astryx-duration-normal, 200ms) var(--astryx-ease, ease);
   }
 
   .astryx-bookloader-track {
@@ -527,9 +503,7 @@
     .bm {
       opacity: 1;
     }
-    .astryx-bookloader-stage,
-    .astryx-bookloader-flavor,
-    .astryx-bookloader-detail {
+    .astryx-bookloader-flavor {
       animation: none;
       transition: none;
     }
