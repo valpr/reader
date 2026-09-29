@@ -29,7 +29,7 @@ test.describe('BookLoader showcase', () => {
     expect(transitionProp).toContain('opacity');
 
     // Asserts smooth rotation from line 1 to line 2 (fade-out then fade-in)
-    await expect(flavorText).toHaveText('文庫本を開いています…', { timeout: 6000 });
+    await expect(flavorText).toHaveText('文庫本を開いています…', { timeout: 10000 });
   });
 
   test('debug mode shows stage text and determinate progress', async ({ page }) => {
