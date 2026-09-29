@@ -56,5 +56,7 @@
   --astryx-duration-fast: 120ms;
   --astryx-duration-normal: 200ms;
   --astryx-duration-slow: 300ms;
+  --astryx-duration-slower: 700ms;
   --astryx-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --astryx-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
