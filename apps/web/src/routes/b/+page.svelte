@@ -191,7 +191,9 @@
   import { multiClickHandler } from '$lib/functions/multi-click-handler';
   import {
     executeReplicate$,
+    isTitleReadReady,
     progressSeen$,
+    waitForPriorityBookReady,
     type ReplicationContext
   } from '$lib/functions/replication/replication-progress';
   import { findJumpCandidate, type JumpCandidate } from '$lib/functions/replication/sync-priority';
@@ -314,7 +316,8 @@
       // Set by manage/+page openBook after a cloud download: the local copy
       // is already fresh, so the reader must not do any network sync on open
       // (option B: zero extra calls; lastBookOpen uploads on exit sync).
-      justDownloaded: pageObj.url.searchParams.get('justDownloaded') === '1'
+      justDownloaded: pageObj.url.searchParams.get('justDownloaded') === '1',
+      readReadyParam: pageObj.url.searchParams.get('readReady') === '1'
     })),
     shareReplay({ refCount: true, bufferSize: 1 })
   );
@@ -325,7 +328,7 @@
   );
 
   const rawBookData$ = bookPageParams$.pipe(
-    switchMap(async ({ id, justDownloaded }) => {
+    switchMap(async ({ id, justDownloaded, readReadyParam }) => {
       let bookData: BooksDbBookData | undefined;
 
       try {
@@ -363,13 +366,25 @@
         bookData.lastBookOpen = new Date().getTime();
 
         await localStorageHandler.updateLastRead(bookData, currentContext);
-        if (justDownloaded) {
-          // Option B: download already synced DATA/PROGRESS/BOOKMARKS. Skip
-          // all network on open; strip the flag so a refresh syncs normally.
-          // lastBookOpen stays local-only until the next/exit sync.
+
+        // Read-ready: if Phase 1 prioritized sync already downloaded reading
+        // position + manual bookmarks for this title (or is currently finishing
+        // it), skip the blocking full syncDownData and saveExternalLastRead.
+        let isReadReady = readReadyParam || isTitleReadReady(bookData.title);
+        if (!isReadReady && bookData.title) {
+          isReadReady = await waitForPriorityBookReady(bookData.title, 5000);
+        }
+
+        const skipNetworkOnOpen = justDownloaded || isReadReady;
+
+        if (skipNetworkOnOpen) {
+          // Download or prioritized sync already refreshed reading state.
+          // Skip all network on open; strip the flags so a manual refresh
+          // syncs normally. lastBookOpen stays local-only until exit sync.
           try {
             const url = new URL(window.location.href);
             url.searchParams.delete('justDownloaded');
+            url.searchParams.delete('readReady');
             window.history.replaceState({}, '', url.toString());
           } catch {
             // no-op
@@ -384,12 +399,12 @@
             await database.setFirstBookRead(currentContext.title, $startDayHoursForTracker$)
           )[1];
 
-          if (wasNew && !justDownloaded) {
+          if (wasNew && !skipNetworkOnOpen) {
             scheduleReplication(StorageDataType.STATISTICS);
           }
         }
 
-        if (!justDownloaded) {
+        if (!skipNetworkOnOpen) {
           loaderStage = 'Saving reading position…';
           bookData = await saveExternalLastRead(externalStorageHandler, bookData, currentContext);
         }

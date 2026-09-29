@@ -70,6 +70,37 @@ test.describe('Sync priority (read-ready)', () => {
     expect(ready.readyTitles).toEqual(['a', 'b']);
     expect(reset.phase).toBe('idle');
   });
+
+  test('isTitleReadReady and waitForPriorityBookReady coordinate title completion', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    const result = await page.evaluate(async () => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+
+      const idleReady = mod.isTitleReadReady('book-a');
+      mod.beginPriorityPhase(['book-a', 'book-b']);
+
+      const syncingReady = mod.isTitleReadReady('book-a');
+      const waitPromise = mod.waitForPriorityBookReady('book-a', 2000);
+
+      mod.markPriorityBookComplete('book-a');
+      const resolvedWait = await waitPromise;
+      const completedReady = mod.isTitleReadReady('book-a');
+      const pendingWait = await mod.waitForPriorityBookReady('not-in-sync', 100);
+
+      mod.resetReadReady();
+      return { idleReady, syncingReady, resolvedWait, completedReady, pendingWait };
+    });
+
+    expect(result.idleReady).toBe(false);
+    expect(result.syncingReady).toBe(false);
+    expect(result.resolvedWait).toBe(true);
+    expect(result.completedReady).toBe(true);
+    expect(result.pendingWait).toBe(false);
+  });
 });
 
 test.describe('Read-ready indicators', () => {
@@ -143,5 +174,39 @@ test.describe('Read-ready indicators', () => {
       mod.resetReadReady();
     });
     await expect(icon).toBeHidden();
+  });
+
+  test('opening a read-ready book skips cloud-sync loader stage and opens immediately', async ({
+    page
+  }) => {
+    await seedLibrary(page);
+    await page.goto('/manage');
+    await expect(page.getByText(BOOK_ONE)).toBeVisible({ timeout: 10000 });
+
+    // Mark BOOK_ONE as read-ready
+    await page.evaluate(async (title) => {
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const mod = await import(/* @vite-ignore */ progressPath);
+      mod.beginPriorityPhase([title]);
+      mod.markPriorityBookComplete(title);
+      mod.markPriorityReady();
+    }, BOOK_ONE);
+
+    // Verify badge shows synced
+    const badge = page.getByTestId('read-ready-badge');
+    await expect(badge).toHaveAttribute('aria-label', `Reading state synced for ${BOOK_ONE}`);
+
+    // Click the read-ready book card to open the reader
+    await page.getByText(BOOK_ONE).click();
+
+    // Verify reader mounts without ever entering "Syncing cloud library…" stage
+    await expect(page).toHaveURL(/\/b\?id=1/);
+    const stage = page.getByTestId('book-loader-stage');
+    if (await stage.isVisible()) {
+      await expect(stage).not.toHaveText('Syncing cloud library…');
+      await expect(stage).not.toHaveText('Saving reading position…');
+    }
+    // Reader content loads successfully
+    await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
   });
 });
