@@ -31,6 +31,8 @@ import {
   advanceDateDays,
   getDate,
   getDateKey,
+  getStatisticsFileName,
+  getStatisticsMetadata,
   mergeStatistics,
   updateStatisticToStore
 } from '$lib/functions/statistic-util';
@@ -52,6 +54,7 @@ import {
   lastBookTagsModified$,
   lastReadingGoalsModified$,
   readingGoal$,
+  startDayHoursForTracker$,
   syncTarget$
 } from '$lib/data/store';
 import { adoptConvergentSyncId, isSameBookmark } from '$lib/data/user-bookmarks-merge';
@@ -1264,6 +1267,164 @@ export class DatabaseService {
         (rows || []).filter((row) => row?.completedBook === 1).map((row) => row.title)
       );
     }
+  }
+
+  /**
+   * Explicitly marks a book as completed by stamping a `completedBook === 1`
+   * statistic row for today. Preserves current bookmark reading progress so
+   * partial reads (e.g. 50%) can be toggled without losing position.
+   */
+  async markBookComplete(bookTitle: string): Promise<void> {
+    if (!bookTitle) return;
+    const startDayHours = startDayHoursForTracker$.getValue();
+    const todayKey = getDateKey(startDayHours);
+    const finishedStatistic = await this.getStatisticForCompletedBook(bookTitle);
+    const statisticsUntilToday = await this.getStatisticsUntilDate(bookTitle, todayKey);
+    const todayStatistic =
+      statisticsUntilToday.find((statistic) => statistic.dateKey === todayKey) ||
+      getDefaultStatistic(bookTitle, todayKey);
+    const lastStatisticModified = Date.now();
+
+    todayStatistic.lastStatisticModified = lastStatisticModified;
+    todayStatistic.completedBook = 1;
+    todayStatistic.completedData = {
+      dateKey: todayKey,
+      ...getStatisticsMetadata(
+        getStatisticsFileName(statisticsUntilToday, todayStatistic.lastStatisticModified)
+      )
+    };
+
+    const statisticsToStore: BooksDbStatistic[] = [todayStatistic];
+
+    if (finishedStatistic && finishedStatistic.dateKey !== todayStatistic.dateKey) {
+      delete finishedStatistic.completedBook;
+      delete finishedStatistic.completedData;
+      finishedStatistic.lastStatisticModified = lastStatisticModified;
+      statisticsToStore.push(finishedStatistic);
+    }
+
+    await this.storeStatistics(
+      bookTitle,
+      statisticsToStore,
+      ReplicationSaveBehavior.Overwrite,
+      MergeMode.LOCAL,
+      lastStatisticModified
+    );
+  }
+
+  /**
+   * Explicitly clears the completed state of a book by stripping `completedBook`
+   * and `completedData` from all statistic and contribution rows. If reading
+   * progress on the bookmark reached 100% (progress >= 1), scales it back to
+   * 0.99 so the book is no longer considered complete.
+   */
+  async unmarkBookComplete(bookTitle: string): Promise<void> {
+    if (!bookTitle) return;
+    const db = await this.db;
+    const now = Date.now();
+
+    // 1. Clear completedBook from any statistic rows for this book
+    const bookStats = await this.getStatisticsForBook(bookTitle);
+    const completedStats = bookStats.filter((s) => s.completedBook === 1);
+    for (const stat of completedStats) {
+      delete stat.completedBook;
+      delete stat.completedData;
+      stat.lastStatisticModified = now;
+    }
+    if (completedStats.length) {
+      await this.storeStatistics(
+        bookTitle,
+        completedStats,
+        ReplicationSaveBehavior.Overwrite,
+        MergeMode.LOCAL,
+        now
+      );
+    } else {
+      const finishedStatistic = await this.getStatisticForCompletedBook(bookTitle);
+      if (finishedStatistic) {
+        delete finishedStatistic.completedBook;
+        delete finishedStatistic.completedData;
+        finishedStatistic.lastStatisticModified = now;
+        await this.storeStatistics(
+          bookTitle,
+          [finishedStatistic],
+          ReplicationSaveBehavior.Overwrite,
+          MergeMode.LOCAL,
+          now
+        );
+      }
+    }
+
+    // 2. Clear completedBook from local contributions, remote contributions, and statistic store
+    try {
+      const tx = db.transaction(
+        ['statisticContribution', 'statisticRemoteContribution', 'statistic'],
+        'readwrite'
+      );
+      const contribStore = tx.objectStore('statisticContribution');
+      const remoteStore = tx.objectStore('statisticRemoteContribution');
+      const statStore = tx.objectStore('statistic');
+
+      const localContribs = await contribStore.getAll(
+        IDBKeyRange.bound([bookTitle], [bookTitle, []])
+      );
+      for (const contrib of localContribs || []) {
+        if (contrib.completedBook === 1) {
+          delete contrib.completedBook;
+          delete contrib.completedData;
+          contrib.lastStatisticModified = now;
+          await contribStore.put(contrib);
+        }
+      }
+
+      const remoteContribs = await remoteStore
+        .index('byBook')
+        .getAll(IDBKeyRange.bound([bookTitle], [bookTitle, []]));
+      for (const remote of remoteContribs || []) {
+        if (remote.completedBook === 1) {
+          delete remote.completedBook;
+          delete remote.completedData;
+          remote.lastStatisticModified = now;
+          await remoteStore.put(remote);
+        }
+      }
+
+      const statRows = await statStore.getAll(IDBKeyRange.bound([bookTitle], [bookTitle, []]));
+      for (const s of statRows || []) {
+        if (s.completedBook === 1) {
+          delete s.completedBook;
+          delete s.completedData;
+          s.lastStatisticModified = now;
+          await statStore.put(s);
+        }
+      }
+      await tx.done;
+    } catch (_) {
+      // no-op if transaction fails
+    }
+
+    await this.refoldAllFromStores();
+
+    // 3. If reading progress is >= 1 on bookmark, reduce to 0.99 so the book is no longer 100% completed
+    const book = await this.getDataByTitle(bookTitle);
+    if (book?.id) {
+      const bookmark = await this.getBookmark(book.id);
+      const progressVal = Number(bookmark?.progress) || 0;
+      if (bookmark && progressVal >= 1) {
+        bookmark.progress = 0.99;
+        if (
+          bookmark.exploredCharCount &&
+          book.characters &&
+          bookmark.exploredCharCount >= book.characters
+        ) {
+          bookmark.exploredCharCount = Math.max(0, book.characters - 1);
+        }
+        bookmark.lastBookmarkModified = now;
+        await this.putBookmark(bookmark);
+      }
+    }
+
+    this.statisticsChanged$.next();
   }
 
   async getStatisticsForTimeWindow(startDate: string, endDate: string) {

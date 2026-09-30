@@ -1,15 +1,18 @@
 <script lang="ts">
   import {
+    faCheck,
     faCheckCircle,
     faCircleInfo,
     faCloudArrowUp,
-    faEllipsisVertical
+    faEllipsisVertical,
+    faRotateLeft
   } from '@fortawesome/free-solid-svg-icons';
   import BookCard from '$lib/components/book-card/book-card.svelte';
   import type { BookCardProps } from '$lib/components/book-card/book-card-props';
   import { getCardDateInfo, getSourceLabel } from '$lib/components/book-card/book-card-info';
   import Popover from '$lib/components/popover/popover.svelte';
   import { CLOSE_POPOVER } from '$lib/data/events';
+  import { isBookCompleted } from '$lib/data/book-completion';
   import { StorageKey } from '$lib/data/storage/storage-types';
   import { dummyFn } from '$lib/functions/utils';
   import { readReady$ } from '$lib/functions/replication/replication-progress';
@@ -34,6 +37,11 @@
     detailsClick: {
       id: number;
     };
+    toggleCompleteClick: {
+      id: number;
+      title: string;
+      complete: boolean;
+    };
   }>();
 
   let hoveringBookId: number | undefined;
@@ -52,6 +60,20 @@
   function onUploadMenuClick(id: number, event: CustomEvent<MouseEvent>) {
     closeMenu(event);
     dispatch('uploadBookClick', { id });
+  }
+
+  function onToggleCompleteMenuClick(bookCard: BookCardProps, event: CustomEvent<MouseEvent>) {
+    closeMenu(event);
+    const isCompleted = isBookCompleted({
+      progress: bookCard.progress,
+      completedBook: bookCard.completedBook,
+      title: bookCard.title
+    });
+    dispatch('toggleCompleteClick', {
+      id: bookCard.id,
+      title: bookCard.title,
+      complete: !isCompleted
+    });
   }
 
   function onDetailsMenuClick(id: number, event: CustomEvent<MouseEvent>) {
@@ -82,6 +104,11 @@
       $readReady$.pendingTitles,
       bookCard.title
     )}
+    {@const isCompleted = isBookCompleted({
+      progress: bookCard.progress,
+      completedBook: bookCard.completedBook,
+      title: bookCard.title
+    })}
     <div
       role="banner"
       class="relative"
@@ -148,6 +175,31 @@
                   >
                     <svelte:fragment slot="prefix">
                       <Fa icon={faCloudArrowUp} />
+                    </svelte:fragment>
+                  </ListItem>
+                {/if}
+                {#if isCompleted}
+                  <ListItem
+                    clickable
+                    data-testid="uncomplete-book-item"
+                    headline="Uncomplete Book"
+                    description="Mark as incomplete"
+                    on:click={(event) => onToggleCompleteMenuClick(bookCard, event)}
+                  >
+                    <svelte:fragment slot="prefix">
+                      <Fa icon={faRotateLeft} />
+                    </svelte:fragment>
+                  </ListItem>
+                {:else}
+                  <ListItem
+                    clickable
+                    data-testid="complete-book-item"
+                    headline="Complete Book"
+                    description="Mark as completed"
+                    on:click={(event) => onToggleCompleteMenuClick(bookCard, event)}
+                  >
+                    <svelte:fragment slot="prefix">
+                      <Fa icon={faCheck} />
                     </svelte:fragment>
                   </ListItem>
                 {/if}

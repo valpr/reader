@@ -59,6 +59,7 @@
     loaderMode$,
     oneDriveStorageSource$,
     pendingCloudSync$,
+    pushTransientNotice,
     readingGoalsMergeMode$,
     replicationSaveBehavior$,
     showExternalPlaceholder$,
@@ -1225,6 +1226,28 @@
     ]);
   }
 
+  async function onToggleBookComplete(title: string, complete: boolean) {
+    if (!title) return;
+    try {
+      await waitForExitSync();
+
+      if (complete) {
+        await database.markBookComplete(title);
+        pushTransientNotice(`"${title}" marked as complete`);
+      } else {
+        await database.unmarkBookComplete(title);
+        pushTransientNotice(`"${title}" marked as incomplete`);
+      }
+
+      const browserHandler = getStorageHandler(window, StorageKey.BROWSER, '');
+      browserHandler.clearData();
+      database.dataListChanged$.next(undefined);
+    } catch (err: any) {
+      logger.warn(`Error updating completion status for "${title}": ${err?.message || err}`);
+      pushTransientNotice(`Failed to update completion status: ${err?.message || err}`);
+    }
+  }
+
   async function onImportBackup(file: File) {
     if (!operationAllowed()) {
       return;
@@ -1547,6 +1570,7 @@
         on:removeBookClick={(ev) => removeBooks([ev.detail.id])}
         on:uploadBookClick={(ev) => onUploadBookToPrimary(ev.detail.id)}
         on:detailsClick={(ev) => onShowBookDetails(ev.detail.id)}
+        on:toggleCompleteClick={(ev) => onToggleBookComplete(ev.detail.title, ev.detail.complete)}
       />
     {:else if isLibraryFilterActive($libraryFilters$)}
       <div
