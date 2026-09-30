@@ -209,4 +209,149 @@ test.describe('Read-ready indicators', () => {
     // Reader content loads successfully
     await expect(page.locator('.book-content')).toBeVisible({ timeout: 15000 });
   });
+
+  test('triggerCloudSync emits completion notice only after presence refresh finishes and sync activity ends', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    const result = await page.evaluate(async () => {
+      const cloudSyncPath = '/src/lib/functions/replication/cloud-sync.ts';
+      const factoryPath = '/src/lib/data/storage/storage-handler-factory.ts';
+      const storePath = '/src/lib/data/store.ts';
+      const progressPath = '/src/lib/functions/replication/replication-progress.ts';
+      const storageTypesPath = '/src/lib/data/storage/storage-types.ts';
+
+      const cloudSyncMod = await import(/* @vite-ignore */ cloudSyncPath);
+      const factoryMod = await import(/* @vite-ignore */ factoryPath);
+      const storeMod = await import(/* @vite-ignore */ storePath);
+      const progressMod = await import(/* @vite-ignore */ progressPath);
+      const storageTypesMod = await import(/* @vite-ignore */ storageTypesPath);
+
+      const sourceName = storageTypesMod.StorageSourceDefault.GDRIVE_DEFAULT;
+      const targetHandler = factoryMod.getStorageHandler(
+        window,
+        storageTypesMod.StorageKey.GDRIVE,
+        sourceName
+      );
+
+      // Save originals
+      const origGetBookList = targetHandler.getBookList.bind(targetHandler);
+      const origInvalidate = targetHandler.invalidateBookListCache.bind(targetHandler);
+      const origGetExternalFiles = targetHandler.getExternalFiles.bind(targetHandler);
+      const origGetFilename = targetHandler.getFilenameForRecentCheck.bind(targetHandler);
+      const origGetRootFile = targetHandler.getRootFile.bind(targetHandler);
+      const origGetToken = (targetHandler as any).getToken?.bind(targetHandler);
+      const origAreGoalsPresent =
+        targetHandler.areReadingGoalsPresentAndUpToDate.bind(targetHandler);
+      const origGetReadingGoals = targetHandler.getReadingGoals.bind(targetHandler);
+      const origSaveReadingGoals = targetHandler.saveReadingGoals.bind(targetHandler);
+      const origAreTagsPresent = targetHandler.areBookTagsPresentAndUpToDate.bind(targetHandler);
+      const origGetBookTags = targetHandler.getBookTags.bind(targetHandler);
+      const origSaveBookTags = targetHandler.saveBookTags.bind(targetHandler);
+      const origGetProfiles = targetHandler.getProfiles.bind(targetHandler);
+      const origSaveProfiles = targetHandler.saveProfiles.bind(targetHandler);
+
+      // Stub replication methods so replicateData succeeds cleanly without network calls
+      targetHandler.getExternalFiles = async () => [];
+      targetHandler.getFilenameForRecentCheck = async () => undefined;
+      targetHandler.getRootFile = async () => ({ file: undefined }) as any;
+      (targetHandler as any).getToken = async () => 'fake-token';
+      targetHandler.areReadingGoalsPresentAndUpToDate = async () => true;
+      targetHandler.getReadingGoals = async () => ({ readingGoals: [], lastGoalModified: 0 });
+      targetHandler.saveReadingGoals = async () => {};
+      targetHandler.areBookTagsPresentAndUpToDate = async () => true;
+      targetHandler.getBookTags = async () => ({
+        tags: {},
+        titles: {},
+        lastTagsModified: 0,
+        entries: []
+      });
+      targetHandler.saveBookTags = async () => {};
+      targetHandler.getProfiles = async () => ({ profiles: undefined, lastProfilesModified: 0 });
+      targetHandler.saveProfiles = async () => {};
+
+      const timeline: string[] = [];
+      let presenceRefreshInProgress = false;
+      let noticeFiredDuringRefresh = false;
+      let noticeFiredWhileActivityActive = false;
+
+      let bookListInvocations = 0;
+      targetHandler.invalidateBookListCache = () => {
+        timeline.push('invalidateBookListCache');
+        return origInvalidate();
+      };
+
+      targetHandler.getBookList = async () => {
+        bookListInvocations += 1;
+        if (bookListInvocations === 1) {
+          timeline.push('warmUpBookList');
+          return [];
+        }
+        timeline.push('presenceRefreshStart');
+        presenceRefreshInProgress = true;
+        await new Promise((r) => setTimeout(r, 60));
+        presenceRefreshInProgress = false;
+        timeline.push('presenceRefreshEnd');
+        return [];
+      };
+
+      let noticeFiredAfterPresenceEnd = false;
+      const sub = storeMod.transientNotice$.subscribe((notice: any) => {
+        if (notice?.message?.includes('Sync complete')) {
+          timeline.push('transientNotice:Sync complete');
+          if (presenceRefreshInProgress) {
+            noticeFiredDuringRefresh = true;
+          }
+          if (progressMod.syncActivity$.getValue().active) {
+            noticeFiredWhileActivityActive = true;
+          }
+          if (timeline.includes('presenceRefreshEnd')) {
+            noticeFiredAfterPresenceEnd = true;
+          }
+        }
+      });
+
+      try {
+        const err = await cloudSyncMod.triggerCloudSync(window, sourceName);
+        return {
+          err,
+          timeline,
+          noticeFiredDuringRefresh,
+          noticeFiredWhileActivityActive,
+          noticeFiredAfterPresenceEnd,
+          finalActivityActive: progressMod.syncActivity$.getValue().active
+        };
+      } finally {
+        sub.unsubscribe();
+        targetHandler.getBookList = origGetBookList;
+        targetHandler.invalidateBookListCache = origInvalidate;
+        targetHandler.getExternalFiles = origGetExternalFiles;
+        targetHandler.getFilenameForRecentCheck = origGetFilename;
+        targetHandler.getRootFile = origGetRootFile;
+        if (origGetToken) (targetHandler as any).getToken = origGetToken;
+        targetHandler.areReadingGoalsPresentAndUpToDate = origAreGoalsPresent;
+        targetHandler.getReadingGoals = origGetReadingGoals;
+        targetHandler.saveReadingGoals = origSaveReadingGoals;
+        targetHandler.areBookTagsPresentAndUpToDate = origAreTagsPresent;
+        targetHandler.getBookTags = origGetBookTags;
+        targetHandler.saveBookTags = origSaveBookTags;
+        targetHandler.getProfiles = origGetProfiles;
+        targetHandler.saveProfiles = origSaveProfiles;
+      }
+    });
+
+    expect(result.err).toBe('');
+    expect(result.noticeFiredDuringRefresh).toBe(false);
+    expect(result.noticeFiredWhileActivityActive).toBe(false);
+    expect(result.noticeFiredAfterPresenceEnd).toBe(true);
+    expect(result.finalActivityActive).toBe(false);
+    expect(result.timeline).toEqual([
+      'warmUpBookList',
+      'invalidateBookListCache',
+      'presenceRefreshStart',
+      'presenceRefreshEnd',
+      'transientNotice:Sync complete'
+    ]);
+  });
 });
