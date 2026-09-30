@@ -6,6 +6,7 @@
 
 import type { BooksDbStatistic } from '$lib/data/database/books-db/versions/books-db';
 import type { ReaderProfile } from '$lib/data/profiles/profile-types';
+import { isBookCompleted } from '$lib/data/book-completion';
 import type {
   DropOffAnalysis,
   HourlyReadingDistribution,
@@ -372,7 +373,12 @@ export function calculateLookbackMetrics(
   const topBooks: TopBookSummary[] = allBooksList
     .sort((a, b) => b.readingTime - a.readingTime || b.charactersRead - a.charactersRead)
     .map((b, idx) => {
-      const isCompleted = b.completed || completedTitles.has(b.title) || b.maxProgress >= 0.95;
+      const isCompleted = isBookCompleted({
+        progress: b.maxProgress,
+        completedBook: b.completed ? 1 : 0,
+        title: b.title,
+        completedTitles
+      });
       const meta = bookMetadataMap.get(b.title);
       const lastReadTime = allTimeLastReadMap.get(b.title);
       return {
@@ -840,7 +846,14 @@ function calculateYoYComparison(
     currTime += currStats[i].readingTime || 0;
     currChars += currStats[i].charactersRead || 0;
     currLookups += currStats[i].lookupCount || 0;
-    if (completedTitles.has(currStats[i].title) || (currStats[i].maxProgress || 0) >= 0.95) {
+    if (
+      isBookCompleted({
+        progress: currStats[i].maxProgress,
+        completedBook: currStats[i].completedBook === 1 ? 1 : 0,
+        title: currStats[i].title,
+        completedTitles
+      })
+    ) {
       currBooks.add(currStats[i].title);
     }
   }
@@ -854,7 +867,14 @@ function calculateYoYComparison(
     priorTime += priorStats[i].readingTime || 0;
     priorChars += priorStats[i].charactersRead || 0;
     priorLookups += priorStats[i].lookupCount || 0;
-    if (completedTitles.has(priorStats[i].title) || (priorStats[i].maxProgress || 0) >= 0.95) {
+    if (
+      isBookCompleted({
+        progress: priorStats[i].maxProgress,
+        completedBook: priorStats[i].completedBook === 1 ? 1 : 0,
+        title: priorStats[i].title,
+        completedTitles
+      })
+    ) {
       priorBooks.add(priorStats[i].title);
     }
   }

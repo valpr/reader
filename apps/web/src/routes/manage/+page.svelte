@@ -230,6 +230,14 @@
     share()
   );
 
+  const completedTitles$ = combineLatest([
+    database.bookmarks$.pipe(startWith(undefined)),
+    database.statisticsChanged$.pipe(startWith(undefined))
+  ]).pipe(
+    switchMap(() => from(database.getCompletedBookTitles().catch(() => new Set<string>()))),
+    share()
+  );
+
   const bookCards$: Observable<BookCardProps[]> = combineLatest([
     unifiedLists$,
     database.bookmarks$,
@@ -237,9 +245,10 @@
     librarySourceFilter$,
     libraryFilters$,
     unavailableBooksChanged$.pipe(startWith(undefined)),
-    bookTagsDict$.pipe(startWith({ tagsByTitle: {}, titles: {} }))
+    bookTagsDict$.pipe(startWith({ tagsByTitle: {}, titles: {} })),
+    completedTitles$.pipe(startWith(new Set<string>()))
   ]).pipe(
-    map(([lists, bookmarks, sortProp, , libraryFilters, , tagsDict]) => {
+    map(([lists, bookmarks, sortProp, , libraryFilters, , tagsDict, completedTitles]) => {
       const isTitleSort = sortProp.property === 'title';
       const merged = mergeBookLists(
         (lists as { source: StorageKey; cards: BookCardProps[] }[]) || []
@@ -259,8 +268,9 @@
           .filter((d) => $showExternalPlaceholder$ || !d.isPlaceholder)
           .filter((d) => !unavailableBookTitles.has(normalizeTitle(d.title)))
           .map((d) => {
+            const completedBook = completedTitles.has(d.title) ? 1 : 0;
             if (!(d.sources || []).includes(StorageKey.BROWSER)) {
-              return { ...d, progress: d.progress || 0 };
+              return { ...d, progress: d.progress || 0, completedBook };
             }
             // The merged card may carry cloud progress newer than the local
             // bookmark row (missing/stale after cross-device reads). Take the
@@ -272,13 +282,14 @@
               lastBookmarkModified: Math.max(
                 d.lastBookmarkModified || 0,
                 bookmarked.lastBookmarkModified || 0
-              )
+              ),
+              completedBook
             };
           }),
         tagsDict
       );
 
-      return filterBookCards(withTags, libraryFilters).sort(
+      return filterBookCards(withTags, libraryFilters, completedTitles).sort(
         (card1: BookCardProps, card2: BookCardProps) =>
           sortBookCards(card1, card2, sortProp, isTitleSort)
       );

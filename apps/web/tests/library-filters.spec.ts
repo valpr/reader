@@ -241,6 +241,20 @@ test.describe('Library search and filters', () => {
     expect(matchesProgressFilter(0, 'in-progress')).toBe(false);
     expect(matchesProgressFilter(1, 'in-progress')).toBe(false);
     expect(matchesProgressFilter('50%' as unknown as number, 'in-progress')).toBe(false);
+
+    // Canonical completion rule: progress >= 1 OR explicit flag, no 0.95 fuzzy rule.
+    expect(matchesProgressFilter(0.95, 'completed')).toBe(false);
+    expect(matchesProgressFilter(0.98, 'completed')).toBe(false);
+    expect(matchesProgressFilter(1, 'completed')).toBe(true);
+    expect(matchesProgressFilter(0.2, 'completed', { title: 'Flagged', completedBook: 1 })).toBe(
+      true
+    );
+    expect(matchesProgressFilter(0.2, 'in-progress', { title: 'Flagged', completedBook: 1 })).toBe(
+      false
+    );
+    expect(matchesProgressFilter(0.2, 'unread', { title: 'Flagged', completedBook: 1 })).toBe(
+      false
+    );
   });
 
   test('empty result offers a clear action and filters persist across reload', async ({ page }) => {

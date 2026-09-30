@@ -6,13 +6,15 @@
 
 import type { BookCardProps } from '$lib/components/book-card/book-card-props';
 import { normalizeTag } from '$lib/data/book-tags';
+import { isBookCompleted, isCompletedProgress } from '$lib/data/book-completion';
 
 /**
  * Reading-progress filter. Thresholds operate on the card's normalized
- * `progress` fraction (0-1):
- * - `unread`: never opened (`p <= 0`)
- * - `in-progress`: started but unfinished (`0 < p < 1`)
- * - `completed`: finished (`p >= 1`)
+ * `progress` fraction (0-1) plus the explicit `completedBook` flag — see
+ * `isBookCompleted` for the single canonical rule:
+ * - `unread`: never opened (`p <= 0`, no completion flag)
+ * - `in-progress`: started but unfinished (`0 < p < 1`, no completion flag)
+ * - `completed`: finished (`p >= 1` OR `completedBook === 1`)
  */
 export type ProgressFilter = 'all' | 'unread' | 'in-progress' | 'completed';
 
@@ -84,13 +86,20 @@ export function resolveCardProgress(
 
 export function matchesProgressFilter(
   progress: number | undefined | null,
-  filter: ProgressFilter
+  filter: ProgressFilter,
+  completed?: Pick<BookCardProps, 'title' | 'completedBook'> | undefined,
+  completedTitles?: Set<string> | undefined
 ): boolean {
   if (filter === 'all') return true;
+  const title = completed?.title;
+  const completedBook = completed?.completedBook;
+  if (filter === 'completed')
+    return isBookCompleted({ progress, completedBook, title, completedTitles });
+  if (isBookCompleted({ progress, completedBook, title, completedTitles })) return false;
   const p = normalizeProgress(progress);
   if (filter === 'unread') return p <= 0;
   if (filter === 'in-progress') return p > 0 && p < 1;
-  return p >= 1;
+  return isCompletedProgress(p);
 }
 
 export function matchesTitleQuery(title: string, query: string): boolean {
@@ -108,7 +117,8 @@ export function matchesTagsFilter(cardTags: string[] | undefined, selectedTags: 
 
 export function filterBookCards(
   cards: BookCardProps[],
-  filters: LibraryFilters | undefined | null
+  filters: LibraryFilters | undefined | null,
+  completedTitles?: Set<string> | undefined
 ): BookCardProps[] {
   if (!filters) return cards;
   const query = (filters.query || '').trim();
@@ -120,7 +130,7 @@ export function filterBookCards(
     (card) =>
       matchesTitleQuery(card.title, query) &&
       matchesTagsFilter(card.tags, tags) &&
-      matchesProgressFilter(card.progress, progress)
+      matchesProgressFilter(card.progress, progress, card, completedTitles)
   );
 }
 
