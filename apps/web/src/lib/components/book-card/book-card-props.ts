@@ -16,6 +16,12 @@ export interface BookCardProps {
   progress: number;
   lastBookmarkModified: number;
   isPlaceholder: boolean;
+  /**
+   * Explicit completion flag (`completedBook === 1` statistic row).
+   * Part of the canonical `isBookCompleted` check alongside `progress`;
+   * optional so cloud/legacy card builders keep compiling.
+   */
+  completedBook?: 0 | 1;
   sources?: StorageKey[];
   tags?: string[];
 }
