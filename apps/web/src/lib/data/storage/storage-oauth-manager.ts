@@ -170,6 +170,7 @@ export interface PwaOAuthState {
   sendSecret: boolean;
   tokenEndpoint: string;
   codeVerifier: string;
+  oauthState?: string;
   returnUrl: string;
   secret?: string;
   existingStorageSourceData?: any;
@@ -1069,15 +1070,25 @@ export class StorageOAuthManager {
       params.append('scope', authVars.scope);
     }
 
-    if (clientSecret && authVars.tokenEndpoint) {
-      params.append('response_type', 'code');
-      params.append('access_type', 'offline');
-      params.append('code_challenge_method', 'S256');
-      params.append('code_challenge', codeChallenge);
-      params.append('prompt', 'consent');
-    } else {
-      params.append('response_type', 'token');
+    // Option A (OAuth 2.1): public SPA/PWA clients always use Authorization
+    // Code + PKCE — never the deprecated implicit `response_type=token`.
+    // `client_secret` is only sent on the back-channel token exchange for
+    // confidential custom GDrive clients (see sendSecret); the authorize
+    // redirect itself never needs a secret.
+    if (!authVars.tokenEndpoint) {
+      throw new Error(`No token endpoint configured for storage source "${storageSourceName}"`);
     }
+
+    params.append('response_type', 'code');
+    params.append('access_type', 'offline');
+    params.append('code_challenge_method', 'S256');
+    params.append('code_challenge', codeChallenge);
+    params.append('prompt', 'consent');
+
+    const stateArr = new Uint8Array(16);
+    window.crypto.getRandomValues(stateArr);
+    const oauthState = StorageOAuthManager.base64Url(stateArr, window);
+    params.append('state', oauthState);
 
     const stateData: PwaOAuthState = {
       storageSourceName,
@@ -1087,6 +1098,7 @@ export class StorageOAuthManager {
       sendSecret,
       tokenEndpoint: authVars.tokenEndpoint || '',
       codeVerifier,
+      oauthState,
       returnUrl: window.location.pathname + window.location.search + window.location.hash,
       secret: unlockResult?.secret,
       existingStorageSourceData: storageSource,

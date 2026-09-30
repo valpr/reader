@@ -30,7 +30,7 @@ export const oneDriveDiscoveryEndpoint =
   import.meta.env.VITE_ONEDRIVE_DISCOVERY ||
   'https://login.microsoftonline.com/consumers/v2.0/.well-known/openid-configuration';
 export const oneDriveScope =
-  import.meta.env.VITE_ONEDRIVE_SCOPE || 'Files.ReadWrite.AppFolder User.Read';
+  import.meta.env.VITE_ONEDRIVE_SCOPE || 'Files.ReadWrite.AppFolder User.Read offline_access';
 export const oneDriveClientId = import.meta.env.VITE_ONEDRIVE_CLIENT_ID || '';
 export const oneDriveClientSecret = import.meta.env.VITE_ONEDRIVE_CLIENT_SECRET || '';
 export const repoUrl = import.meta.env.VITE_REPO_URL || 'https://github.com/valpr/reader';
