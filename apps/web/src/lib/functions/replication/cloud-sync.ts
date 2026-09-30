@@ -124,6 +124,7 @@ export async function triggerCloudSync(
   const startedAt = Date.now();
   const dataTypes = requestedTypes?.length ? requestedTypes : SYNC_DATA_TYPES;
   let deletionCounts: { deletedBookmarks: number; removedTagTitles: number } | undefined;
+  let runId = 0;
   const finish = (error = '') => {
     // Safety net: transient network failures (any data type) must retain the
     // pending marker even if the per-request handler never ran, so the next
@@ -210,7 +211,7 @@ export async function triggerCloudSync(
       });
 
     const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
-    const runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
+    runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
 
     // List warming: one batched metadata listing up front so the per-book
     // getExternalFiles calls in both passes below serve the in-memory cache
@@ -321,19 +322,12 @@ export async function triggerCloudSync(
       endSyncActivity(runId);
       return finish(error);
     }
-    endSyncActivity(runId);
 
     // Deletion-state census for diagnostics: best-effort, never fails sync.
     deletionCounts = await database.getDeletionCounts().catch(() => undefined);
 
     markLastSync(sourceName);
     clearPendingCloudSync(sourceName);
-
-    // Explicit user action only: triggerCloudSync is called from the
-    // reconnect flow and the manual Sync button, never from background
-    // autosave sync. Announce completion directly from the promise so
-    // silent background check-ins can never toast.
-    pushTransientNotice(`Sync complete (${getFriendlyStorageSourceName(sourceName)})`);
 
     // Lightweight presence refresh: re-list cloud folders (metadata only,
     // no book blob download) so remote-only / remotely-deleted books appear
@@ -351,8 +345,19 @@ export async function triggerCloudSync(
       database.listLoading$.next(false);
       database.dataListChanged$.next(undefined);
     }
+
+    endSyncActivity(runId);
+
+    // Explicit user action only: triggerCloudSync is called from the
+    // reconnect flow and the manual Sync button, never from background
+    // autosave sync. Announce completion directly from the promise so
+    // silent background check-ins can never toast before sync has actually
+    // finished and UI spinners have cleared.
+    pushTransientNotice(`Sync complete (${getFriendlyStorageSourceName(sourceName)})`);
+
     return finish();
   } catch (err: any) {
+    if (runId) endSyncActivity(runId);
     const message = err?.message || 'Unknown sync error';
     logger.error(`Cloud sync retry failed for ${sourceName}: ${message}`);
     return finish(message);
@@ -375,6 +380,7 @@ export async function runOneShotRecovery(
 ): Promise<string> {
   const startedAt = Date.now();
   let deletionCounts: { deletedBookmarks: number; removedTagTitles: number } | undefined;
+  let runId = 0;
   const finish = (error = '') => {
     recordSyncRun({
       startedAt,
@@ -435,7 +441,7 @@ export async function runOneShotRecovery(
     const to = direction === 'push' ? targetHandler : localStorageHandler;
     const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
     const recoveryVerb = direction === 'push' ? 'Uploading' : 'Downloading';
-    const runId = beginSyncActivity(
+    runId = beginSyncActivity(
       `${buildSyncLabel(recoveryVerb, SYNC_DATA_TYPES)} — ${friendlyTarget} (recovery)`
     );
     const error = await replicateData(from, to, false, contexts, SYNC_DATA_TYPES, undefined, true);
@@ -450,8 +456,10 @@ export async function runOneShotRecovery(
       targetHandler,
       identity.deviceId
     );
-    endSyncActivity(runId);
-    if (contributionsError) return finish(contributionsError);
+    if (contributionsError) {
+      endSyncActivity(runId);
+      return finish(contributionsError);
+    }
 
     // Post-recovery census: Overwrite replaces the manual set wholesale, so
     // this also confirms recovery cleared deletion state in its scope.
@@ -468,8 +476,11 @@ export async function runOneShotRecovery(
       database.listLoading$.next(false);
       database.dataListChanged$.next(undefined);
     }
+
+    endSyncActivity(runId);
     return finish();
   } catch (err: any) {
+    if (runId) endSyncActivity(runId);
     const message = err?.message || 'Unknown sync error';
     logger.error(`One-shot recovery failed for ${sourceName}: ${message}`);
     return finish(message);

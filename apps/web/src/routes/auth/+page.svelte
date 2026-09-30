@@ -23,6 +23,7 @@
   import { database, clearPendingCloudSync } from '$lib/data/store';
   import {
     encrypt,
+    decrypt,
     setStorageSourceDefault,
     type RemoteContext
   } from '$lib/data/storage/storage-source-manager';
@@ -116,6 +117,18 @@
         tokenEndpoint = authVars.tokenEndpoint;
         codeVerifier = await getDataFromOpener(url.origin, { type: 'getCodeVerifier' });
       } else if (pwaState) {
+        // CSRF check for same-window redirects: the provider must echo the
+        // `state` we stored before leaving. In-flight states from before upgrade
+        // may omit this field, so only enforce when pwaState.oauthState is present.
+        const returnedState = url.searchParams.get('state');
+        if (pwaState.oauthState && returnedState !== pwaState.oauthState) {
+          reportError(
+            url.origin,
+            'Authorization failed',
+            'State mismatch — the sign-in response did not match this device request.\n\nPlease return to the app and retry sync.'
+          );
+          return undefined;
+        }
         clientId = pwaState.clientId;
         clientSecret = pwaState.clientSecret;
         sendSecret = pwaState.sendSecret;
@@ -167,12 +180,15 @@
           reportError(url.origin, 'Code authorization request failed', detail);
         });
     } else if (hashParams.has('access_token')) {
-      void checkAuthResponse(
+      // Legacy implicit flow is retired (OAuth 2.1). Public clients must use
+      // Authorization Code + PKCE. If a provider still returns a fragment
+      // token (stale bookmark / cached provider page), force a fresh retry
+      // instead of persisting a session with no refresh_token that would
+      // silently die on the next reload.
+      reportError(
         url.origin,
-        hashParams.get('access_token'),
-        hashParams.get('expires_in'),
-        hashParams.get('scope'),
-        false
+        'Legacy sign-in flow no longer supported',
+        'The app received an implicit access token without a refresh token.\n\nPlease return to the app and retry sync to use the secure Authorization Code flow.'
       );
     } else if (url.searchParams.has('ttu-init-auth')) {
       const params = new URLSearchParams();
@@ -180,11 +196,11 @@
       const { clientId, clientSecret, authEndpoint, tokenEndpoint, scope } =
         await getDataFromOpener(url.origin, { type: 'getAuthVariables' });
 
-      if (!clientId || !scope || !authEndpoint) {
+      if (!clientId || !scope || !authEndpoint || !tokenEndpoint) {
         return reportError(
           url.origin,
           'A required authentication input was not found',
-          `ClientId: ${!!clientId}\nScope: ${!!scope}\nAuthEndpoint: ${!!authEndpoint}`
+          `ClientId: ${!!clientId}\nScope: ${!!scope}\nAuthEndpoint: ${!!authEndpoint}\nTokenEndpoint: ${!!tokenEndpoint}`
         );
       }
 
@@ -192,18 +208,16 @@
       params.append('redirect_uri', redirectUri);
       params.append('scope', scope);
 
-      if (clientSecret && tokenEndpoint) {
-        params.append('response_type', 'code');
-        params.append('access_type', 'offline');
-        params.append('code_challenge_method', 'S256');
-        params.append(
-          'code_challenge',
-          await getDataFromOpener(url.origin, { type: 'getCodeChallenge' })
-        );
-        params.append('prompt', 'consent');
-      } else {
-        params.append('response_type', 'token');
-      }
+      // Option A: popups use the same Code + PKCE flow as PWA redirects.
+      // Never fall back to implicit `response_type=token`.
+      params.append('response_type', 'code');
+      params.append('access_type', 'offline');
+      params.append('code_challenge_method', 'S256');
+      params.append(
+        'code_challenge',
+        await getDataFromOpener(url.origin, { type: 'getCodeChallenge' })
+      );
+      params.append('prompt', 'consent');
 
       window.location.assign(`${authEndpoint}?${params.toString()}`);
     } else if (url.searchParams.has('ttu-init-wait')) {
@@ -246,7 +260,11 @@
     withRefreshToken = false,
     refreshToken?: string | null
   ) {
-    if (!accessToken || !expiration || !scope || (withRefreshToken && !refreshToken)) {
+    // Do not hard-require refresh_token here for the PWA flow: the PWA persist
+    // step produces the actionable "no refresh token" error (offline_access / SPA guidance)
+    // and can fall back to a previously stored refresh for returning users
+    // (decrypted with secret when encryption is enabled).
+    if (!accessToken || !expiration || !scope) {
       reportError(
         origin,
         'A required authentication property was not found',
@@ -258,6 +276,15 @@
     }
 
     if (window.opener) {
+      if (!refreshToken) {
+        reportError(
+          origin,
+          'Sign-in incomplete — no refresh token',
+          'The provider did not return a refresh token.\n\nFor OneDrive, ensure the app registration grants `offline_access` and uses a Single-Page Application redirect URI. Then return to the app and retry sync.'
+        );
+        return;
+      }
+
       window.opener.postMessage(
         {
           type: 'auth',
@@ -360,19 +387,62 @@
 
     try {
       const db = await database.db;
-      const existing = pwaState.existingStorageSourceData ||
-        (await db.get('storageSource', pwaState.storageSourceName)) || {
+      const dbSource = await db.get('storageSource', pwaState.storageSourceName);
+      const existing = dbSource ||
+        pwaState.existingStorageSourceData || {
           storedInManager: false,
           encryptionDisabled: false
         };
 
-      const finalRefreshToken = tokenData.refreshToken || existing.data?.refreshToken;
+      let fallbackRefreshToken: string | undefined;
+      let fallbackAccountEmail: string | undefined;
+      let fallbackAccountName: string | undefined;
+
+      if (existing.encryptionDisabled && existing.data) {
+        fallbackRefreshToken = existing.data.refreshToken;
+        fallbackAccountEmail = existing.data.accountEmail;
+        fallbackAccountName = existing.data.accountName;
+      } else if (pwaState.secret && existing.data) {
+        try {
+          const rawBuffer =
+            existing.data instanceof ArrayBuffer
+              ? existing.data
+              : existing.data?.buffer instanceof ArrayBuffer
+                ? existing.data.buffer
+                : undefined;
+          if (rawBuffer) {
+            const decrypted: RemoteContext = JSON.parse(
+              new TextDecoder().decode(await decrypt(window, rawBuffer, pwaState.secret))
+            );
+            fallbackRefreshToken = decrypted?.refreshToken;
+            fallbackAccountEmail = decrypted?.accountEmail;
+            fallbackAccountName = decrypted?.accountName;
+          }
+        } catch {
+          // Decryption failed; fallbacks remain undefined
+        }
+      }
+
+      const finalRefreshToken = tokenData.refreshToken || fallbackRefreshToken;
+      if (!finalRefreshToken) {
+        // Code flow must yield a durable refresh_token (OneDrive needs the
+        // `offline_access` scope + SPA platform; Google needs
+        // `access_type=offline`). Without it the session would die on the
+        // next reload, so fail loudly instead of silently storing undefined.
+        reportError(
+          window.location.origin,
+          'Sign-in incomplete — no refresh token',
+          'The provider did not return a refresh token.\n\nFor OneDrive, ensure the app registration grants `offline_access` and uses a Single-Page Application redirect URI. Then return to the app and retry sync.'
+        );
+        return;
+      }
+      tokenData.refreshToken = finalRefreshToken;
       const remoteContext: RemoteContext = {
         clientId: pwaState.clientId,
         clientSecret: pwaState.clientSecret || '',
         refreshToken: finalRefreshToken,
-        accountEmail: accountEmail || existing.data?.accountEmail,
-        accountName: accountName || existing.data?.accountName
+        accountEmail: accountEmail || fallbackAccountEmail,
+        accountName: accountName || fallbackAccountName
       };
 
       const newData = existing.encryptionDisabled

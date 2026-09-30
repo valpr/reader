@@ -12,8 +12,10 @@
     database,
     fontFamilyGroupOne$,
     isOnline$,
+    pushTransientNotice,
     userFonts$
   } from '$lib/data/store';
+  import { logger } from '$lib/data/logger';
   import { restoreCloudSessions } from '$lib/data/storage/storage-oauth-manager';
   import {
     startProactiveRefresh,
@@ -118,18 +120,31 @@
 
     startProactiveRefresh();
 
-    // Trigger sync if returning from a PWA same-window OAuth redirect
+    // Trigger sync if returning from a PWA same-window OAuth redirect.
+    // The redirect + return are full page loads that wipe the in-memory
+    // token map, so restore sessions first (idempotent via inFlightRestore)
+    // to repopulate from persisted refresh tokens, then run the deferred
+    // sync. Surface failures as a toast instead of swallowing them so an
+    // instant return with no progress is never silent.
     const pwaSyncTarget = window.localStorage.getItem('pwa_sync_after_redirect');
     if (pwaSyncTarget) {
       window.localStorage.removeItem('pwa_sync_after_redirect');
-      void database.db.then(async (db) => {
+      void (async () => {
         try {
+          await restoreCloudSessions();
+          const db = await database.db;
           const sources = await db.getAll('storageSource');
-          void triggerCloudSync(window, pwaSyncTarget, sources);
-        } catch {
-          // no-op
+          const error = await triggerCloudSync(window, pwaSyncTarget, sources);
+          if (error) {
+            logger.warn(`Sync after PWA redirect failed: ${error}`);
+            pushTransientNotice(`Sync failed after reconnect: ${error}`);
+          }
+        } catch (err: any) {
+          const message = err?.message || String(err);
+          logger.warn(`Sync after PWA redirect failed: ${message}`);
+          pushTransientNotice(`Sync failed after reconnect: ${message}`);
         }
-      });
+      })();
     }
 
     // Session state is in-memory, so after a refresh we silently re-validate
