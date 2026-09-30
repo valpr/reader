@@ -173,6 +173,71 @@ test.describe('PWA OAuth same-window redirect flow', () => {
     expect(remainingState).toBeNull();
   });
 
+  test('auth callback with pre-upgrade state lacking oauthState succeeds without state check error', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    await page.evaluate(async () => {
+      const storePath = '/src/lib/data/store.ts';
+      const { database } = await import(/* @vite-ignore */ storePath);
+      const db = await database.db;
+      await db.put('storageSource', {
+        name: 'preupgrade-onedrive-source',
+        type: 'onedrive',
+        storedInManager: false,
+        encryptionDisabled: true,
+        data: { clientId: 'test-client' },
+        disconnected: false,
+        lastSourceModified: Date.now()
+      });
+    });
+
+    await page.route('**/oauth2/v2.0/token', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'preupgrade-access-token',
+          expires_in: '3600',
+          scope: 'Files.ReadWrite User.Read',
+          refresh_token: 'preupgrade-refresh-token'
+        })
+      });
+    });
+
+    await page.route('**/v1.0/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          userPrincipalName: 'user@outlook.com',
+          displayName: 'PWA User'
+        })
+      });
+    });
+
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'preupgrade-onedrive-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          // oauthState omitted
+          returnUrl: '/manage',
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    await page.goto('/auth?code=mock_code');
+    await expect(page).toHaveURL(/\/manage/, { timeout: 15000 });
+  });
+
   test('auth callback with state mismatch surfaces Authorization failed', async ({ page }) => {
     await page.goto('/manage');
 
@@ -194,6 +259,32 @@ test.describe('PWA OAuth same-window redirect flow', () => {
     });
 
     await page.goto('/auth?code=mock_code&state=wrong-state');
+
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+    await expect(page.getByText('State mismatch')).toBeVisible();
+  });
+
+  test('auth callback with missing state param surfaces Authorization failed', async ({ page }) => {
+    await page.goto('/manage');
+
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'custom-onedrive-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'expected-state',
+          returnUrl: '/manage',
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    await page.goto('/auth?code=mock_code');
 
     await expect(page.getByText('Authentication Failed')).toBeVisible();
     await expect(page.getByText('State mismatch')).toBeVisible();
@@ -324,6 +415,175 @@ test.describe('PWA OAuth same-window redirect flow', () => {
 
     await returnBtn.click();
     await expect(page).toHaveURL(/\/manage/);
+  });
+
+  test('returning encrypted source falls back to decrypted refresh_token and updates in-memory tokenData', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    await page.addInitScript(() => {
+      const origSet = Map.prototype.set;
+      Map.prototype.set = function (key, value) {
+        if (
+          key === 'custom-encrypted-source' &&
+          value &&
+          typeof value === 'object' &&
+          'accessToken' in value
+        ) {
+          sessionStorage.setItem('__captured_token', JSON.stringify(value));
+        }
+        return origSet.call(this, key, value);
+      };
+    });
+
+    await page.evaluate(async () => {
+      const storePath = '/src/lib/data/store.ts';
+      const sourceManagerPath = '/src/lib/data/storage/storage-source-manager.ts';
+      const { database } = await import(/* @vite-ignore */ storePath);
+      const { encrypt } = await import(/* @vite-ignore */ sourceManagerPath);
+      const db = await database.db;
+
+      const encryptedData = await encrypt(
+        window,
+        JSON.stringify({
+          clientId: 'test-client',
+          refreshToken: 'persisted-old-refresh-token',
+          accountEmail: 'user@outlook.com'
+        }),
+        'my-secret-key'
+      );
+
+      await db.put('storageSource', {
+        name: 'custom-encrypted-source',
+        type: 'onedrive',
+        storedInManager: false,
+        encryptionDisabled: false,
+        data: encryptedData,
+        disconnected: false,
+        lastSourceModified: Date.now()
+      });
+
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'custom-encrypted-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'mock-oauth-state',
+          returnUrl: '/manage',
+          secret: 'my-secret-key',
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    await page.route('**/oauth2/v2.0/token', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'new-access-token-no-refresh',
+          expires_in: '3600',
+          scope: 'Files.ReadWrite.AppFolder User.Read'
+          // no refresh_token returned by provider
+        })
+      });
+    });
+    await page.route('**/v1.0/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          userPrincipalName: 'user@outlook.com',
+          displayName: 'PWA User'
+        })
+      });
+    });
+
+    await page.goto('/auth?code=mock_code&state=mock-oauth-state');
+
+    await expect(page).toHaveURL(/\/manage/, { timeout: 15000 });
+
+    const verification = await page.evaluate(async () => {
+      const storePath = '/src/lib/data/store.ts';
+      const sourceManagerPath = '/src/lib/data/storage/storage-source-manager.ts';
+      const { database } = await import(/* @vite-ignore */ storePath);
+      const { decrypt } = await import(/* @vite-ignore */ sourceManagerPath);
+
+      const capturedRaw = sessionStorage.getItem('__captured_token');
+      const inMemoryToken = capturedRaw ? JSON.parse(capturedRaw) : null;
+
+      const db = await database.db;
+      const saved = await db.get('storageSource', 'custom-encrypted-source');
+      const decrypted = JSON.parse(
+        new TextDecoder().decode(await decrypt(window, saved.data, 'my-secret-key'))
+      );
+
+      return {
+        inMemoryRefreshToken: inMemoryToken?.refreshToken,
+        persistedRefreshToken: decrypted?.refreshToken
+      };
+    });
+
+    expect(verification.inMemoryRefreshToken).toBe('persisted-old-refresh-token');
+    expect(verification.persistedRefreshToken).toBe('persisted-old-refresh-token');
+  });
+
+  test('popup flow without refresh_token surfaces no-refresh error to opener', async ({ page }) => {
+    await page.goto('/manage');
+
+    await page.addInitScript(() => {
+      (window as any).__openerMessages = [];
+      window.opener = {
+        postMessage: (data: any, origin: string, ports?: MessagePort[]) => {
+          (window as any).__openerMessages.push(data);
+          if (ports && ports[0]) {
+            if (data.type === 'getAuthVariables') {
+              ports[0].postMessage({
+                result: {
+                  clientId: 'test-client',
+                  tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+                  scope: 'Files.ReadWrite User.Read',
+                  sendSecret: false
+                }
+              });
+            } else if (data.type === 'getCodeVerifier') {
+              ports[0].postMessage({
+                result: 'mock_code_verifier_12345678901234567890'
+              });
+            }
+          }
+        }
+      };
+    });
+
+    await page.route('**/oauth2/v2.0/token', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'access-without-refresh',
+          expires_in: '3600',
+          scope: 'Files.ReadWrite User.Read'
+          // no refresh_token
+        })
+      });
+    });
+
+    await page.goto('/auth?code=mock_code');
+
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+    await expect(page.getByText('no refresh token')).toBeVisible();
+
+    const failureMessages = await page.evaluate(() => {
+      return (window as any).__openerMessages.filter((m: any) => m.type === 'failure');
+    });
+    expect(failureMessages.length).toBeGreaterThan(0);
+    expect(failureMessages[0].payload.message).toContain('no refresh token');
   });
 
   test('orphaned login window without opener or PWA state surfaces helpful error with Close Window button', async ({
