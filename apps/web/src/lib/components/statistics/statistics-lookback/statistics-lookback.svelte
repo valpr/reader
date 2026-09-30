@@ -25,7 +25,11 @@
   onMount(async () => {
     try {
       const db = await database.db;
-      const [books, bookmarks] = await Promise.all([db.getAll('data'), db.getAll('bookmark')]);
+      const [books, bookmarks, statistics] = await Promise.all([
+        db.getAll('data'),
+        db.getAll('bookmark'),
+        db.getAll('statistic').catch(() => [])
+      ]);
 
       const bookmarkByDataId = new Map<number, any>();
       for (let i = 0; i < bookmarks.length; i += 1) {
@@ -62,10 +66,13 @@
           lastBookOpen: book.lastBookOpen,
           lastReadTime: lastReadTime > 0 ? lastReadTime : undefined
         });
+      }
 
-        if (progress >= 0.95) {
-          completed.add(book.title);
-        }
+      // Canonical completion only: explicit `completedBook === 1` rows.
+      // Bookmark `progress >= 1` titles are covered by `isBookCompleted`
+      // via `bookMetadataMap` — no fuzzy `>= 0.95` heuristic here.
+      for (const row of statistics) {
+        if (row?.completedBook === 1 && row.title) completed.add(row.title);
       }
 
       bookMetadataMap = metaMap;

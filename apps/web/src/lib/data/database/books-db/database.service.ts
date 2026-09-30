@@ -208,6 +208,8 @@ export class DatabaseService {
     shareReplay({ refCount: true, bufferSize: 1 })
   );
 
+  statisticsChanged$ = new Subject<void>();
+
   userBookmarksChanged$ = new Subject<void>();
 
   lastItemChanged$ = new Subject<void>();
@@ -567,7 +569,9 @@ export class DatabaseService {
     }
     const db = await this.db;
 
-    return db.put('bookmark', bookmarkData);
+    const result = await db.put('bookmark', bookmarkData);
+    this.bookmarksChanged$.next();
+    return result;
   }
 
   async deleteBookmark(dataId: number): Promise<void> {
@@ -1238,6 +1242,30 @@ export class DatabaseService {
     return db.getFromIndex('statistic', 'completedBook', [1, bookTitle]);
   }
 
+  /**
+   * Titles carrying an explicit `completedBook === 1` statistic row.
+   * Materialized set behind the canonical `isBookCompleted` check — the
+   * Manage page re-queries it whenever bookmarks or statistics change so a
+   * completion made in the reader (or on another device) is reflected
+   * without a reload.
+   */
+  async getCompletedBookTitles(): Promise<Set<string>> {
+    const db = await this.db;
+    try {
+      const rows = await db.getAllFromIndex(
+        'statistic',
+        'completedBook',
+        IDBKeyRange.bound([1], [1, []])
+      );
+      return new Set((rows || []).map((row) => row.title).filter(Boolean));
+    } catch {
+      const rows = await db.getAll('statistic').catch(() => []);
+      return new Set(
+        (rows || []).filter((row) => row?.completedBook === 1).map((row) => row.title)
+      );
+    }
+  }
+
   async getStatisticsForTimeWindow(startDate: string, endDate: string) {
     if (!startDate || !endDate) {
       return [];
@@ -1366,6 +1394,7 @@ export class DatabaseService {
 
       await Promise.all(tasks);
       await tx.done;
+      this.statisticsChanged$.next();
     } catch (error: any) {
       try {
         tx.abort();
@@ -1929,6 +1958,7 @@ export class DatabaseService {
         });
       }
       await tx.done;
+      this.statisticsChanged$.next();
     } catch (error: any) {
       try {
         tx.abort();

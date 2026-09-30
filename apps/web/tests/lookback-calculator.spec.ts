@@ -602,8 +602,8 @@ test.describe('Reading Lookback Calculator', () => {
         readingTime: 3600,
         charactersRead: 10000,
         lookupCount: 2,
-        maxProgress: 0.8
-        // completedBook not set in stat
+        maxProgress: 0.8,
+        completedBook: 1
       },
       {
         title: 'Book Three',
@@ -632,6 +632,33 @@ test.describe('Reading Lookback Calculator', () => {
     const completedBook = metrics.topBooks.find((b) => b.title === 'Completed Novel');
     expect(completedBook?.completed).toBe(true);
     expect(completedBook?.maxProgress).toBe(0.98);
+    expect(metrics.booksCompleted).toBe(1);
+  });
+
+  test('near-complete progress without an explicit flag is not completed (strict rule)', () => {
+    const stats: Partial<BooksDbStatistic>[] = [
+      {
+        title: 'Almost Done',
+        dateKey: '2026-04-11',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 2,
+        maxProgress: 0.98
+      },
+      {
+        title: 'Fully Read',
+        dateKey: '2026-04-12',
+        readingTime: 3600,
+        charactersRead: 10000,
+        lookupCount: 2,
+        maxProgress: 1
+      }
+    ];
+
+    const metrics = calculateLookbackMetrics(stats as BooksDbStatistic[], 2026);
+
+    expect(metrics.topBooks.find((b) => b.title === 'Almost Done')?.completed).toBe(false);
+    expect(metrics.topBooks.find((b) => b.title === 'Fully Read')?.completed).toBe(true);
     expect(metrics.booksCompleted).toBe(1);
   });
 

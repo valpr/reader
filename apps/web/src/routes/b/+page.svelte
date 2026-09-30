@@ -1274,8 +1274,9 @@
       if (bookmarkManager) {
         const data = {
           ...bookmarkManager.formatBookmarkData($rawBookData$.id, customReadingPointScrollOffset),
-          exploredCharCount: Math.max(0, bookCharCount - 1),
-          progress: 1
+          exploredCharCount: Math.max(0, bookCharCount),
+          progress: 1,
+          lastBookmarkModified: Date.now()
         };
 
         await database.putBookmark(data);

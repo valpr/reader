@@ -3,10 +3,12 @@
   import { faArrowsRotate, faCheck } from '@fortawesome/free-solid-svg-icons';
   import { onDestroy } from 'svelte';
   import Fa from 'svelte-fa';
+  import { isBookCompleted } from '$lib/data/book-completion';
 
   export let imagePath: string | Blob;
   export let title: string;
   export let progress: number;
+  export let completedBook: 0 | 1 | undefined = undefined;
   /**
    * Read-ready state for prioritized sync: `synced` once phase-1 reading
    * state (position + bookmarks) downloaded, `syncing` while this title is
@@ -70,7 +72,7 @@
 
   $: imageLoadComplete = imgEl?.complete && !imageLoading;
   $: alt = `${title}_cover`;
-  $: isComplete = progress >= 1;
+  $: isComplete = isBookCompleted({ progress, completedBook, title });
 </script>
 
 <div tabindex="0" role="button" class="aspect-w-2 aspect-h-3 relative" on:click on:keyup>
