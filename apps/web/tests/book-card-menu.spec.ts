@@ -27,6 +27,7 @@ test.describe('Book Card Options Menu', () => {
     await menuBtn.click();
 
     await expect(page.getByRole('button', { name: 'Upload to primary cloud' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Complete Book' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'View details' })).toBeVisible();
   });
 
@@ -327,5 +328,121 @@ test.describe('Book Card Options Menu', () => {
     await expect(detailsTwo).toBeVisible();
     await expect(detailsTwo).toContainText('0%');
     await expect(detailsTwo).not.toContainText('50%');
+  });
+
+  test('can mark book as complete and uncomplete it from the options menu preserving partial progress', async ({
+    page
+  }) => {
+    await seedLibraryItem(page);
+    await page.evaluate(async (version) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('books', version);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(['bookmark'], 'readwrite');
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.objectStore('bookmark').put({
+            dataId: 1,
+            exploredCharCount: 600,
+            progress: 0.5,
+            lastBookmarkModified: Date.now()
+          });
+        });
+      } finally {
+        db.close();
+      }
+    }, currentDbVersion);
+
+    await page.goto('/manage');
+
+    const bookCard = page.locator('.aspect-w-2').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    // Initially at 50% without complete checkmark
+    await expect(page.getByTestId('book-card-progress-complete')).not.toBeVisible();
+
+    // Open options menu and click Complete Book
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    const completeBtn = page.getByRole('button', { name: /^Complete Book/ });
+    await expect(completeBtn).toBeVisible();
+    await completeBtn.click();
+
+    // Completion checkmark badge appears on book card
+    await expect(page.getByTestId('book-card-progress-complete')).toBeVisible();
+
+    // Reopen menu: now displays Uncomplete Book, not Complete Book
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    const uncompleteBtn = page.getByRole('button', { name: /^Uncomplete Book/ });
+    await expect(uncompleteBtn).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Complete Book/ })).not.toBeVisible();
+
+    // Click Uncomplete Book to undo completion flag
+    await uncompleteBtn.click();
+
+    // Completion checkmark badge disappears
+    await expect(page.getByTestId('book-card-progress-complete')).not.toBeVisible();
+
+    // Reopen menu: back to Complete Book
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    await expect(page.getByRole('button', { name: /^Complete Book/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Uncomplete Book/ })).not.toBeVisible();
+
+    // Reading progress remains preserved at 50%
+    await page.getByRole('button', { name: 'View details' }).click();
+    const details = page.getByTestId('book-details-dialog');
+    await expect(details).toBeVisible();
+    await expect(details).toContainText('50%');
+  });
+
+  test('can uncomplete a book that reached 100% reading progress', async ({ page }) => {
+    await seedLibraryItem(page);
+    await page.evaluate(async (version) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('books', version);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(['bookmark'], 'readwrite');
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.objectStore('bookmark').put({
+            dataId: 1,
+            exploredCharCount: 1200,
+            progress: 1,
+            lastBookmarkModified: Date.now()
+          });
+        });
+      } finally {
+        db.close();
+      }
+    }, currentDbVersion);
+
+    await page.goto('/manage');
+
+    const bookCard = page.locator('.aspect-w-2').first();
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    // Completed at 100%
+    await expect(page.getByTestId('book-card-progress-complete')).toBeVisible();
+
+    // Open options menu and click Uncomplete Book
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    const uncompleteBtn = page.getByRole('button', { name: /^Uncomplete Book/ });
+    await expect(uncompleteBtn).toBeVisible();
+    await uncompleteBtn.click();
+
+    // Completion checkmark badge disappears
+    await expect(page.getByTestId('book-card-progress-complete')).not.toBeVisible();
+
+    // Reopen menu: now displays Complete Book
+    await page.getByRole('button', { name: `Book options for ${SAMPLE_BOOK.title}` }).click();
+    await expect(page.getByRole('button', { name: /^Complete Book/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Uncomplete Book/ })).not.toBeVisible();
   });
 });

@@ -103,7 +103,7 @@
       >
         <span class="line-clamp-3">{title}</span>
       </div>
-      {#if progress > 0}
+      {#if progress > 0 || isComplete}
         <div class="px-2 pb-1.5">
           <div
             role="progressbar"

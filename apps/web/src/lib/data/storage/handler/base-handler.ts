@@ -17,6 +17,7 @@ import {
   type BooksDbUserBookmarkData
 } from '$lib/data/database/books-db/versions/books-db';
 import type { Section } from '$lib/data/database/books-db/versions/v4/books-db-v4';
+import { getStatisticsFileName, getStatisticsMetadata } from '$lib/functions/statistic-util';
 import { storageRootName } from '$lib/data/env';
 import { MergeMode } from '$lib/data/merge-mode';
 import type { ReaderProfile, StatisticsSyncSection } from '$lib/data/profiles/profile-types';
@@ -367,83 +368,16 @@ export abstract class BaseStorageHandler {
   }
 
   static getStatisticsMetadata(filename: string) {
-    const parts = filename.split('_').map((part) => part.replace(/\.json$/, ''));
-
-    return {
-      exporterVersion: +parts[1],
-      dbVersion: +parts[2],
-      lastStatisticModified: +parts[3],
-      charactersRead: +parts[4],
-      readingTime: +parts[5],
-      minReadingSpeed: +parts[6],
-      altMinReadingSpeed: +parts[7],
-      lastReadingSpeed: +parts[8],
-      maxReadingSpeed: +parts[9],
-      averageReadingTime: +parts[10],
-      averageWeightedRedingTime: +parts[11],
-      averageCharactersRead: +parts[12],
-      averageWeightedCharatersRead: +parts[13],
-      averageReadingSpeed: +parts[14],
-      averageWeightedReadingSpeed: +parts[15],
-      finishDate: parts[16] || 'na'
-    };
+    return getStatisticsMetadata(filename);
   }
 
   static getStatisticsFileName(statistics: BooksDbStatistic[], lastStatisticModified: number) {
-    let readingTime = 0;
-    let charactersRead = 0;
-    let minReadingSpeed = 0;
-    let altMinReadingSpeed = 0;
-    let maxReadingSpeed = 0;
-    let weightedSum = 0;
-    let validReadingDays = 0;
-    let finishDate = 'na';
-
-    for (let index = 0, { length } = statistics; index < length; index += 1) {
-      const statistic = statistics[index];
-
-      readingTime += statistic.readingTime;
-      charactersRead += statistic.charactersRead;
-      minReadingSpeed = minReadingSpeed
-        ? Math.min(minReadingSpeed, statistic.minReadingSpeed)
-        : statistic.minReadingSpeed;
-      altMinReadingSpeed = altMinReadingSpeed
-        ? Math.min(altMinReadingSpeed, statistic.altMinReadingSpeed)
-        : statistic.altMinReadingSpeed;
-      maxReadingSpeed = Math.max(maxReadingSpeed, statistic.lastReadingSpeed);
-      weightedSum += statistic.readingTime * statistic.charactersRead;
-
-      if (statistic.readingTime) {
-        validReadingDays += 1;
-      }
-
-      if (statistic.completedData) {
-        if (finishDate === 'na') {
-          finishDate = statistic.dateKey;
-        } else {
-          finishDate =
-            statistic.completedData.dateKey > finishDate
-              ? statistic.completedData.dateKey
-              : finishDate;
-        }
-      }
-    }
-
-    const averageReadingTime = validReadingDays ? Math.ceil(readingTime / validReadingDays) : 0;
-    const averageWeightedReadingTime = charactersRead ? Math.ceil(weightedSum / charactersRead) : 0;
-    const averageCharactersRead = validReadingDays
-      ? Math.ceil(charactersRead / validReadingDays)
-      : 0;
-    const averageWeightedCharactersRead = readingTime ? Math.ceil(weightedSum / readingTime) : 0;
-    const lastReadingSpeed = readingTime ? Math.ceil((3600 * charactersRead) / readingTime) : 0;
-    const averageReadingSpeed = averageReadingTime
-      ? Math.ceil((3600 * averageCharactersRead) / averageReadingTime)
-      : 0;
-    const averageWeightedReadingSpeed = averageWeightedReadingTime
-      ? Math.ceil((3600 * averageWeightedCharactersRead) / averageWeightedReadingTime)
-      : 0;
-
-    return `statistics_${exporterVersion}_${currentDbVersion}_${lastStatisticModified}_${charactersRead}_${readingTime}_${minReadingSpeed}_${altMinReadingSpeed}_${lastReadingSpeed}_${maxReadingSpeed}_${averageReadingTime}_${averageWeightedReadingTime}_${averageCharactersRead}_${averageWeightedCharactersRead}_${averageReadingSpeed}_${averageWeightedReadingSpeed}_${finishDate}.json`;
+    return getStatisticsFileName(
+      statistics,
+      lastStatisticModified,
+      exporterVersion,
+      currentDbVersion
+    );
   }
 
   static getReadingGoalsFileName(lastGoalModified: number) {
