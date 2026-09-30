@@ -69,11 +69,16 @@ test.describe('PWA OAuth same-window redirect flow', () => {
         // Expected: navigation destroys the execution context
       });
 
-    // Verify it navigated to Google auth endpoint
+    // Verify it navigated to Google auth endpoint with Code + PKCE
+    // (Option A: public clients never use implicit response_type=token)
     await page.waitForURL(/accounts\.google\.com/);
     expect(page.url()).toContain('accounts.google.com');
     expect(page.url()).toContain('client_id=custom-gdrive-client-id');
-    expect(page.url()).toContain('response_type=token');
+    expect(page.url()).toContain('response_type=code');
+    expect(page.url()).toContain('code_challenge=');
+    expect(page.url()).toContain('code_challenge_method=S256');
+    expect(page.url()).toContain('state=');
+    expect(page.url()).not.toContain('response_type=token');
   });
 
   test('auth callback in PWA mode exchanges token, updates IndexedDB, and redirects to returnUrl', async ({
@@ -135,6 +140,7 @@ test.describe('PWA OAuth same-window redirect flow', () => {
           sendSecret: false,
           tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
           codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'mock-oauth-state',
           returnUrl: '/manage',
           triggerSyncOnReturn: true,
           timestamp: Date.now()
@@ -142,8 +148,8 @@ test.describe('PWA OAuth same-window redirect flow', () => {
       );
     });
 
-    // Navigate to auth callback with code
-    await page.goto('/auth?code=mock_authorization_code');
+    // Navigate to auth callback with code + matching state
+    await page.goto('/auth?code=mock_authorization_code&state=mock-oauth-state');
 
     // Should redirect back to /manage
     await expect(page).toHaveURL(/\/manage/, { timeout: 15000 });
@@ -165,6 +171,124 @@ test.describe('PWA OAuth same-window redirect flow', () => {
       return sessionStorage.getItem('pwa_oauth_state');
     });
     expect(remainingState).toBeNull();
+  });
+
+  test('auth callback with state mismatch surfaces Authorization failed', async ({ page }) => {
+    await page.goto('/manage');
+
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'custom-onedrive-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'expected-state',
+          returnUrl: '/manage',
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    await page.goto('/auth?code=mock_code&state=wrong-state');
+
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+    await expect(page.getByText('State mismatch')).toBeVisible();
+  });
+
+  test('legacy implicit fragment token surfaces retired-flow error with Return to App', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'custom-onedrive-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'mock-oauth-state',
+          returnUrl: '/manage',
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    await page.goto('/auth#access_token=legacy-token&expires_in=3600&scope=Files.ReadWrite');
+
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+    await expect(page.getByText('Legacy sign-in flow no longer supported')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Return to App' })).toBeVisible();
+  });
+
+  test('code flow without refresh_token surfaces no-refresh error instead of silent fail', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    await page.evaluate(async () => {
+      const storePath = '/src/lib/data/store.ts';
+      const { database } = await import(/* @vite-ignore */ storePath);
+      const db = await database.db;
+      await db.put('storageSource', {
+        name: 'custom-norefresh-source',
+        type: 'onedrive',
+        storedInManager: false,
+        encryptionDisabled: true,
+        data: { clientId: 'test-client' },
+        disconnected: false,
+        lastSourceModified: Date.now()
+      });
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'custom-norefresh-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'mock-oauth-state',
+          returnUrl: '/manage',
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    await page.route('**/oauth2/v2.0/token', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'access-without-refresh',
+          expires_in: '3600',
+          scope: 'Files.ReadWrite.AppFolder User.Read offline_access'
+          // no refresh_token
+        })
+      });
+    });
+    await page.route('**/v1.0/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          userPrincipalName: 'user@outlook.com',
+          displayName: 'PWA User'
+        })
+      });
+    });
+
+    await page.goto('/auth?code=mock_code_no_refresh&state=mock-oauth-state');
+
+    await expect(page.getByText('Authentication Failed')).toBeVisible();
+    await expect(page.getByText('no refresh token')).toBeVisible();
   });
 
   test('auth callback with provider error in PWA mode surfaces Return to App button', async ({

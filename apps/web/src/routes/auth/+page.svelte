@@ -116,6 +116,18 @@
         tokenEndpoint = authVars.tokenEndpoint;
         codeVerifier = await getDataFromOpener(url.origin, { type: 'getCodeVerifier' });
       } else if (pwaState) {
+        // CSRF check for same-window redirects: the provider must echo the
+        // `state` we stored before leaving. Old states predate this field,
+        // so only enforce when both sides present.
+        const returnedState = url.searchParams.get('state');
+        if (pwaState.oauthState && returnedState && returnedState !== pwaState.oauthState) {
+          reportError(
+            url.origin,
+            'Authorization failed',
+            'State mismatch — the sign-in response did not match this device request.\n\nPlease return to the app and retry sync.'
+          );
+          return undefined;
+        }
         clientId = pwaState.clientId;
         clientSecret = pwaState.clientSecret;
         sendSecret = pwaState.sendSecret;
@@ -167,12 +179,15 @@
           reportError(url.origin, 'Code authorization request failed', detail);
         });
     } else if (hashParams.has('access_token')) {
-      void checkAuthResponse(
+      // Legacy implicit flow is retired (OAuth 2.1). Public clients must use
+      // Authorization Code + PKCE. If a provider still returns a fragment
+      // token (stale bookmark / cached provider page), force a fresh retry
+      // instead of persisting a session with no refresh_token that would
+      // silently die on the next reload.
+      reportError(
         url.origin,
-        hashParams.get('access_token'),
-        hashParams.get('expires_in'),
-        hashParams.get('scope'),
-        false
+        'Legacy sign-in flow no longer supported',
+        'The app received an implicit access token without a refresh token.\n\nPlease return to the app and retry sync to use the secure Authorization Code flow.'
       );
     } else if (url.searchParams.has('ttu-init-auth')) {
       const params = new URLSearchParams();
@@ -192,7 +207,9 @@
       params.append('redirect_uri', redirectUri);
       params.append('scope', scope);
 
-      if (clientSecret && tokenEndpoint) {
+      // Option A: popups use the same Code + PKCE flow as PWA redirects.
+      // Never fall back to implicit `response_type=token`.
+      if (tokenEndpoint) {
         params.append('response_type', 'code');
         params.append('access_type', 'offline');
         params.append('code_challenge_method', 'S256');
@@ -246,7 +263,10 @@
     withRefreshToken = false,
     refreshToken?: string | null
   ) {
-    if (!accessToken || !expiration || !scope || (withRefreshToken && !refreshToken)) {
+    // Do not hard-require refresh_token here: the PWA persist step produces
+    // the actionable "no refresh token" error (offline_access / SPA guidance)
+    // and can fall back to a previously stored refresh for returning users.
+    if (!accessToken || !expiration || !scope) {
       reportError(
         origin,
         'A required authentication property was not found',
@@ -367,6 +387,18 @@
         };
 
       const finalRefreshToken = tokenData.refreshToken || existing.data?.refreshToken;
+      if (!finalRefreshToken) {
+        // Code flow must yield a durable refresh_token (OneDrive needs the
+        // `offline_access` scope + SPA platform; Google needs
+        // `access_type=offline`). Without it the session would die on the
+        // next reload, so fail loudly instead of silently storing undefined.
+        reportError(
+          window.location.origin,
+          'Sign-in incomplete — no refresh token',
+          'The provider did not return a refresh token.\n\nFor OneDrive, ensure the app registration grants `offline_access` and uses a Single-Page Application redirect URI. Then return to the app and retry sync.'
+        );
+        return;
+      }
       const remoteContext: RemoteContext = {
         clientId: pwaState.clientId,
         clientSecret: pwaState.clientSecret || '',
