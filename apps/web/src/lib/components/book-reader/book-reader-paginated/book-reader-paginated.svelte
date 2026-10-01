@@ -11,7 +11,7 @@
     applyHighlights,
     clearHighlights
   } from '$lib/components/book-reader/book-bookmarks/highlight-renderer';
-  import { SECTION_CHANGE } from '$lib/data/events';
+  import { SECTION_CHANGE, LEGACY_SECTION_CHANGE, dispatchReaderEvent } from '$lib/data/events';
   import { isStoredFont } from '$lib/data/fonts';
   import { FuriganaStyle } from '$lib/data/furigana-style';
   import { logger } from '$lib/data/logger';
@@ -356,7 +356,7 @@
       concretePageManager.scrollTo(scrollPos, true);
 
       if (currentSection !== targetSection) {
-        document.dispatchEvent(new CustomEvent(SECTION_CHANGE));
+        dispatchReaderEvent(document, SECTION_CHANGE, LEGACY_SECTION_CHANGE);
       }
     } else if (detail.type === 'pauseTracker') {
       const targetSection = getTargetSection(detail.selector);

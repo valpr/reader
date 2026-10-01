@@ -24,6 +24,34 @@ export interface UserFont {
 }
 
 export const userFontsCacheName = 'reader-userfonts';
+export const legacyUserFontsCacheName = 'ttu-userfonts';
+
+/**
+ * Seamlessly migrates cached user fonts from the legacy 'ttu-userfonts' cache
+ * to 'reader-userfonts' to prevent data loss upon upgrading.
+ */
+export async function migrateUserFontsCache(): Promise<void> {
+  if (typeof caches === 'undefined') return;
+  try {
+    const hasLegacy = await caches.has(legacyUserFontsCacheName);
+    if (!hasLegacy) return;
+
+    const legacyCache = await caches.open(legacyUserFontsCacheName);
+    const requests = await legacyCache.keys();
+    if (requests.length > 0) {
+      const targetCache = await caches.open(userFontsCacheName);
+      for (const request of requests) {
+        const response = await legacyCache.match(request);
+        if (response) {
+          await targetCache.put(request, response);
+        }
+      }
+    }
+    await caches.delete(legacyUserFontsCacheName);
+  } catch {
+    // Best effort migration: do not interrupt app launch if cache access fails
+  }
+}
 
 export const reservedFontNames = new Set([
   'KZ UDGothic',

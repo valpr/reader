@@ -694,10 +694,10 @@
       return;
     }
 
-    const checkForParent = !chapterId.startsWith(prependValue);
+    const checkForParent = !chapterId.startsWith(prependValue) && !chapterId.startsWith('ttu-');
 
     targetElement = checkForParent
-      ? targetElement.closest(`div[id^="${prependValue}"]`) || targetElement
+      ? targetElement.closest(`div[id^="${prependValue}"], div[id^="ttu-"]`) || targetElement
       : targetElement;
 
     willNavigate = true;

@@ -145,7 +145,17 @@
   } from '$lib/data/database/books-db/versions/books-db';
   import { dialogManager } from '$lib/data/dialog-manager';
   import { pagePath } from '$lib/data/env';
-  import { DB_VERSION, PAGE_CHANGE, SKIPKEYLISTENER, SYNCED } from '$lib/data/events';
+  import {
+    DB_VERSION,
+    LEGACY_DB_VERSION,
+    PAGE_CHANGE,
+    LEGACY_PAGE_CHANGE,
+    SKIPKEYLISTENER,
+    LEGACY_SKIPKEYLISTENER,
+    SYNCED,
+    LEGACY_SYNCED,
+    dispatchReaderEvent
+  } from '$lib/data/events';
   import { fullscreenManager } from '$lib/data/fullscreen-manager';
   import { logger } from '$lib/data/logger';
   import { MergeMode } from '$lib/data/merge-mode';
@@ -478,6 +488,9 @@
 
   const initBookmarkData$ = rawBookData$.pipe(
     tap((rawBookData) => {
+      jumpOffer = null;
+      latestSeenCandidate = null;
+      dismissedJumpKeys.clear();
       if (!rawBookData?.id) return;
       bookmarkData = resolveResumeBookmark(rawBookData.id);
     }),
@@ -790,11 +803,11 @@
   }
 
   $: if (browser && bookCharCount) {
-    document.dispatchEvent(new CustomEvent(PAGE_CHANGE, { detail: { exploredCharCount } }));
+    dispatchReaderEvent(document, PAGE_CHANGE, LEGACY_PAGE_CHANGE, { exploredCharCount });
   }
 
   $: if (browser) {
-    document.dispatchEvent(new CustomEvent(PAGE_CHANGE, { detail: { bookCharCount } }));
+    dispatchReaderEvent(document, PAGE_CHANGE, LEGACY_PAGE_CHANGE, { bookCharCount });
   }
 
   $: if (showCustomReadingPoint) {
@@ -860,7 +873,7 @@
   /** Experimental Code - May be removed any time without warning */
 
   $: if (browser) {
-    document.dispatchEvent(new CustomEvent(SKIPKEYLISTENER, { detail: $skipKeyDownListener$ }));
+    dispatchReaderEvent(document, SKIPKEYLISTENER, LEGACY_SKIPKEYLISTENER, $skipKeyDownListener$);
   }
 
   onMount(() => {
@@ -923,9 +936,9 @@
     }
 
     if (detail.type === 'dbVersion') {
-      document.dispatchEvent(new CustomEvent(DB_VERSION, { detail: currentDbVersion }));
+      dispatchReaderEvent(document, DB_VERSION, LEGACY_DB_VERSION, currentDbVersion);
     } else if (detail.type === 'waitForSync') {
-      syncedPromise.finally(() => document.dispatchEvent(new CustomEvent(SYNCED)));
+      syncedPromise.finally(() => dispatchReaderEvent(document, SYNCED, LEGACY_SYNCED));
     } else if (detail.type === 'skipKeyDownListener') {
       skipKeyDownListener$.next(detail.params.value);
     } else if (
@@ -2871,7 +2884,7 @@
   bind:clientHeight={footerHeight}
   tabindex="0"
   role="button"
-  class="writing-horizontal-tb fixed bottom-0 left-0 z-10 flex h-8 w-full items-center justify-between text-xs leading-none"
+  class="reader-page-footer ttu-page-footer writing-horizontal-tb fixed bottom-0 left-0 z-10 flex h-8 w-full items-center justify-between text-xs leading-none"
   style:color={$themeOption$?.tooltipTextFontColor}
   on:click={() => (showFooter = !showFooter)}
   on:keyup={dummyFn}

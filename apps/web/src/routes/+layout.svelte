@@ -5,7 +5,7 @@
   import CloudSyncStatus from '$lib/components/cloud/cloud-sync-status.svelte';
   import { basePath, clearConsoleOnReload } from '$lib/data/env';
   import { dialogManager, type Dialog } from '$lib/data/dialog-manager';
-  import { userFontsCacheName, type UserFont } from '$lib/data/fonts';
+  import { migrateUserFontsCache, userFontsCacheName, type UserFont } from '$lib/data/fonts';
   import {
     appThemeMode$,
     database,
@@ -116,6 +116,8 @@
     if (!browser) {
       return;
     }
+
+    void migrateUserFontsCache();
 
     startProactiveRefresh();
 

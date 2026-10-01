@@ -43,6 +43,7 @@ import type { ReplicationContext } from '$lib/functions/replication/replication-
 const MARKER_VERSION = 1;
 
 const MARKER_KEY_PREFIX = 'reader:ub-sync-state:v1:';
+const LEGACY_MARKER_KEY_PREFIX = 'ttu-reader:ub-sync-state:v1:';
 
 /**
  * Upper bound on trusting a marker without re-verifying bodies (30 days).
@@ -84,6 +85,10 @@ function markerKey(remoteSourceName: string, title: string): string {
   return `${MARKER_KEY_PREFIX}${encodeURIComponent(remoteSourceName)}::${encodeURIComponent(title)}`;
 }
 
+function legacyMarkerKey(remoteSourceName: string, title: string): string {
+  return `${LEGACY_MARKER_KEY_PREFIX}${encodeURIComponent(remoteSourceName)}::${encodeURIComponent(title)}`;
+}
+
 function readStorage(): Storage | undefined {
   try {
     return typeof localStorage !== 'undefined' ? localStorage : undefined;
@@ -97,7 +102,20 @@ export function readBookmarksSyncMarker(
   title: string
 ): BookmarksSyncMarker | undefined {
   try {
-    const raw = readStorage()?.getItem(markerKey(remoteSourceName, title));
+    const storage = readStorage();
+    if (!storage) return undefined;
+
+    const primaryKey = markerKey(remoteSourceName, title);
+    let raw = storage.getItem(primaryKey);
+    let isLegacy = false;
+
+    if (!raw) {
+      const legKey = legacyMarkerKey(remoteSourceName, title);
+      raw = storage.getItem(legKey);
+      if (raw) {
+        isLegacy = true;
+      }
+    }
 
     if (!raw) return undefined;
 
@@ -114,6 +132,15 @@ export function readBookmarksSyncMarker(
     if (parsed.dataId !== undefined && typeof parsed.dataId !== 'number') return undefined;
     if (parsed.recordedAt !== undefined && typeof parsed.recordedAt !== 'number') {
       return undefined;
+    }
+
+    if (isLegacy) {
+      try {
+        storage.setItem(primaryKey, raw);
+        storage.removeItem(legacyMarkerKey(remoteSourceName, title));
+      } catch {
+        // no-op
+      }
     }
 
     return {
@@ -153,7 +180,9 @@ export function writeBookmarksSyncMarker(
 
 export function clearBookmarksSyncMarker(remoteSourceName: string, title: string): void {
   try {
-    readStorage()?.removeItem(markerKey(remoteSourceName, title));
+    const storage = readStorage();
+    storage?.removeItem(markerKey(remoteSourceName, title));
+    storage?.removeItem(legacyMarkerKey(remoteSourceName, title));
   } catch {
     // no-op
   }
