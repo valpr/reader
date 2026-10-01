@@ -6,12 +6,13 @@ Valpr Reader features a **Device Profiles engine**. Unlike conventional readers 
 
 ## Built-In Default Profiles
 
-Valpr Reader ships with **four distinct hardware profiles**. These are intentionally separate because display physics, viewing distance, and ergonomic grip differ fundamentally across device classes:
+Valpr Reader ships with **five profiles: four hardware profiles plus a doom-scroll mode variant**. The hardware profiles are intentionally separate because display physics, viewing distance, and ergonomic grip differ fundamentally across device classes:
 
 | Profile              | ID                | Font Size | Line Height | Columns  | Margin | Key Differences                                                                                                                      |
 | :------------------- | :---------------- | :-------- | :---------- | :------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------- |
 | **PC / Desktop**     | `default-desktop` | 20px      | 1.65        | Auto (0) | 16px   | Mouse/keyboard navigation, no tap-edge paging, wake lock off                                                                         |
 | **Mobile / Phone**   | `default-mobile`  | 17px      | 1.55        | 1        | 16px   | Closest viewing distance, smaller font, 15px swipe threshold, wake lock on                                                           |
+| **Mobile / Doom Scroll** | `default-mobile-scroll` | 17px | 1.60   | 1        | 16px   | Continuous vertical scroll (`horizontal-tb`), no tap-edge paging, wake lock on                                                       |
 | **Tablet**           | `default-tablet`  | 22px      | 1.70        | 1        | 24px   | High-DPI LCD, wider 24px thumb bezel margin, wake lock on, 900px column ceiling                                                      |
 | **E-Reader / E-Ink** | `default-ereader` | 20px      | 1.60        | 1        | 10px   | E-Ink contrast boost (font weight 500), 20px swipe threshold, forced light theme, pinned header, no tap edge, no mid-sentence breaks |
 
@@ -79,7 +80,7 @@ Without a constraint, full-screen vertical text on a 12.9" tablet would result i
 ### Creating a Custom Profile
 
 1. In the Profiles section, click **+ New Profile**.
-2. Choose a starting template (Desktop, Mobile, Tablet, or E-Reader).
+2. Choose a starting template (Desktop, Mobile, Doom Scroll, Tablet, or E-Reader).
 3. Name your profile and pick an icon.
 4. Adjust font size, line height, margins, and custom CSS as desired.
 
