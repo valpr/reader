@@ -167,4 +167,91 @@ test.describe('OneDrive Default Session Persistence Across Reloads', () => {
       page.locator('.astryx-card').filter({ hasText: 'Local Storage Only' })
     ).toBeVisible();
   });
+
+  test('getToken refreshes access token silently using persisted refresh token when in-memory cache is empty', async ({
+    page
+  }) => {
+    let tokenRequestCount = 0;
+    await page.route('**/login.microsoftonline.com/**/token', async (route) => {
+      tokenRequestCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          token_type: 'Bearer',
+          expires_in: 3600,
+          scope: 'Files.ReadWrite.AppFolder User.Read offline_access',
+          access_token: 'mock-background-access-token',
+          refresh_token: 'mock-background-rotated-refresh-token'
+        })
+      });
+    });
+
+    await page.goto('/settings/data');
+
+    await seedCloudSource(page, {
+      name: 'ttu-onedrive-default',
+      refreshToken: 'persisted-refresh-token-for-get-token'
+    });
+
+    // In a clean tab state with no in-memory access token, an API request calling getToken()
+    // with allowInteractive: false must use the persisted refresh token to renew silently.
+    const token = await page.evaluate(async () => {
+      const oauthPath = '/src/lib/data/storage/storage-oauth-manager.ts';
+      const { StorageOAuthManager } = await import(/* @vite-ignore */ oauthPath);
+      const manager = new StorageOAuthManager('onedrive' as any, '');
+      return manager.getToken(
+        window,
+        'ttu-onedrive-default',
+        false,
+        undefined,
+        undefined,
+        undefined,
+        { allowInteractive: false }
+      );
+    });
+
+    expect(token).toBe('mock-background-access-token');
+    expect(tokenRequestCount).toBe(1);
+  });
+
+  test('handles invalid_grant error cleanly by marking NEEDS_RECONNECT on reload', async ({
+    page
+  }) => {
+    let tokenCalls = 0;
+    await page.route('**/login.microsoftonline.com/**/token', async (route) => {
+      tokenCalls += 1;
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'invalid_grant',
+          error_description: 'The refresh token has expired or is invalid.'
+        })
+      });
+    });
+
+    await page.goto('/settings/data');
+
+    await seedCloudSource(page, {
+      name: 'ttu-onedrive-default',
+      refreshToken: 'expired-or-revoked-token'
+    });
+    await page.evaluate(() => {
+      window.localStorage.setItem('syncTarget', 'ttu-onedrive-default');
+    });
+
+    // Reload triggers restoreCloudSessions() -> trySilentRefresh() which fails with 400 invalid_grant
+    await page.reload();
+
+    const providerCard = page.locator('.astryx-card').filter({ hasText: 'OneDrive Default' });
+    await expect(providerCard).toBeVisible();
+
+    // Verify it transitions to Needs Reconnect
+    await expect(
+      providerCard.getByText('Session Expired — Reconnect required', { exact: true })
+    ).toBeVisible({ timeout: 10000 });
+
+    expect(tokenCalls).toBeGreaterThanOrEqual(1);
+  });
 });
