@@ -741,17 +741,27 @@
   const storageSources$ = database.storageSourcesChanged$.pipe(
     map((storageSources) => [
       ...defaultStorageSources
-        .filter((defaultStorageSource) =>
-          isStorageSourceAvailable(defaultStorageSource.type, defaultStorageSource.name, window)
+        .filter(
+          (defaultStorageSource) =>
+            isStorageSourceAvailable(
+              defaultStorageSource.type,
+              defaultStorageSource.name,
+              window
+            ) || storageSources.some((s) => s.name === defaultStorageSource.name)
         )
-        .map((defaultStorageSource) => ({
-          name: defaultStorageSource.name,
-          type: defaultStorageSource.type,
-          storedInManager: false,
-          encryptionDisabled: false,
-          data: new ArrayBuffer(0),
-          lastSourceModified: 0
-        })),
+        .map((defaultStorageSource) => {
+          const stored = storageSources.find((s) => s.name === defaultStorageSource.name);
+          return (
+            stored || {
+              name: defaultStorageSource.name,
+              type: defaultStorageSource.type,
+              storedInManager: false,
+              encryptionDisabled: false,
+              data: new ArrayBuffer(0),
+              lastSourceModified: 0
+            }
+          );
+        }),
       ...storageSources.filter((storageSource) => !isAppDefault(storageSource.name))
     ])
   );

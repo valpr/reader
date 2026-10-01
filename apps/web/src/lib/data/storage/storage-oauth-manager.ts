@@ -353,14 +353,21 @@ export class StorageOAuthManager {
         clientSecret: ''
       };
     } else if (storageSourceName === StorageSourceDefault.ONEDRIVE_DEFAULT) {
-      if (!oneDriveClientId) {
+      const db = await database.db;
+      storageSource = (await db.get('storageSource', storageSourceName)) || oldStorageSource;
+      const storedContext = storageSource?.data as RemoteContext | undefined;
+      const clientId = oneDriveClientId || storedContext?.clientId;
+      if (!clientId) {
         throw new Error(
           'OneDrive OAuth Client ID is not configured (VITE_ONEDRIVE_CLIENT_ID missing)'
         );
       }
       this.remoteData = {
-        clientId: oneDriveClientId,
-        clientSecret: ''
+        clientId,
+        clientSecret: '',
+        refreshToken: storedContext?.refreshToken,
+        accountEmail: storedContext?.accountEmail,
+        accountName: storedContext?.accountName
       };
     } else {
       if (!unlockResult) {
@@ -513,13 +520,14 @@ export class StorageOAuthManager {
         }
       }
 
+      const isOneDriveDefault = storageSourceName === StorageSourceDefault.ONEDRIVE_DEFAULT;
       if (
         this.parentWindow &&
         this.remoteData.clientId &&
         (this.storageType !== StorageKey.GDRIVE || this.remoteData.clientSecret) &&
         token.refreshToken &&
         token.refreshToken !== this.remoteData.refreshToken &&
-        (secret || existingStorageSourceData.encryptionDisabled)
+        (secret || existingStorageSourceData.encryptionDisabled || isOneDriveDefault)
       ) {
         this.remoteData.refreshToken = token.refreshToken;
 
@@ -532,7 +540,9 @@ export class StorageOAuthManager {
             accountEmail: this.remoteData.accountEmail,
             accountName: this.remoteData.accountName
           };
-          const newData = existingStorageSourceData.encryptionDisabled
+          const shouldDisableEncryption =
+            existingStorageSourceData.encryptionDisabled || isOneDriveDefault;
+          const newData = shouldDisableEncryption
             ? contextToStore
             : await encrypt(this.parentWindow, JSON.stringify(contextToStore), secret!);
 
@@ -541,9 +551,13 @@ export class StorageOAuthManager {
             name: storageSourceName,
             type: this.storageType,
             data: newData,
+            encryptionDisabled: shouldDisableEncryption,
             disconnected: false,
             lastSourceModified: Date.now()
           });
+
+          const updatedSources = await db.getAll('storageSource');
+          database.storageSourcesChanged$.next(updatedSources);
         } catch (err: any) {
           logger.error(`Error updating refresh token for ${storageSourceName}: ${err.message}`);
         }
@@ -657,7 +671,12 @@ export class StorageOAuthManager {
       return undefined;
     }
 
-    const { access_token: accessToken, expires_in: expiration, scope } = response;
+    const {
+      access_token: accessToken,
+      expires_in: expiration,
+      scope,
+      refresh_token: rotatedRefreshToken
+    } = response;
 
     if (!accessToken || !expiration || !scope) {
       setConnectionState(this.storageSourceName, StorageConnectionState.NEEDS_RECONNECT);
@@ -668,12 +687,34 @@ export class StorageOAuthManager {
       return undefined;
     }
 
+    const effectiveRefreshToken = rotatedRefreshToken || this.remoteData.refreshToken;
+    this.remoteData.refreshToken = effectiveRefreshToken;
+
     const token: OAuthTokenData = {
       accessToken,
       scope,
       expiration: Date.now() + (Number.parseInt(expiration, 10) - 600) * 1000,
-      refreshToken: this.remoteData.refreshToken
+      refreshToken: effectiveRefreshToken
     };
+
+    if (rotatedRefreshToken && this.storageSourceName) {
+      try {
+        const db = await database.db;
+        const sourceRecord = await db.get('storageSource', this.storageSourceName);
+        if (sourceRecord && sourceRecord.encryptionDisabled && isRemoteContext(sourceRecord.data)) {
+          sourceRecord.data.refreshToken = rotatedRefreshToken;
+          sourceRecord.lastSourceModified = Date.now();
+          await db.put('storageSource', sourceRecord);
+
+          const updatedSources = await db.getAll('storageSource');
+          database.storageSourcesChanged$.next(updatedSources);
+        }
+      } catch (err: any) {
+        logger.warn(
+          `Failed to persist rotated refresh token for ${this.storageSourceName}: ${err?.message}`
+        );
+      }
+    }
 
     storageOAuthTokens.set(this.storageSourceName, token);
     setConnectionState(this.storageSourceName, StorageConnectionState.CONNECTED);
@@ -964,10 +1005,21 @@ export class StorageOAuthManager {
           if (!gDriveClientId) return false;
           remoteData = { clientId: gDriveClientId, clientSecret: '' };
         } else if (storageSourceName === StorageSourceDefault.ONEDRIVE_DEFAULT) {
-          if (!oneDriveClientId) return false;
+          const db = await database.db;
+          const storageSource = await db.get('storageSource', storageSourceName);
+          if (!storageSource || storageSource.disconnected) return false;
+          const storedContext = storageSource.data as RemoteContext | undefined;
+          const clientId = oneDriveClientId || storedContext?.clientId;
+          if (!clientId || !storedContext?.refreshToken) return false;
           storageSourceType = StorageKey.ONEDRIVE;
           refreshEndpoint = oneDriveTokenEndpoint;
-          remoteData = { clientId: oneDriveClientId, clientSecret: '' };
+          remoteData = {
+            clientId,
+            clientSecret: '',
+            refreshToken: storedContext.refreshToken,
+            accountEmail: storedContext.accountEmail,
+            accountName: storedContext.accountName
+          };
         } else {
           return false;
         }
@@ -1333,6 +1385,28 @@ export class StorageOAuthManager {
             lastSourceModified: Date.now()
           });
         }
+      } else if (storageSourceName === StorageSourceDefault.ONEDRIVE_DEFAULT) {
+        const tokenData = storageOAuthTokens.get(storageSourceName);
+        if (tokenData?.refreshToken) {
+          const db = await database.db;
+          const updatedContext: RemoteContext = {
+            clientId: oneDriveClientId,
+            clientSecret: '',
+            refreshToken: tokenData.refreshToken,
+            accountEmail: accountInfo.email,
+            accountName: accountInfo.name
+          };
+
+          await db.put('storageSource', {
+            name: StorageSourceDefault.ONEDRIVE_DEFAULT,
+            type: StorageKey.ONEDRIVE,
+            storedInManager: false,
+            encryptionDisabled: true,
+            data: updatedContext,
+            disconnected: false,
+            lastSourceModified: Date.now()
+          });
+        }
       }
 
       setConnectionState(storageSourceName, StorageConnectionState.CONNECTED);
@@ -1481,6 +1555,10 @@ export class StorageOAuthManager {
       const tokenData = storageOAuthTokens.get(storageSourceName);
       if (tokenData?.refreshToken && storageSourceName === StorageSourceDefault.GDRIVE_DEFAULT) {
         StorageOAuthManager.revokeToken(gDriveRevokeEndpoint, tokenData.refreshToken);
+      }
+      if (storageSourceName === StorageSourceDefault.ONEDRIVE_DEFAULT) {
+        const db = await database.db;
+        await db.delete('storageSource', storageSourceName);
       }
     }
 
