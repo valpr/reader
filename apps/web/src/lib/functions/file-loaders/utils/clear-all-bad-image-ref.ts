@@ -12,8 +12,16 @@
 export default function clearAllBadImageRef(el: HTMLElement) {
   const clearTagBadImageAttribute = (tag: Element, attributeName: string) => {
     const attr = tag.getAttribute(attributeName);
-    if (attr && !(attr.startsWith('ttu:') || attr.startsWith('data:image/gif;ttu:'))) {
-      tag.setAttribute(`data-ttu-${attributeName}`, attr);
+    if (
+      attr &&
+      !(
+        attr.startsWith('reader:') ||
+        attr.startsWith('ttu:') ||
+        attr.startsWith('data:image/gif;reader:') ||
+        attr.startsWith('data:image/gif;ttu:')
+      )
+    ) {
+      tag.setAttribute(`data-reader-${attributeName}`, attr);
       tag.removeAttribute(attributeName);
     }
   };

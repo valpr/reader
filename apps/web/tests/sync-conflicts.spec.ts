@@ -582,8 +582,8 @@ test.describe('Sync conflicts (M3)', () => {
     // Serialized even through the lock path: no interleaving.
     expect(result.events).toEqual(['one-start', 'one-end', 'two-start', 'two-end']);
     expect(result.lockCalls).toEqual([
-      ['ttu-reader-sync', { mode: 'exclusive' }],
-      ['ttu-reader-sync', { mode: 'exclusive' }]
+      ['reader-sync', { mode: 'exclusive' }],
+      ['reader-sync', { mode: 'exclusive' }]
     ]);
     expect(result.locksAvailable).toBe(true);
   });

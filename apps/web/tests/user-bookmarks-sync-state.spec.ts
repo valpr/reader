@@ -368,7 +368,7 @@ test.describe('User bookmarks exact-state sync gate', () => {
 
       // Age the freshly recorded marker past its TTL without touching rows
       // or remote names: only the age may force the re-verifying fetch.
-      const key = `ttu-reader:ub-sync-state:v1:${encodeURIComponent(remoteName)}::${encodeURIComponent(title)}`;
+      const key = `reader:ub-sync-state:v1:${encodeURIComponent(remoteName)}::${encodeURIComponent(title)}`;
       const hadMarker = localStorage.getItem(key) !== null;
       const marker = JSON.parse(localStorage.getItem(key) || '{}');
       marker.recordedAt = 1;

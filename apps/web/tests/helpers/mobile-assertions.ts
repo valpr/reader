@@ -14,17 +14,23 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 /** Page must not scroll horizontally at the current viewport. */
 export async function expectNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(() => {
-    const el = document.scrollingElement || document.documentElement;
-    return {
-      scrollWidth: el.scrollWidth,
-      innerWidth: window.innerWidth
-    };
-  });
+  let lastOverflow = { scrollWidth: 0, innerWidth: 0 };
+  await expect
+    .poll(async () => {
+      lastOverflow = await page.evaluate(() => {
+        const el = document.scrollingElement || document.documentElement;
+        return {
+          scrollWidth: el.scrollWidth,
+          innerWidth: window.innerWidth
+        };
+      });
+      return lastOverflow.scrollWidth <= lastOverflow.innerWidth;
+    })
+    .toBe(true);
   expect(
-    overflow.scrollWidth,
-    `horizontal overflow: scrollWidth ${overflow.scrollWidth} > viewport ${overflow.innerWidth}`
-  ).toBeLessThanOrEqual(overflow.innerWidth);
+    lastOverflow.scrollWidth,
+    `horizontal overflow: scrollWidth ${lastOverflow.scrollWidth} > viewport ${lastOverflow.innerWidth}`
+  ).toBeLessThanOrEqual(lastOverflow.innerWidth);
 }
 
 /** Dialog bounding box must fit fully inside the viewport. */

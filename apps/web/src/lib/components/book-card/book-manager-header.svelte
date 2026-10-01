@@ -52,7 +52,7 @@
   import { caluclatePercentage } from '$lib/functions/utils';
   import { inputAllowDirectory } from '$lib/functions/file-dom/input-allow-directory';
   import { inputFile } from '$lib/functions/file-dom/input-file';
-  import { dummyFn, isMobile$, isOnOldUrl } from '$lib/functions/utils';
+  import { dummyFn, isMobile$ } from '$lib/functions/utils';
   import {
     faArrowDownShortWide,
     faArrowUpShortWide,
@@ -262,7 +262,6 @@
   let countImportElm: HTMLInputElement;
   let importMenuElm: Popover;
   let filterElm: Popover;
-  let isOldUrl = false;
   let showLoadCount = false;
 
   function isFilterActive(filterSet: Set<StorageKey>, key: StorageKey | null): boolean {
@@ -326,7 +325,6 @@
   }
 
   $: if (browser) {
-    isOldUrl = isOnOldUrl(window);
     showLoadCount = new URLSearchParams(window.location.search).has('count');
 
     importMenuItems = [
@@ -888,34 +886,21 @@
         </Popover>
 
         <MergedHeaderIcon
-          items={isOldUrl
-            ? [
-                mergeEntries.BOOK_SELECTION,
-                mergeEntries.MANAGE,
-                mergeEntries.DOMAIN_HINT,
-                mergeEntries.SETTINGS,
-                mergeEntries.DOCUMENTATION,
-                mergeEntries.BUG_REPORT,
-                ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
-              ]
-            : [
-                mergeEntries.BOOK_SELECTION,
-                mergeEntries.MANAGE,
-                mergeEntries.STATISTICS,
-                mergeEntries.SETTINGS,
-                mergeEntries.DOCUMENTATION,
-                mergeEntries.BUG_REPORT,
-                ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
-              ]}
+          items={[
+            mergeEntries.BOOK_SELECTION,
+            mergeEntries.MANAGE,
+            mergeEntries.STATISTICS,
+            mergeEntries.SETTINGS,
+            mergeEntries.DOCUMENTATION,
+            mergeEntries.BUG_REPORT,
+            ...(dev ? [mergeEntries.UI_SHOWCASE] : [])
+          ]}
           on:action={({ detail }) => {
             if (detail === mergeEntries.BOOK_SELECTION.label) {
               if (hasBooks) selectMode = true;
             }
             if (detail === mergeEntries.BUG_REPORT.label) {
               dispatch('bugReportClick');
-            }
-            if (detail === mergeEntries.DOMAIN_HINT.label) {
-              dispatch('domainHintClick');
             }
           }}
         />

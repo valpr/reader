@@ -56,7 +56,10 @@ function getHtmlWithImageSource(bookData: BooksDbBookData, isPaginated: boolean)
       objectUrls.push(url);
       urlIndexes.set(url, elementHtml.indexOf(dummyUrl));
 
-      elementHtml = elementHtml.replaceAll(dummyUrl, url).replaceAll(`ttu:${key}`, url);
+      elementHtml = elementHtml
+        .replaceAll(dummyUrl, url)
+        .replaceAll(`reader:${key}`, url)
+        .replaceAll(`ttu:${key}`, url);
     });
     subscriber.next(elementHtml);
 
@@ -84,9 +87,11 @@ function addImageContainerClass(el: HTMLElement) {
   Array.from(el.getElementsByTagName('img'))
     .map((imgEl) => ({ parentEl: imgEl.parentElement, isGaiji: isElementGaiji(imgEl) }))
     .forEach(({ parentEl, isGaiji }) => {
+      parentEl?.classList.add('reader-img-container');
       parentEl?.classList.add('ttu-img-container');
 
       if (!isGaiji) {
+        parentEl?.classList.add('reader-illustration-container');
         parentEl?.classList.add('ttu-illustration-container');
       }
     });
@@ -114,7 +119,9 @@ function addSpoilerTags(el: HTMLElement, document: Document, blurMode: BlurMode)
     const imgWrapper = document.createElement('span');
     const parentElement = tag.parentElement || childNode;
 
+    imgWrapper.classList.add('reader-img-parent');
     imgWrapper.classList.add('ttu-img-parent');
+    imgWrapper.toggleAttribute('data-reader-spoiler-img');
     imgWrapper.toggleAttribute('data-ttu-spoiler-img');
 
     parentElement.insertBefore(imgWrapper, tag);

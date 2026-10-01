@@ -46,9 +46,9 @@ async function readFastBookmark(page: import('@playwright/test').Page): Promise<
 
 const BOOK_WITH_PICTURES: Partial<TestBookData> = {
   elementHtml: `
-    <div id="section-0" class="reader-chapter ttu-no-text">
-      <div class="ttu-img-container ttu-illustration-container" style="height: 1200px;">
-        <span class="ttu-img-parent">
+    <div id="section-0" class="reader-chapter reader-no-text ttu-no-text">
+      <div class="reader-img-container reader-illustration-container ttu-img-container ttu-illustration-container" style="height: 1200px;">
+        <span class="reader-img-parent ttu-img-parent">
           <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='600'%3E%3Crect width='100%25' height='100%25' fill='%23ccc'/%3E%3C/svg%3E" alt="Cover" style="height: 600px; display: block;" />
         </span>
       </div>
@@ -163,7 +163,9 @@ test.describe('Continuous mobile bookmarking', () => {
     // shift slightly across loads, so allow the same tolerance as the
     // vertical-rl resume test below.
     await page.goto('/manage');
-    await expect(page.locator('.book-content, main, h1, h2').first()).toBeVisible({
+    await expect(
+      page.locator('.book-content, [data-testid^="book-card-"], .aspect-w-2, main, h1, h2').first()
+    ).toBeVisible({
       timeout: 15000
     });
     await page.goto('/b?id=1');
@@ -267,7 +269,9 @@ test.describe('Continuous mobile bookmarking', () => {
 
     // Navigate away to /manage and reopen the book
     await page.goto('/manage');
-    await expect(page.locator('.book-content, main, h1, h2').first()).toBeVisible({
+    await expect(
+      page.locator('.book-content, [data-testid^="book-card-"], .aspect-w-2, main, h1, h2').first()
+    ).toBeVisible({
       timeout: 15000
     });
     await page.goto('/b?id=1');

@@ -4,7 +4,7 @@ import { build, files, prerendered, version } from '$service-worker';
 
 import { pagePath } from '$lib/data/env';
 import { toSearchParams } from '$lib/functions/to-search-params';
-import { userFontsCacheName } from '$lib/data/fonts';
+import { legacyUserFontsCacheName, userFontsCacheName } from '$lib/data/fonts';
 
 // eslint-disable-next-line no-restricted-globals
 const worker = self as unknown as ServiceWorkerGlobalScope;
@@ -24,7 +24,8 @@ worker.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       const keysWithOldCache = keys.filter(
-        (key) => key !== BUILD_CACHE_NAME && key !== userFontsCacheName
+        (key) =>
+          key !== BUILD_CACHE_NAME && key !== userFontsCacheName && key !== legacyUserFontsCacheName
       );
       return Promise.all(keysWithOldCache.map((key) => caches.delete(key)));
     })

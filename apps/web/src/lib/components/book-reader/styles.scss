@@ -3,7 +3,9 @@
 }
 
 .book-content {
+  :global(.reader-book-html-wrapper.reader-no-text),
   :global(.ttu-book-html-wrapper.ttu-no-text),
+  :global(.reader-book-body-wrapper.reader-no-text),
   :global(.ttu-book-body-wrapper.ttu-no-text) {
     margin: 0 !important;
   }
@@ -28,31 +30,36 @@
     user-select: none;
   }
 
+  :global([data-reader-spoiler-img]),
   :global([data-ttu-spoiler-img]) {
     :global(.spoiler-label) {
       display: none;
     }
   }
 
+  :global(.reader-img-parent),
   :global(.ttu-img-parent) {
     display: flex;
     justify-content: center;
   }
 
+  :global(.reader-illustration-container img),
   :global(.ttu-illustration-container img),
   :global(svg:has(image)) {
     cursor: zoom-in;
   }
 
-  &:not(.ttu-apply-important) {
+  &:not(.reader-apply-important):not(.ttu-apply-important) {
     :global(p) {
       text-indent: var(--book-content-text-intendation, 0rem);
     }
 
+    &.reader-apply-font-weight,
     &.ttu-apply-font-weight {
       font-weight: var(--font-weight, 0rem);
     }
 
+    &.book-content--writing-vertical-rl.reader-margin-manual,
     &.book-content--writing-vertical-rl.ttu-margin-manual {
       :global(p) {
         margin-right: var(--book-content-text-margin, 0rem);
@@ -60,6 +67,7 @@
       }
     }
 
+    &.book-content--writing-horizontal-rl.reader-margin-manual,
     &.book-content--writing-horizontal-rl.ttu-margin-manual {
       :global(p) {
         margin-top: var(--book-content-text-margin, 0rem);
@@ -67,6 +75,7 @@
       }
     }
 
+    &.reader-apply-justification,
     &.ttu-apply-justification {
       text-align: justify;
       hyphens: auto;
@@ -77,6 +86,7 @@
       }
     }
 
+    &.reader-text-wrap-pretty,
     &.ttu-text-wrap-pretty {
       text-wrap: pretty;
 
@@ -86,15 +96,18 @@
     }
   }
 
+  &.reader-apply-important,
   &.ttu-apply-important {
     :global(p) {
       text-indent: var(--book-content-text-intendation, 0rem) !important;
     }
 
+    &.reader-apply-font-weight,
     &.ttu-apply-font-weight {
       font-weight: var(--font-weight, 0rem) !important;
     }
 
+    &.book-content--writing-vertical-rl.reader-margin-manual,
     &.book-content--writing-vertical-rl.ttu-margin-manual {
       :global(p) {
         margin-right: var(--book-content-text-margin, 0rem) !important;
@@ -102,6 +115,7 @@
       }
     }
 
+    &.book-content--writing-horizontal-rl.reader-margin-manual,
     &.book-content--writing-horizontal-rl.ttu-margin-manual {
       :global(p) {
         margin-top: var(--book-content-text-margin, 0rem) !important;
@@ -109,6 +123,7 @@
       }
     }
 
+    &.reader-apply-justification,
     &.ttu-apply-justification {
       text-align: justify !important;
       hyphens: auto !important;
@@ -119,6 +134,7 @@
       }
     }
 
+    &.reader-text-wrap-pretty,
     &.ttu-text-wrap-pretty {
       text-wrap: pretty !important;
 
@@ -197,6 +213,7 @@
 }
 
 .book-content--hide-spoiler-image {
+  :global([data-reader-spoiler-img]),
   :global([data-ttu-spoiler-img]) {
     display: inline-block;
     width: 100%;

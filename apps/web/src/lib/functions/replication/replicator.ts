@@ -50,7 +50,7 @@ export function runSerialized<T>(
 ): Promise<T> {
   const available = locks === undefined ? getNavigatorLocks() : locks;
   if (available) {
-    return available.request('ttu-reader-sync', { mode: 'exclusive' }, () =>
+    return available.request('reader-sync', { mode: 'exclusive' }, () =>
       globalReplicationQueue(task)
     );
   }

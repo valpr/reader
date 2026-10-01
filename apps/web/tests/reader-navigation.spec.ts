@@ -90,7 +90,7 @@ test.describe('Reader Navigation & Progress Tracking', () => {
     const progressCounter = page.locator('div[title="Click to copy Progress"]');
     await expect(progressCounter).toBeVisible({ timeout: 10000 });
 
-    const footer = page.locator('#ttu-page-footer');
+    const footer = page.locator('#reader-page-footer');
     // Click footer bar to toggle off
     await footer.click({ position: { x: 10, y: 10 } });
 

@@ -4,7 +4,7 @@
   import Ripple from '$lib/components/ripple.svelte';
   import { buttonClasses, themedInputClasses } from '$lib/css-classes';
   import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
-  import { gDriveRevokeEndpoint } from '$lib/data/env';
+  import { gDriveRevokeEndpoint, repoUrl } from '$lib/data/env';
   import { BaseStorageHandler } from '$lib/data/storage/handler/base-handler';
   import { getStorageHandler } from '$lib/data/storage/storage-handler-factory';
   import { StorageOAuthManager, storageOAuthTokens } from '$lib/data/storage/storage-oauth-manager';
@@ -73,7 +73,7 @@
 
     try {
       const dirHandle = await window.showDirectoryPicker({
-        id: 'ttu-reader-root',
+        id: 'valpr-reader-root',
         mode: 'readwrite'
       });
       directoryHandle = await dirHandle.getDirectoryHandle(BaseStorageHandler.rootName, {
@@ -365,11 +365,7 @@
         <Fa icon={faTriangleExclamation} />
         <span class="ml-2 min-w-0 break-words">
           Make sure to understand the
-          <a
-            class="text-red-500"
-            href="https://github.com/ttu-ttu/ebook-reader?tab=readme-ov-file#security-considerations"
-            target="_blank"
-          >
+          <a class="text-red-500" href="{repoUrl}#security-considerations" target="_blank">
             Implications
           </a>
           of your choosen Settings

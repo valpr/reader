@@ -190,7 +190,7 @@
         'Legacy sign-in flow no longer supported',
         'The app received an implicit access token without a refresh token.\n\nPlease return to the app and retry sync to use the secure Authorization Code flow.'
       );
-    } else if (url.searchParams.has('ttu-init-auth')) {
+    } else if (url.searchParams.has('reader-init-auth') || url.searchParams.has('ttu-init-auth')) {
       const params = new URLSearchParams();
 
       const { clientId, clientSecret, authEndpoint, tokenEndpoint, scope } =
@@ -220,7 +220,7 @@
       params.append('prompt', 'consent');
 
       window.location.assign(`${authEndpoint}?${params.toString()}`);
-    } else if (url.searchParams.has('ttu-init-wait')) {
+    } else if (url.searchParams.has('reader-init-wait') || url.searchParams.has('ttu-init-wait')) {
       // idle until location reassign for iOS workaround of blocking popups in async context
     } else {
       reportError(

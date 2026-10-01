@@ -17,8 +17,7 @@ import {
   faIcons,
   faImages,
   faListCheck,
-  faSignOutAlt,
-  faTriangleExclamation
+  faSignOutAlt
 } from '@fortawesome/free-solid-svg-icons';
 
 export const mergeEntries = {
@@ -58,12 +57,6 @@ export const mergeEntries = {
     label: 'Images',
     icon: faImages,
     title: 'Open Image Gallery'
-  },
-  DOMAIN_HINT: {
-    routeId: '',
-    label: 'Domain Hint',
-    icon: faTriangleExclamation,
-    title: 'Old Domain used'
   },
   DOCUMENTATION: {
     routeId: '/docs/',

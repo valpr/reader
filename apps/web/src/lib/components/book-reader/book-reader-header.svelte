@@ -35,7 +35,7 @@
   import { pagePath } from '$lib/data/env';
   import { customReadingPointEnabled$, viewMode$ } from '$lib/data/store';
   import { ViewMode } from '$lib/data/view-mode';
-  import { dummyFn, isMobile$, isOnOldUrl } from '$lib/functions/utils';
+  import { dummyFn, isMobile$ } from '$lib/functions/utils';
   import { createEventDispatcher } from 'svelte';
   import Fa from 'svelte-fa';
 
@@ -70,7 +70,6 @@
     statisticsClick: void;
     readerImageGalleryClick: void;
     settingsClick: void;
-    domainHintClick: void;
     bookManagerClick: void;
     cloudReconnectClick: void;
     goalClick: void;
@@ -142,8 +141,6 @@
     ...($readerImageGalleryPictures$.length ? [{ id: 'gallery' as const }] : []),
     { id: 'docs' as const }
   ];
-
-  $: isOldUrl = browser && isOnOldUrl(window);
 
   function dispatchCustomReadingPointAction(action: any) {
     dispatch(action);
@@ -346,33 +343,19 @@
             </Popover>
           {/if}
         {:else if item.id === 'stats'}
-          {#if isOldUrl}
-            <Tooltip text={mergeEntries.DOMAIN_HINT.title}>
-              <IconButton
-                nativeTooltip={false}
-                label={mergeEntries.DOMAIN_HINT.title}
-                size="md"
-                variant="ghost"
-                on:click={() => dispatch('domainHintClick')}
-              >
-                <Fa icon={faTriangleExclamation} class="text-base" />
-              </IconButton>
-            </Tooltip>
-          {:else}
-            <Tooltip text={mergeEntries.STATISTICS.title}>
-              <IconButton
-                nativeTooltip={false}
-                label={mergeEntries.STATISTICS.title}
-                size="md"
-                variant="ghost"
-                on:mouseenter={() => preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
-                on:pointerdown={() => preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
-                on:click={() => dispatch('statisticsClick')}
-              >
-                <Fa icon={faChartLine} class="text-base" />
-              </IconButton>
-            </Tooltip>
-          {/if}
+          <Tooltip text={mergeEntries.STATISTICS.title}>
+            <IconButton
+              nativeTooltip={false}
+              label={mergeEntries.STATISTICS.title}
+              size="md"
+              variant="ghost"
+              on:mouseenter={() => preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
+              on:pointerdown={() => preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
+              on:click={() => dispatch('statisticsClick')}
+            >
+              <Fa icon={faChartLine} class="text-base" />
+            </IconButton>
+          </Tooltip>
         {:else if item.id === 'jump'}
           {#if hasText}
             <Tooltip text={mergeEntries.JUMP_TO_POSITION.title}>
@@ -488,35 +471,21 @@
                       </button>
                     {/if}
                   {:else if oItem.id === 'stats'}
-                    {#if isOldUrl}
-                      <button
-                        type="button"
-                        class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
-                        on:click={() => {
-                          dispatch('domainHintClick');
-                          overflowMenuElm?.toggleOpen();
-                        }}
-                      >
-                        <Fa icon={faTriangleExclamation} class="w-4 text-center opacity-70" />
-                        <span>{mergeEntries.DOMAIN_HINT.label}</span>
-                      </button>
-                    {:else}
-                      <button
-                        type="button"
-                        class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
-                        on:mouseenter={() =>
-                          preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
-                        on:pointerdown={() =>
-                          preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
-                        on:click={() => {
-                          dispatch('statisticsClick');
-                          overflowMenuElm?.toggleOpen();
-                        }}
-                      >
-                        <Fa icon={faChartLine} class="w-4 text-center opacity-70" />
-                        <span>{mergeEntries.STATISTICS.label}</span>
-                      </button>
-                    {/if}
+                    <button
+                      type="button"
+                      class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left text-[var(--astryx-color-fg-primary)] hover:bg-[var(--astryx-color-surface-hover)] focus-visible:bg-[var(--astryx-color-surface-hover)] outline-none transition-colors cursor-pointer"
+                      on:mouseenter={() =>
+                        preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
+                      on:pointerdown={() =>
+                        preloadCode(`${pagePath}${mergeEntries.STATISTICS.routeId}`)}
+                      on:click={() => {
+                        dispatch('statisticsClick');
+                        overflowMenuElm?.toggleOpen();
+                      }}
+                    >
+                      <Fa icon={faChartLine} class="w-4 text-center opacity-70" />
+                      <span>{mergeEntries.STATISTICS.label}</span>
+                    </button>
                   {:else if oItem.id === 'jump'}
                     <button
                       type="button"

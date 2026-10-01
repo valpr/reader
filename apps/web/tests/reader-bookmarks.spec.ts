@@ -362,7 +362,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     await expect(dialogTitle).toBeHidden();
 
     // Verify mark element is rendered in .book-content
-    const mark = page.locator('mark[data-ttu-highlight]');
+    const mark = page.locator('mark[data-reader-highlight]');
     await expect(mark).toBeVisible();
     await expect(mark).toHaveText('吾輩は猫である');
 
@@ -422,7 +422,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     await expect(page.locator('text=New Bookmark')).toBeHidden();
 
     // Verify marks exist in both paragraphs
-    const marks = page.locator('mark[data-ttu-highlight]');
+    const marks = page.locator('mark[data-reader-highlight]');
     await expect(marks).toHaveCount(2);
   });
 
@@ -451,7 +451,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     await page.locator('button[title="blue"]').click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-    const mark = page.locator('mark[data-ttu-highlight]');
+    const mark = page.locator('mark[data-reader-highlight]');
     await expect(mark).toBeVisible();
     const bgColor = await mark.evaluate((el) => window.getComputedStyle(el).backgroundColor);
     expect(bgColor).toMatch(/rgba?\(59,\s*130,\s*246/); // blue
@@ -489,7 +489,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     await page.locator('button[title="Close"]').click();
 
     // Verify mark is removed from DOM
-    await expect(page.locator('mark[data-ttu-highlight]')).toHaveCount(0);
+    await expect(page.locator('mark[data-reader-highlight]')).toHaveCount(0);
   });
 
   test('highlight renders in continuous view mode', async ({ page }) => {
@@ -516,7 +516,7 @@ test.describe('Reader Bookmarks & Autosave Checkpoints', () => {
     await page.locator('#bookmark-label').fill('Continuous Highlight');
     await page.locator('button:has-text("Save")').click();
 
-    const mark = page.locator('mark[data-ttu-highlight]');
+    const mark = page.locator('mark[data-reader-highlight]');
     await expect(mark).toBeVisible();
     await expect(mark).toHaveText('吾輩は猫で');
   });

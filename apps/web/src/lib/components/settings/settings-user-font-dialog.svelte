@@ -2,7 +2,7 @@
   import DialogTemplate from '$lib/components/dialog-template.svelte';
   import SvelteUserFontAdd from '$lib/components/settings/settings-user-font-add.svelte';
   import { dialogManager } from '$lib/data/dialog-manager';
-  import { userFontsCacheName } from '$lib/data/fonts';
+  import { migrateUserFontsCache, userFontsCacheName } from '$lib/data/fonts';
   import { logger } from '$lib/data/logger';
   import { userFonts$, loaderMode$ } from '$lib/data/store';
   import { dummyFn } from '$lib/functions/utils';
@@ -23,6 +23,8 @@
 
   onMount(async () => {
     try {
+      await migrateUserFontsCache();
+
       fontCache = await caches.open(userFontsCacheName);
 
       const fonts = (await fontCache.keys()).map(

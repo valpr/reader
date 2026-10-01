@@ -84,7 +84,7 @@ test.describe('Mobile bookmark text highlighting', () => {
     await expect(dialog).toBeHidden();
 
     // Verify highlight mark was injected into text
-    const mark = page.locator('mark[data-ttu-highlight]');
+    const mark = page.locator('mark[data-reader-highlight]');
     await expect(mark).toBeVisible();
     await expect(mark).toHaveText('吾輩は猫である');
 
