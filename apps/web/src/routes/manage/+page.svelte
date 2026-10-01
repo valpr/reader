@@ -86,6 +86,8 @@
   import { waitForExitSync } from '$lib/functions/replication/exit-sync';
   import { throwIfAborted } from '$lib/functions/replication/replication-error';
   import {
+    beginSyncActivity,
+    endSyncActivity,
     executeReplicate$,
     isTitleReadReady,
     replicationProgress$,
@@ -320,6 +322,7 @@
   let replicationProgress = 0;
   let replicationToProgress = 0;
   let replicationProgressRemaining = '~ ??:??:??';
+  let isDeletingBooks = false;
   let replicationDone = new Subject<void>();
   let progressBase = 0;
   let executionStart: number;
@@ -818,6 +821,7 @@
   }
 
   function resetProgress() {
+    isDeletingBooks = false;
     replicationDone.next();
     replicationDone.complete();
     replicationToProgress = 0;
@@ -869,10 +873,13 @@
     if (oneDriveTitles.length) cloudParts.push(`OneDrive (${oneDriveTitles.length})`);
     const cloudSummary = cloudParts.join(', ');
     const hasLocalCopy = localTitles.length > 0;
+    const hasCloudSource =
+      cloudParts.length > 0 || !!$gDriveStorageSource$ || !!$oneDriveStorageSource$;
 
-    const { canceled, deleteFromCloud } = await new Promise<{
+    const { canceled, deleteFromCloud, deleteStatistics } = await new Promise<{
       canceled: boolean;
       deleteFromCloud: boolean;
+      deleteStatistics: boolean;
     }>((resolver) => {
       dialogManager.dialogs$.next([
         {
@@ -880,10 +887,12 @@
           props: {
             titles: titlesToDelete,
             cloudSummary,
+            hasCloudSource,
             hasLocalCopy,
             // Cloud-only books have no local copy to delete, so default to
             // cloud deletion instead of forcing a second confirmation round.
-            initialDeleteFromCloud: !hasLocalCopy && cloudSummary.length > 0,
+            initialDeleteFromCloud: !hasLocalCopy && hasCloudSource,
+            initialDeleteStatistics: !$keepLocalStatisticsOnDeletion$,
             resolver
           },
           disableCloseOnClick: true
@@ -901,13 +910,29 @@
 
     await waitForExitSync();
 
-    const effectiveDeleteFromCloud = deleteFromCloud && cloudSummary.length > 0;
+    const effectiveDeleteFromCloud = deleteFromCloud && hasCloudSource;
+    const keepStatistics = !deleteStatistics;
 
-    if (effectiveDeleteFromCloud && !operationAllowed(StorageKey.GDRIVE) && gDriveTitles.length) {
-      return;
-    }
+    const targetGDriveTitles = effectiveDeleteFromCloud
+      ? hasSources
+        ? gDriveTitles
+        : $gDriveStorageSource$
+          ? [...titlesToDelete]
+          : []
+      : [];
+    const targetOneDriveTitles = effectiveDeleteFromCloud
+      ? hasSources
+        ? oneDriveTitles
+        : $oneDriveStorageSource$
+          ? [...titlesToDelete]
+          : []
+      : [];
 
-    if (localTitles.length === 0 && !effectiveDeleteFromCloud) {
+    const localSteps = localTitles.length;
+    const totalCloudSteps = targetGDriveTitles.length + targetOneDriveTitles.length;
+    const totalSteps = localSteps + totalCloudSteps;
+
+    if (localTitles.length === 0 && totalCloudSteps === 0) {
       dialogManager.dialogs$.next([
         {
           component: MessageDialog,
@@ -921,57 +946,114 @@
       return;
     }
 
+    if (effectiveDeleteFromCloud && totalCloudSteps > 0 && !$isOnline$) {
+      dialogManager.dialogs$.next([
+        {
+          component: MessageDialog,
+          props: {
+            title: 'Failure',
+            message: 'You have to be online for this operation'
+          }
+        }
+      ]);
+      return;
+    }
+
     cancelTooltip = `Cancels the Deletion\nAlready deleted data will not be restored`;
 
+    isDeletingBooks = true;
     initializeReplicationProgressData();
+    replicationToProgress = Math.max(1, totalSteps);
+    replicationProgress = 0;
 
     const currentBookCount = $bookCards$.length;
     const deletedTitles = new Set<string>();
     let error = '';
 
-    if (localTitles.length) {
-      const browserHandler = getStorageHandler(window, StorageKey.BROWSER, '');
-      const result = await browserHandler.deleteBookData(
-        localTitles,
-        cancelSignal,
-        $keepLocalStatisticsOnDeletion$
-      );
-      result.deleted.forEach((deletedId) => {
-        const match = $bookCards$.find((card) => card.id === deletedId);
-        if (match) deletedTitles.add(match.title);
-      });
-      localTitles.forEach((title) => {
-        if (!result.error) deletedTitles.add(title);
-      });
-      if (result.error) error += result.error;
-    }
+    try {
+      if (localTitles.length) {
+        replicationProgressRemaining =
+          localTitles.length > 1
+            ? `Deleting ${localTitles.length} local copies…`
+            : `Deleting local copy…`;
 
-    if (effectiveDeleteFromCloud) {
-      const clouds: { source: StorageKey; titles: string[]; sourceName: string }[] = [
-        { source: StorageKey.GDRIVE, titles: gDriveTitles, sourceName: $gDriveStorageSource$ },
-        { source: StorageKey.ONEDRIVE, titles: oneDriveTitles, sourceName: $oneDriveStorageSource$ }
-      ];
-
-      for (const cloud of clouds) {
-        if (!cloud.titles.length) continue;
-        if (!operationAllowed(cloud.source)) continue;
-        const cloudHandler = getStorageHandler(window, cloud.source, cloud.sourceName);
-        const result = await cloudHandler.deleteBookData(
-          cloud.titles,
+        const browserHandler = getStorageHandler(window, StorageKey.BROWSER, '');
+        const result = await browserHandler.deleteBookData(
+          localTitles,
           cancelSignal,
-          $keepLocalStatisticsOnDeletion$
+          keepStatistics
         );
-        if (!result.error) {
-          cloud.titles.forEach((title) => deletedTitles.add(title));
-        } else {
-          error += (error ? '\n' : '') + result.error;
+        result.deleted.forEach((deletedId) => {
+          const match = $bookCards$.find((card) => card.id === deletedId);
+          if (match) deletedTitles.add(match.title);
+        });
+        localTitles.forEach((title) => {
+          if (!result.error) deletedTitles.add(title);
+        });
+        if (result.error) error += result.error;
+      }
+
+      if (effectiveDeleteFromCloud && !cancelSignal.aborted) {
+        const clouds: { source: StorageKey; titles: string[]; sourceName: string }[] = [
+          {
+            source: StorageKey.GDRIVE,
+            titles: targetGDriveTitles,
+            sourceName: $gDriveStorageSource$
+          },
+          {
+            source: StorageKey.ONEDRIVE,
+            titles: targetOneDriveTitles,
+            sourceName: $oneDriveStorageSource$
+          }
+        ];
+
+        for (const cloud of clouds) {
+          if (!cloud.titles.length || cancelSignal.aborted) continue;
+          if (!$isOnline$) {
+            error +=
+              (error ? '\n' : '') +
+              `Cannot delete from ${getFriendlyStorageSourceName(cloud.sourceName)}: offline`;
+            continue;
+          }
+
+          const friendlyName = getFriendlyStorageSourceName(cloud.sourceName);
+          replicationProgressRemaining =
+            cloud.titles.length > 1
+              ? `Deleting ${cloud.titles.length} books from ${friendlyName}…`
+              : `Deleting from ${friendlyName}…`;
+
+          const syncRunId = beginSyncActivity(
+            `Deleting from ${friendlyName}`,
+            undefined,
+            cloud.titles.length
+          );
+
+          try {
+            const cloudHandler = getStorageHandler(window, cloud.source, cloud.sourceName);
+            const result = await cloudHandler.deleteBookData(
+              cloud.titles,
+              cancelSignal,
+              keepStatistics
+            );
+            result.deleted.forEach((deletedId) => {
+              const match = $bookCards$.find((card) => card.id === deletedId);
+              if (match) deletedTitles.add(match.title);
+            });
+            if (!result.error) {
+              cloud.titles.forEach((title) => deletedTitles.add(title));
+            } else {
+              error += (error ? '\n' : '') + result.error;
+            }
+          } finally {
+            endSyncActivity(syncRunId);
+          }
         }
       }
+    } finally {
+      isDeletingBooks = false;
+      database.dataListChanged$.next(undefined);
+      resetProgress();
     }
-
-    database.dataListChanged$.next(undefined);
-
-    resetProgress();
 
     await tick();
 
@@ -985,6 +1067,15 @@
       selectedBookIds = cloneMutateSet(selectedBookIds, (set) => {
         deletedBookIds.forEach((deletedBookId) => set.delete(deletedBookId));
       });
+    }
+
+    if (deletedTitles.size > 0 && !error) {
+      const bookWord = pluralize(deletedTitles.size, 'book', false);
+      if (effectiveDeleteFromCloud && totalCloudSteps > 0) {
+        pushTransientNotice(`Deleted ${deletedTitles.size} ${bookWord} from device and cloud`);
+      } else {
+        pushTransientNotice(`Deleted ${deletedTitles.size} ${bookWord}`);
+      }
     }
 
     if (error) {
@@ -1389,7 +1480,9 @@
     }
 
     progressBase = replicationProgressData.progressBase || progressBase || 0;
-    replicationToProgress = replicationProgressData.maxProgress || replicationToProgress || 0;
+    if (!isDeletingBooks) {
+      replicationToProgress = replicationProgressData.maxProgress || replicationToProgress || 0;
+    }
 
     if (replicationProgressData.skipStep) {
       const progressDiffToAdd =
@@ -1411,7 +1504,7 @@
         ) / 1000;
     }
 
-    if (replicationProgressData.progressToAdd) {
+    if (replicationProgressData.progressToAdd && !isDeletingBooks) {
       const duration = (Date.now() - executionStart) / 1000;
       const processPerSecond = replicationProgress / duration;
       const remainingTime = (replicationToProgress - replicationProgress) / processPerSecond;

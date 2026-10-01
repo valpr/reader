@@ -80,4 +80,67 @@ test.describe('Mobile: book details dialog', () => {
     await confirmBtn.tap();
     await expect(dialog).not.toBeVisible();
   });
+
+  for (const width of [412, 360]) {
+    test(`delete books dialog fits viewport and actions are reachable at ${width}px`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 915 });
+      await seedReaderBook(page);
+      await page.goto('/manage');
+
+      const bookCard = page.locator('.aspect-w-2').first();
+      await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+      // Open select mode and trigger delete
+      await page.getByRole('button', { name: 'More Actions' }).tap();
+      await page.getByRole('button', { name: 'Select Books' }).tap();
+      await bookCard.tap();
+      await page.getByRole('button', { name: 'Delete selected Books' }).tap();
+
+      const dialog = page.getByTestId('delete-books-dialog');
+      await expect(dialog).toBeVisible();
+      await expectDialogFitsViewport(dialog);
+      await expectNoHorizontalOverflow(page);
+      await expectFooterActionVisible(page, 'Delete local copy');
+
+      // Tap statistics checkbox
+      const statsCheckbox = page.getByTestId('delete-statistics-checkbox');
+      await expect(statsCheckbox).toBeVisible();
+      await statsCheckbox.tap();
+      await expect(statsCheckbox).toBeChecked();
+      await expectFooterActionVisible(page, 'Delete local copy (all data)');
+
+      // Cancel tap closes dialog
+      await page.locator('.astryx-dialog-surface button').filter({ hasText: 'Cancel' }).tap();
+      await expect(dialog).not.toBeVisible();
+    });
+
+    test(`delete books dialog contains long unbroken title without overflowing at ${width}px`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 915 });
+      const longUnbrokenTitle =
+        'SupercalifragilisticexpialidociousUnbreakableJapaneseBookTitleTestingContainment1234567890';
+      await seedReaderBook(page, { title: longUnbrokenTitle });
+      await page.goto('/manage');
+
+      const bookCard = page.locator('.aspect-w-2').first();
+      await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+      await page.getByRole('button', { name: 'More Actions' }).tap();
+      await page.getByRole('button', { name: 'Select Books' }).tap();
+      await bookCard.tap();
+      await page.getByRole('button', { name: 'Delete selected Books' }).tap();
+
+      const dialog = page.getByTestId('delete-books-dialog');
+      await expect(dialog).toBeVisible();
+      await expectDialogFitsViewport(dialog);
+      await expectNoHorizontalOverflow(page);
+      await expectFooterActionVisible(page, 'Delete local copy');
+
+      await page.locator('.astryx-dialog-surface button').filter({ hasText: 'Cancel' }).tap();
+      await expect(dialog).not.toBeVisible();
+    });
+  }
 });
