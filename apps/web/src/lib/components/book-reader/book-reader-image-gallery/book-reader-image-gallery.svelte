@@ -2,6 +2,7 @@
   import { onKeyDownReaderImageGallery } from '../../../../routes/b/on-keydown-reader';
   import { faChevronLeft, faChevronRight, faXmark } from '@fortawesome/free-solid-svg-icons';
   import { readerImageGalleryPictures$ } from '$lib/components/book-reader/book-reader-image-gallery/book-reader-image-gallery';
+  import { openImagePreview } from '$lib/components/book-reader/book-reader-image-preview/book-reader-image-preview';
   import {
     hideSpoilerImage$,
     readerImageGalleryKeybindMap$,
@@ -154,6 +155,8 @@
           on:click={() => {
             if (window.matchMedia('(min-width: 1024px)').matches) {
               selectedImageIndex = urlIndex;
+            } else if (!showSpoiler) {
+              openImagePreview(readerImageGalleryPicture.url, urlIndex);
             }
           }}
         >
@@ -201,7 +204,19 @@
           <Fa icon={faChevronLeft} />
         </button>
         <div class="flex justify-center items-center flex-1" class:spoiler={showSpoiler}>
-          <img class="max-h-[94vh]" src={selectedImage.url} alt="currentImage" />
+          <button
+            type="button"
+            aria-label="Open full screen preview"
+            title="Open full screen preview"
+            class="flex items-center justify-center border-0 bg-transparent p-0 cursor-zoom-in"
+            on:click={() => {
+              if (!showSpoiler) {
+                openImagePreview(selectedImage.url, selectedImageIndex);
+              }
+            }}
+          >
+            <img class="max-h-[94vh]" src={selectedImage.url} alt="currentImage" />
+          </button>
           {#if showSpoiler}
             <button
               title="Show Image"

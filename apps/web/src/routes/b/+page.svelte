@@ -111,6 +111,8 @@
     updateImageGalleryPictureSpoilers$
   } from '$lib/components/book-reader/book-reader-image-gallery/book-reader-image-gallery';
   import BookReaderImageGallery from '$lib/components/book-reader/book-reader-image-gallery/book-reader-image-gallery.svelte';
+  import BookReaderImagePreview from '$lib/components/book-reader/book-reader-image-preview/book-reader-image-preview.svelte';
+  import { activeImagePreview$ } from '$lib/components/book-reader/book-reader-image-preview/book-reader-image-preview';
   import {
     getDefaultStatistic,
     isTrackerMenuOpen$,
@@ -941,6 +943,7 @@
     }
 
     readerImageGalleryPictures$.next([]);
+    activeImagePreview$.next(null);
 
     if (autosaveDebounceTimer) {
       clearTimeout(autosaveDebounceTimer);
@@ -2831,6 +2834,14 @@
     fontColor={$themeOption$.fontColor}
     backgroundColor={$backgroundColor$}
     on:close={() => (showReaderImageGallery = false)}
+  />
+{/if}
+
+{#if $activeImagePreview$}
+  <BookReaderImagePreview
+    previewData={$activeImagePreview$}
+    allPictures={$readerImageGalleryPictures$}
+    on:close={() => ($activeImagePreview$ = null)}
   />
 {/if}
 
