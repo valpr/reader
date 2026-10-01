@@ -16,6 +16,7 @@ import {
   StorageConnectionState
 } from '$lib/data/storage/storage-oauth-manager';
 import { database, oneDriveStorageSource$ } from '$lib/data/store';
+import { normalizeTitle } from '$lib/data/storage/unified-library';
 import pLimit from 'p-limit';
 
 interface OneDriveFile extends ExternalFile {
@@ -252,7 +253,7 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
 
         this.titleToId.set(title, remoteFolder.id);
 
-        if (title === name) {
+        if (title === name || normalizeTitle(title) === normalizeTitle(name)) {
           titleId = remoteFolder.id;
         }
       }
@@ -297,7 +298,7 @@ export class OneDriveStorageHandler extends ApiStorageHandler {
   }
 
   protected async getExternalFiles(remoteTitleId: string, title: string) {
-    if ((!this.cacheStorageData || !this.dataListFetched) && !this.titleToFiles.has(title)) {
+    if (!this.titleToFiles.get(title)?.length) {
       const externalFiles = await this.list(remoteTitleId, true, true);
 
       if (externalFiles.length) {

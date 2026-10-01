@@ -16,6 +16,7 @@ import {
   StorageConnectionState
 } from '$lib/data/storage/storage-oauth-manager';
 import { database, gDriveStorageSource$ } from '$lib/data/store';
+import { normalizeTitle } from '$lib/data/storage/unified-library';
 import pLimit from 'p-limit';
 
 interface GDriveFile extends ExternalFile {
@@ -158,6 +159,7 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     }
 
     const sanitizedName = BaseStorageHandler.sanitizeForFilename(name);
+    const escapedName = sanitizedName.replace(/'/g, "\\'");
     const params = new URLSearchParams();
 
     params.append('corpora', 'user');
@@ -165,11 +167,30 @@ export class GDriveStorageHandler extends ApiStorageHandler {
     params.append('fields', 'files(id)');
     params.append(
       'q',
-      `trashed=false and '${parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = "${sanitizedName}"`
+      `trashed=false and '${parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = '${escapedName}'`
     );
 
     let titleId: string = (await this.request(`${this.baseFileApiUrl}?${params.toString()}`))
       ?.files?.[0]?.id;
+
+    if (!titleId && parent !== 'root') {
+      try {
+        const titles = await this.list(
+          `trashed=false and mimeType='application/vnd.google-apps.folder' and '${parent}' in parents`,
+          'files(id,name)'
+        );
+        for (let i = 0; i < titles.length; i += 1) {
+          const t = titles[i];
+          const desanitized = BaseStorageHandler.desanitizeFilename(t.name);
+          this.titleToId.set(desanitized, t.id);
+          if (desanitized === name || normalizeTitle(desanitized) === normalizeTitle(name)) {
+            titleId = t.id;
+          }
+        }
+      } catch {
+        // ignore fallback listing errors
+      }
+    }
 
     if (!titleId && !readOnly) {
       const body = JSON.stringify({
@@ -203,7 +224,7 @@ export class GDriveStorageHandler extends ApiStorageHandler {
   }
 
   protected async getExternalFiles(remoteTitleId: string, title: string) {
-    if ((!this.cacheStorageData || !this.dataListFetched) && !this.titleToFiles.has(title)) {
+    if (!this.titleToFiles.get(title)?.length) {
       const externalFiles = await this.list(
         `trashed=false and '${remoteTitleId}' in parents`,
         'files(id,name,thumbnailLink,parents)'
