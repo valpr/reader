@@ -179,7 +179,8 @@
     !activeSource ||
     !isAppDefault(activeSource.name) ||
     (activeSource.name === StorageSourceDefault.GDRIVE_DEFAULT && !!gDriveClientId) ||
-    (activeSource.name === StorageSourceDefault.ONEDRIVE_DEFAULT && !!oneDriveClientId);
+    (activeSource.name === StorageSourceDefault.ONEDRIVE_DEFAULT &&
+      (!!oneDriveClientId || (isRemoteContext(activeSource.data) && !!activeSource.data.clientId)));
   $: activeEmail = activeSource ? getAccountEmail(activeSource) : '';
   $: activeIcon = activeSource
     ? getStorageIconData(activeSource.type)

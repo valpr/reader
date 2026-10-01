@@ -19,7 +19,7 @@
     type PwaOAuthState,
     type OAuthTokenData
   } from '$lib/data/storage/storage-oauth-manager';
-  import { StorageKey } from '$lib/data/storage/storage-types';
+  import { StorageKey, StorageSourceDefault } from '$lib/data/storage/storage-types';
   import { database, clearPendingCloudSync } from '$lib/data/store';
   import {
     encrypt,
@@ -387,12 +387,17 @@
 
     try {
       const db = await database.db;
+      const isOneDriveDefault =
+        pwaState.storageSourceName === StorageSourceDefault.ONEDRIVE_DEFAULT;
       const dbSource = await db.get('storageSource', pwaState.storageSourceName);
       const existing = dbSource ||
         pwaState.existingStorageSourceData || {
           storedInManager: false,
-          encryptionDisabled: false
+          encryptionDisabled: isOneDriveDefault
         };
+      if (isOneDriveDefault) {
+        existing.encryptionDisabled = true;
+      }
 
       let fallbackRefreshToken: string | undefined;
       let fallbackAccountEmail: string | undefined;
@@ -459,6 +464,9 @@
         disconnected: false,
         lastSourceModified: Date.now()
       });
+
+      const updatedSources = await db.getAll('storageSource');
+      database.storageSourcesChanged$.next(updatedSources);
 
       storageOAuthTokens.set(pwaState.storageSourceName, tokenData);
       setConnectionState(pwaState.storageSourceName, StorageConnectionState.CONNECTED);
