@@ -42,7 +42,7 @@ import type { ReplicationContext } from '$lib/functions/replication/replication-
  */
 const MARKER_VERSION = 1;
 
-const MARKER_KEY_PREFIX = 'ttu-reader:ub-sync-state:v1:';
+const MARKER_KEY_PREFIX = 'reader:ub-sync-state:v1:';
 
 /**
  * Upper bound on trusting a marker without re-verifying bodies (30 days).

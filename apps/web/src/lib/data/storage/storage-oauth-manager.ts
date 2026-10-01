@@ -435,7 +435,7 @@ export class StorageOAuthManager {
 
     if (authWindow) {
       this.authWindow = authWindow;
-      this.authWindow.location.assign(`${pagePath}/auth?ttu-init-auth=1`);
+      this.authWindow.location.assign(`${pagePath}/auth?reader-init-auth=1`);
     } else if (shallUnlock && allowInteractive) {
       if (this.parentWindow && isStandalonePwa(this.parentWindow)) {
         await StorageOAuthManager.startPwaRedirectAuth(
@@ -452,7 +452,7 @@ export class StorageOAuthManager {
         return undefined;
       }
       this.authWindow = StorageOAuthManager.createWindow(
-        `${pagePath}/auth?ttu-init-auth=1`,
+        `${pagePath}/auth?reader-init-auth=1`,
         'auth',
         Math.min(Math.max(this.parentWindow.innerWidth, 300), 560),
         Math.min(Math.max(this.parentWindow.innerHeight, 300), 560),
@@ -485,7 +485,7 @@ export class StorageOAuthManager {
           storageSourceName,
           false,
           StorageOAuthManager.createWindow(
-            `${pagePath}/auth?ttu-init-wait=1`,
+            `${pagePath}/auth?reader-init-wait=1`,
             'auth',
             Math.min(Math.max(this.parentWindow.innerWidth, 300), 560),
             Math.min(Math.max(this.parentWindow.innerHeight, 300), 560),
@@ -1037,7 +1037,7 @@ export class StorageOAuthManager {
       return null;
     }
     return StorageOAuthManager.createWindow(
-      `${pagePath}/auth?ttu-init-wait=1`,
+      `${pagePath}/auth?reader-init-wait=1`,
       'auth',
       Math.min(Math.max(window.innerWidth, 300), 560),
       Math.min(Math.max(window.innerHeight, 300), 560),
@@ -1360,7 +1360,7 @@ export class StorageOAuthManager {
     const authWindow =
       preOpenedWindow ||
       StorageOAuthManager.createWindow(
-        `${pagePath}/auth?ttu-init-auth=1`,
+        `${pagePath}/auth?reader-init-auth=1`,
         'auth',
         Math.min(Math.max(window.innerWidth, 300), 560),
         Math.min(Math.max(window.innerHeight, 300), 560),

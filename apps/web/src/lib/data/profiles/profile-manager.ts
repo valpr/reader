@@ -497,7 +497,7 @@ export function exportProfilesAsJson(): void {
   const a = document.createElement('a');
   const dateStr = new Date().toISOString().split('T')[0];
   a.href = url;
-  a.download = `ttu-reader-profiles-${dateStr}.json`;
+  a.download = `valpr-reader-profiles-${dateStr}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

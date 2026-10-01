@@ -29,6 +29,7 @@ export async function factoryReset(): Promise<void> {
 
   try {
     await caches.delete(userFontsCacheName);
+    await caches.delete('ttu-userfonts');
   } catch (err: any) {
     logger.warn(`Factory reset: could not clear font cache: ${err?.message || err}`);
   }

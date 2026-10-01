@@ -259,17 +259,19 @@
   }
 
   function getAdjustedWidth(widthValue: number) {
+    const nonNegative = Math.max(0, widthValue);
     if (ViewMode.Paginated === viewMode && !verticalMode && secondDimensionMaxValue) {
-      return Math.min(secondDimensionMaxValue, widthValue);
+      return Math.min(secondDimensionMaxValue, nonNegative);
     }
-    return widthValue;
+    return nonNegative;
   }
 
   function getAdjustedHeight(heightValue: number) {
+    const nonNegative = Math.max(0, heightValue);
     if (ViewMode.Paginated === viewMode && verticalMode && secondDimensionMaxValue) {
-      return Math.min(secondDimensionMaxValue, heightValue);
+      return Math.min(secondDimensionMaxValue, nonNegative);
     }
-    return heightValue;
+    return nonNegative;
   }
 
   function parsePx(px: string) {

@@ -48,10 +48,6 @@ export function isStandalonePwa(window: Window): boolean {
   );
 }
 
-export function isOnOldUrl(window: Window) {
-  return window.location.href.startsWith('https://ttu-ebook.web.app');
-}
-
 export function dummyFn() {}
 
 export const isMobile$ = writableSubject<boolean>(false);

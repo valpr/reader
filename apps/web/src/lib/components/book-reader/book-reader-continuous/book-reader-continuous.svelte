@@ -327,10 +327,13 @@
 
   /** Experimental Code - May be removed any time without warning */
   onMount(() => {
+    document.addEventListener('reader-action', handleAction, false);
     document.addEventListener('ttu-action', handleAction, false);
     document.addEventListener('visibilitychange', retryDisplayIfStalled, false);
     window.addEventListener('focus', retryDisplayIfStalled, false);
     return () => {
+      document.removeEventListener('reader-action', handleAction, false);
+      document.removeEventListener('ttu-action', handleAction, false);
       document.removeEventListener('visibilitychange', retryDisplayIfStalled, false);
       window.removeEventListener('focus', retryDisplayIfStalled, false);
     };
@@ -400,7 +403,9 @@
       return { scroll: true, rect };
     }
 
-    const footerElement = verticalMode ? null : document.getElementById('ttu-page-footer');
+    const footerElement = verticalMode
+      ? null
+      : document.getElementById('reader-page-footer') || document.getElementById('ttu-page-footer');
     const {
       elTopReferencePoint,
       elLeftReferencePoint,
@@ -431,6 +436,7 @@
   /** Experimental Code - May be removed any time without warning */
 
   onDestroy(() => {
+    document.removeEventListener('reader-action', handleAction, false);
     document.removeEventListener('ttu-action', handleAction, false);
 
     destroy$.next();
@@ -766,6 +772,11 @@
   class:book-content--furigana-style-partial={furiganaStyle === FuriganaStyle.Partial}
   class:book-content--furigana-style-toggle={furiganaStyle === FuriganaStyle.Toggle}
   class:book-content--furigana-style-full={furiganaStyle === FuriganaStyle.Full}
+  class:reader-apply-font-weight={!!fontWeight}
+  class:reader-apply-important={prioritizeReaderStyles}
+  class:reader-apply-justification={enableTextJustification}
+  class:reader-margin-manual={textMarginMode === 'manual'}
+  class:reader-text-wrap-pretty={enableTextWrapPretty}
   class:ttu-apply-font-weight={!!fontWeight}
   class:ttu-apply-important={prioritizeReaderStyles}
   class:ttu-apply-justification={enableTextJustification}

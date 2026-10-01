@@ -15,7 +15,7 @@ import { getCharacterCount } from '$lib/functions/get-character-count';
 import { getParagraphNodes } from '../../../components/book-reader/get-paragraph-nodes';
 import path from 'path-browserify';
 
-export const prependValue = 'ttu-';
+export const prependValue = 'reader-';
 
 // eslint-disable-next-line no-control-regex
 const controlCharactersRegex = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/gim;
@@ -244,14 +244,14 @@ export default function generateEpubHtml(
     });
 
     const childBodyDiv = document.createElement('div');
-    childBodyDiv.className = `ttu-book-body-wrapper ${bodyClass}`;
+    childBodyDiv.className = `reader-book-body-wrapper ttu-book-body-wrapper ${bodyClass}`;
     if (bodyId) {
       childBodyDiv.id = bodyId;
     }
     childBodyDiv.innerHTML = innerHtml;
 
     const childHtmlDiv = document.createElement('div');
-    childHtmlDiv.className = `ttu-book-html-wrapper ${htmlClass}`;
+    childHtmlDiv.className = `reader-book-html-wrapper ttu-book-html-wrapper ${htmlClass}`;
     childHtmlDiv.appendChild(childBodyDiv);
 
     const childWrapperDiv = document.createElement('div');
@@ -265,8 +265,8 @@ export default function generateEpubHtml(
     currentCharCount += elementCharCount;
 
     if (!elementCharCount) {
-      childHtmlDiv.classList.add('ttu-no-text');
-      childBodyDiv.classList.add('ttu-no-text');
+      childHtmlDiv.classList.add('reader-no-text', 'ttu-no-text');
+      childBodyDiv.classList.add('reader-no-text', 'ttu-no-text');
     }
 
     const mainChapterIndex = mainChapters.findIndex((chapter) =>

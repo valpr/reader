@@ -2,7 +2,6 @@
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
-  import DomainHint from '$lib/components/domain-hint.svelte';
   import CloudSyncStatus from '$lib/components/cloud/cloud-sync-status.svelte';
   import { basePath, clearConsoleOnReload } from '$lib/data/env';
   import { dialogManager, type Dialog } from '$lib/data/dialog-manager';
@@ -218,5 +217,3 @@
 {/if}
 
 <span style={`font-family: ${$fontFamilyGroupOne$ || 'Noto Serif JP'}`}></span>
-
-<DomainHint />

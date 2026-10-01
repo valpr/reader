@@ -281,7 +281,8 @@
       const sectionIndex = sectionIndex$.getValue();
       const section = sections[sectionIndex];
 
-      currentSectionId = section?.id.startsWith('ttu-') ? section.id : '';
+      currentSectionId =
+        section?.id.startsWith('reader-') || section?.id.startsWith('ttu-') ? section.id : '';
 
       sectionRenderComplete$.next(sectionIndex);
     }
@@ -309,10 +310,13 @@
 
   /** Experimental Code - May be removed any time without warning */
   onMount(() => {
+    document.addEventListener('reader-action', handleAction, false);
     document.addEventListener('ttu-action', handleAction, false);
     document.addEventListener('visibilitychange', retryDisplayIfStalled, false);
     window.addEventListener('focus', retryDisplayIfStalled, false);
     return () => {
+      document.removeEventListener('reader-action', handleAction, false);
+      document.removeEventListener('ttu-action', handleAction, false);
       document.removeEventListener('visibilitychange', retryDisplayIfStalled, false);
       window.removeEventListener('focus', retryDisplayIfStalled, false);
     };
@@ -418,6 +422,7 @@
   /** Experimental Code - May be removed or changed any time without warning */
 
   onDestroy(() => {
+    document.removeEventListener('reader-action', handleAction, false);
     document.removeEventListener('ttu-action', handleAction, false);
 
     document.body.classList.remove(cssClassOverflowHidden);
@@ -854,6 +859,11 @@
   class:book-content--furigana-style-partial={furiganaStyle === FuriganaStyle.Partial}
   class:book-content--furigana-style-toggle={furiganaStyle === FuriganaStyle.Toggle}
   class:book-content--furigana-style-full={furiganaStyle === FuriganaStyle.Full}
+  class:reader-apply-font-weight={!!fontWeight}
+  class:reader-apply-important={prioritizeReaderStyles}
+  class:reader-apply-justification={enableTextJustification}
+  class:reader-margin-manual={textMarginMode === 'manual'}
+  class:reader-text-wrap-pretty={enableTextWrapPretty}
   class:ttu-apply-font-weight={!!fontWeight}
   class:ttu-apply-important={prioritizeReaderStyles}
   class:ttu-apply-justification={enableTextJustification}
@@ -927,6 +937,7 @@
     column-fill: auto;
     height: var(--book-content-child-height, 95vh);
 
+    :global(.reader-illustration-container),
     :global(.ttu-illustration-container) {
       max-width: var(--book-content-image-max-width, 95vh) !important;
       max-height: var(--book-content-child-height, 95vh) !important;
@@ -946,6 +957,7 @@
       }
     }
 
+    :global(.reader-img-container),
     :global(.ttu-img-container) {
       // Needed for Blink rendering engine
       break-inside: avoid;
@@ -959,7 +971,18 @@
       height: auto;
     }
 
-    :global(.book-content-container > *:not(.ttu-book-html-wrapper) > *:has(ruby):has(rt)),
+    :global(
+      .book-content-container
+        > *:not(.reader-book-html-wrapper):not(.ttu-book-html-wrapper)
+        > *:has(ruby):has(rt)
+    ),
+    :global(
+      .book-content-container
+        > div.reader-book-html-wrapper
+        > div.reader-book-body-wrapper
+        > *
+        > *:has(ruby):has(rt)
+    ),
     :global(
       .book-content-container
         > div.ttu-book-html-wrapper
@@ -972,7 +995,18 @@
   }
 
   .book-content--writing-horizontal-rl {
-    :global(.book-content-container > *:not(.ttu-book-html-wrapper) > *:has(ruby):has(rt)),
+    :global(
+      .book-content-container
+        > *:not(.reader-book-html-wrapper):not(.ttu-book-html-wrapper)
+        > *:has(ruby):has(rt)
+    ),
+    :global(
+      .book-content-container
+        > div.reader-book-html-wrapper
+        > div.reader-book-body-wrapper
+        > *
+        > *:has(ruby):has(rt)
+    ),
     :global(
       .book-content-container
         > div.ttu-book-html-wrapper

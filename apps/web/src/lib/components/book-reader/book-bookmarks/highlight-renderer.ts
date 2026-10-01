@@ -20,7 +20,9 @@ export function hexToRgba(hex: string, alpha = 0.35): string {
 }
 
 export function clearHighlights(containerEl: HTMLElement): void {
-  const marks = Array.from(containerEl.querySelectorAll('mark[data-ttu-highlight]'));
+  const marks = Array.from(
+    containerEl.querySelectorAll('mark[data-reader-highlight], mark[data-ttu-highlight]')
+  );
   if (!marks.length) return;
 
   const parentsToNormalize = new Set<Node>();
@@ -104,7 +106,7 @@ function highlightRangeInBlock(
     }
 
     const mark = document.createElement('mark');
-    mark.setAttribute('data-ttu-highlight', String(bookmarkId));
+    mark.setAttribute('data-reader-highlight', String(bookmarkId));
     mark.style.backgroundColor = bgColor;
     mark.style.color = 'inherit';
     mark.style.padding = '0';

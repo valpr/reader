@@ -23,7 +23,7 @@ export interface UserFont {
   fileName: string;
 }
 
-export const userFontsCacheName = 'ttu-userfonts';
+export const userFontsCacheName = 'reader-userfonts';
 
 export const reservedFontNames = new Set([
   'KZ UDGothic',

@@ -265,6 +265,7 @@
    */
   let jumpOffer: (JumpCandidate & { label: string }) | null = null;
   let dismissedJumpKeys = new Set<string>();
+  let latestSeenCandidate: JumpCandidate | null = null;
   let showTrackerIcon = false;
   let wasTrackerPaused = true;
   let frozenPosition = -1;
@@ -653,19 +654,19 @@
     visualViewport?.height || (typeof window !== 'undefined' ? window.innerHeight : 0) || 0;
 
   const containerViewportWidth$ = resize$.pipe(
+    debounceTime(100),
     startWith(0),
     map(() => readViewportWidth()),
     filter((w) => w > 0),
-    debounceTime(100),
     distinctUntilChanged(),
     takeWhenBrowser()
   );
 
   const containerViewportHeight$ = resize$.pipe(
+    debounceTime(100),
     startWith(0),
     map(() => readViewportHeight()),
     filter((h) => h > 0),
-    debounceTime(100),
     distinctUntilChanged(),
     takeWhenBrowser()
   );
@@ -836,7 +837,7 @@
 
   // In pinned mode the reader viewport shrinks by the measured header height
   // (matching the top padding below) so the last line still fits on screen.
-  // The fixed footer bar (#ttu-page-footer, h-8) always overlays the bottom,
+  // The fixed footer bar (#reader-page-footer, h-8) always overlays the bottom,
   // so always reserve its measured height plus the bottom safe-area inset.
   // Physical padding is writing-mode agnostic, so this clears vertical-rl
   // (where firstDimensionMargin is lateral only) as well as horizontal-tb,
@@ -862,7 +863,10 @@
     document.dispatchEvent(new CustomEvent(SKIPKEYLISTENER, { detail: $skipKeyDownListener$ }));
   }
 
-  onMount(() => document.addEventListener('ttu-action', handleAction, false));
+  onMount(() => {
+    document.addEventListener('reader-action', handleAction, false);
+    document.addEventListener('ttu-action', handleAction, false);
+  });
 
   onMount(() => {
     if (!browser) return;
@@ -871,14 +875,13 @@
     const seenSub = progressSeen$.subscribe((seen) => {
       const raw = $rawBookData$;
       if (!seen || !raw || seen.title !== raw.title) return;
-      maybeOfferJump([
-        {
-          exploredCharCount: seen.exploredCharCount,
-          progress: seen.progress,
-          label: 'synced reading position',
-          source: 'cloud' as const
-        }
-      ]);
+      latestSeenCandidate = {
+        exploredCharCount: seen.exploredCharCount,
+        progress: seen.progress,
+        label: 'synced reading position',
+        source: 'cloud' as const
+      };
+      maybeOfferJump();
     });
     return () => seenSub.unsubscribe();
   });
@@ -906,6 +909,7 @@
       autoScroller?.off();
       wasTrackerPaused = true;
       isTrackerPaused$.next(true);
+      document.removeEventListener('reader-action', handleAction, false);
       document.removeEventListener('ttu-action', handleAction, false);
       // Safety net for non-leaveReader exits (browser back, missing book
       // redirect): never leak fullscreen onto pages without its control.
@@ -936,6 +940,7 @@
 
   onDestroy(() => {
     if (browser) {
+      document.removeEventListener('reader-action', handleAction, false);
       document.removeEventListener('ttu-action', handleAction, false);
       document.documentElement.lang = 'ja';
     }
@@ -1840,6 +1845,7 @@
     if (!raw || !raw.id || !bookCharCount || !bookmarkManager) return;
     const candidate = findJumpCandidate(exploredCharCount || 0, bookCharCount, [
       ...liveBookmarkCandidates(),
+      ...(latestSeenCandidate ? [latestSeenCandidate] : []),
       ...extra
     ]);
     if (!candidate) {
@@ -1847,6 +1853,7 @@
       // stays until dismissed or jumped to.
       if (jumpOffer && (exploredCharCount || 0) >= jumpOffer.exploredCharCount) {
         jumpOffer = null;
+        latestSeenCandidate = null;
       }
       return;
     }
@@ -1866,6 +1873,7 @@
     if (!raw?.id || !offer || !bookmarkManager) return;
     dismissedJumpKeys.add(jumpOfferKey(raw.title, offer.exploredCharCount));
     jumpOffer = null;
+    latestSeenCandidate = null;
     // Tap-time revalidation: the lead may have shifted while the offer sat
     // visible (reader kept going, newer sync landed). Retarget to the
     // furthest point still ahead; only dismiss silently when nothing
@@ -1901,6 +1909,7 @@
       dismissedJumpKeys.add(jumpOfferKey(raw.title, jumpOffer.exploredCharCount));
     }
     jumpOffer = null;
+    latestSeenCandidate = null;
   }
 
   async function handleDeleteUserBookmark(item: BooksDbUserBookmarkData) {
@@ -1976,20 +1985,6 @@
       return;
     }
     void fullscreenManager.exitFullscreen();
-  }
-
-  function onDomainHintClick() {
-    dialogManager.dialogs$.next([
-      {
-        component: MessageDialog,
-        props: {
-          title: 'Old Domain',
-          message:
-            'You are currently using the old domain of ッツ Reader - consider switching to https://reader.ttsu.app to prevent issues and to ensure full features'
-        },
-        disableCloseOnClick: true
-      }
-    ]);
   }
 
   function changeChapter(offset: number) {
@@ -2594,7 +2589,6 @@
         showReaderImageGallery = true;
       }}
       on:settingsClick={() => leaveReader(mergeEntries.SETTINGS.routeId, false)}
-      on:domainHintClick={onDomainHintClick}
       on:bookManagerClick={() => leaveReader(mergeEntries.MANAGE.routeId)}
       showCloudWarning={!!expiredSyncTarget}
       cloudWarningLabel={expiredSyncTarget
@@ -2873,7 +2867,7 @@
 {/if}
 
 <div
-  id="ttu-page-footer"
+  id="reader-page-footer"
   bind:clientHeight={footerHeight}
   tabindex="0"
   role="button"
