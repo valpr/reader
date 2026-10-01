@@ -39,6 +39,11 @@
     justify-content: center;
   }
 
+  :global(.ttu-illustration-container img),
+  :global(svg:has(image)) {
+    cursor: zoom-in;
+  }
+
   &:not(.ttu-apply-important) {
     :global(p) {
       text-indent: var(--book-content-text-intendation, 0rem);

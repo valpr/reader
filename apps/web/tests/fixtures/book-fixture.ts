@@ -84,6 +84,36 @@ export const SAMPLE_BOOK: TestBookData = {
   lastBookOpen: Date.now()
 };
 
+export const RED_PIXEL_PNG = [
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+  0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+  0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+  0x44, 0xae, 0x42, 0x60, 0x82
+];
+
+export const SAMPLE_BOOK_WITH_IMAGES: TestBookData = {
+  ...SAMPLE_BOOK,
+  title: '吾輩は猫である (Playwright Image Test Book)',
+  elementHtml: SAMPLE_BOOK.elementHtml.replace(
+    '名前はまだ無い。',
+    `名前はまだ無い。</p>
+      <p class="ttu-img-container ttu-illustration-container">
+        <img id="test-img-1" src="ttu:test-illustration-1.png" alt="Test Illustration 1" />
+      </p>
+      <p class="ttu-img-container ttu-illustration-container">
+        <img id="test-img-2" src="ttu:test-illustration-2.png" alt="Test Illustration 2" />
+      </p>
+      <p>Inline gaiji: <img class="gaiji" id="test-gaiji" src="ttu:test-illustration-1.png" alt="Gaiji Glyph" /> text after.</p>
+      <p class="ttu-img-container ttu-illustration-container"><img id="test-spoiler-img" src="ttu:test-illustration-1.png" alt="Spoiler Image" /></p>
+      <p><a href="#section-2" id="test-img-link"><img id="test-linked-img" src="ttu:test-illustration-1.png" alt="Linked Image" /></a></p>`
+  ),
+  blobs: {
+    'test-illustration-1.png': RED_PIXEL_PNG,
+    'test-illustration-2.png': RED_PIXEL_PNG
+  }
+};
+
 export interface ReaderSettingsOptions {
   viewMode?: 'paginated' | 'continuous';
   writingMode?: 'vertical-rl' | 'horizontal-tb';
@@ -93,6 +123,7 @@ export interface ReaderSettingsOptions {
   keepReaderHeaderVisible?: boolean;
   showCharacterCounter?: boolean;
   showPercentage?: boolean;
+  hideSpoilerImage?: boolean;
 }
 
 /**
@@ -123,6 +154,9 @@ export async function setReaderSettings(page: Page, settings: ReaderSettingsOpti
     }
     if (s.showPercentage !== undefined) {
       localStorage.setItem('showPercentage', s.showPercentage ? '1' : '0');
+    }
+    if (s.hideSpoilerImage !== undefined) {
+      localStorage.setItem('hideSpoilerImage', s.hideSpoilerImage ? '1' : '0');
     }
   }, settings);
 }
@@ -319,6 +353,14 @@ export async function seedReaderBook(
         const tx = db.transaction(['data', 'bookmark', 'lastItem'], 'readwrite');
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
+
+        if (book.blobs) {
+          for (const [key, val] of Object.entries(book.blobs)) {
+            if (!(val instanceof Blob)) {
+              book.blobs[key] = new Blob([new Uint8Array(val as any)], { type: 'image/png' });
+            }
+          }
+        }
 
         tx.objectStore('data').put(book);
         tx.objectStore('bookmark').put({
