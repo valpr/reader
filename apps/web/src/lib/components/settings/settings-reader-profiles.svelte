@@ -43,6 +43,7 @@
   import {
     defaultDesktopSettings,
     defaultEReaderSettings,
+    defaultMobileScrollSettings,
     defaultMobileSettings,
     defaultReaderProfiles,
     defaultTabletSettings,
@@ -247,6 +248,8 @@
     let templateSettings = defaultDesktopSettings;
     if (newProfileTemplate === 'mobile') {
       templateSettings = defaultMobileSettings;
+    } else if (newProfileTemplate === 'mobile-scroll') {
+      templateSettings = defaultMobileScrollSettings;
     } else if (newProfileTemplate === 'tablet') {
       templateSettings = defaultTabletSettings;
     } else if (newProfileTemplate === 'ereader') {
@@ -601,6 +604,10 @@
           { value: 'current', label: 'Current Reader Settings' },
           { value: 'desktop', label: 'Desktop Preset (20px, Auto Columns)' },
           { value: 'mobile', label: 'Mobile Preset (17px, 1 Column, Tap Edge)' },
+          {
+            value: 'mobile-scroll',
+            label: 'Doom Scroll Preset (17px, Continuous Vertical Scroll)'
+          },
           { value: 'tablet', label: 'Tablet Preset (22px, Balanced Margins)' },
           { value: 'ereader', label: 'E-Reader Preset (20px, 500 Weight, E-Ink)' }
         ]}

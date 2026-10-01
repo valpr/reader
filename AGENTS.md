@@ -73,14 +73,15 @@ Dialog content must contain its text at 360–412px widths without spilling past
 
 ## 5. Reader Profile Defaults
 
-There are **four distinct built-in device profiles** in [`profile-types.ts`](apps/web/src/lib/data/profiles/profile-types.ts). They are intentionally separate because display physics, viewing distance, and input ergonomics differ fundamentally across device classes.
+There are **five built-in profiles** in [`profile-types.ts`](apps/web/src/lib/data/profiles/profile-types.ts). The four hardware profiles are intentionally separate because display physics, viewing distance, and input ergonomics differ fundamentally across device classes. The fifth (`Mobile / Doom Scroll`) is a mode variant of the mobile hardware profile for continuous vertical-scroll reading.
 
-| Profile          | ID                | Font | Line Height | Columns  | Key differences                                                                                                                                             |
-| ---------------- | ----------------- | ---- | ----------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PC / Desktop     | `default-desktop` | 20px | 1.65        | 0 (auto) | Mouse/keyboard, no tap-edge, wake lock off                                                                                                                  |
-| Mobile / Phone   | `default-mobile`  | 17px | 1.55        | 1        | Closest viewing distance → smaller font, swipe threshold 15px, wake lock on                                                                                 |
-| Tablet           | `default-tablet`  | 22px | 1.70        | 1        | High-DPI LCD, wide bezel → 24px margin, swipe threshold 15px, wake lock on                                                                                  |
-| E-Reader / E-Ink | `default-ereader` | 20px | 1.60        | 1        | E-Ink physics → fontWeight 500 (stroke boost), 10px margin, swipe threshold 20px, forced light theme, pinned header, no tap-edge, avoid mid-sentence breaks |
+| Profile            | ID                | Font | Line Height | Columns  | Key differences                                                                                                                                             |
+| ------------------ | ----------------- | ---- | ----------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC / Desktop       | `default-desktop` | 20px | 1.65        | 0 (auto) | Mouse/keyboard, no tap-edge, wake lock off                                                                                                                  |
+| Mobile / Phone     | `default-mobile`  | 17px | 1.55        | 1        | Closest viewing distance → smaller font, swipe threshold 15px, wake lock on                                                                                 |
+| Mobile / Doom Scroll | `default-mobile-scroll` | 17px | 1.60   | 1        | Continuous vertical scroll (`horizontal-tb`), no tap-edge, wake lock on                                                                                     |
+| Tablet             | `default-tablet`  | 22px | 1.70        | 1        | High-DPI LCD, wide bezel → 24px margin, swipe threshold 15px, wake lock on                                                                                  |
+| E-Reader / E-Ink   | `default-ereader` | 20px | 1.60        | 1        | E-Ink physics → fontWeight 500 (stroke boost), 10px margin, swipe threshold 20px, forced light theme, pinned header, no tap-edge, avoid mid-sentence breaks |
 
 **Rationale for key values:**
 

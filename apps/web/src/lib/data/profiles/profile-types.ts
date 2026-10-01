@@ -211,6 +211,14 @@ export const defaultEReaderSettings: ReaderProfileSettings = {
   theme: 'light-theme'
 };
 
+export const defaultMobileScrollSettings: ReaderProfileSettings = {
+  ...defaultMobileSettings,
+  lineHeight: 1.6,
+  viewMode: ViewMode.Continuous,
+  writingMode: 'horizontal-tb',
+  enableTapEdgeToFlip: false
+};
+
 export const defaultReaderProfiles: ReaderProfile[] = [
   {
     id: 'default-desktop',
@@ -229,6 +237,16 @@ export const defaultReaderProfiles: ReaderProfile[] = [
     updatedAt: 1,
     isDefault: true,
     settings: defaultMobileSettings
+  },
+  {
+    id: 'default-mobile-scroll',
+    name: 'Mobile / Doom Scroll',
+    icon: 'mobile',
+    description:
+      'Continuous vertical scroll layout for phones, optimized for doom scrolling (17px font, 1.6 line height)',
+    updatedAt: 1,
+    isDefault: true,
+    settings: defaultMobileScrollSettings
   },
   {
     id: 'default-tablet',

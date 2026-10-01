@@ -714,6 +714,9 @@ export function calculateProfileBreakdown(
     } else if (profId === 'default-mobile') {
       profileName = 'Mobile / Phone';
       profileIcon = 'mobile';
+    } else if (profId === 'default-mobile-scroll') {
+      profileName = 'Mobile / Doom Scroll';
+      profileIcon = 'mobile';
     } else if (profId === 'default-tablet') {
       profileName = 'Tablet';
       profileIcon = 'tablet';

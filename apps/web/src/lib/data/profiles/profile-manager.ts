@@ -616,7 +616,7 @@ export async function syncProfilesToCloudTarget(): Promise<string | undefined> {
   }
 }
 
-export const PROFILES_SCHEMA_VERSION = 3;
+export const PROFILES_SCHEMA_VERSION = 4;
 
 export const PROFILE_CHOICE_SEEN_KEY = 'profileChoiceSeen';
 
@@ -775,6 +775,18 @@ export function ensureDefaultProfiles(): void {
       if (enableTapEdgeToFlip$.getValue() === true) enableTapEdgeToFlip$.next(false);
       if (avoidPageBreak$.getValue() === false) avoidPageBreak$.next(true);
       if (keepReaderHeaderVisible$.getValue() === false) keepReaderHeaderVisible$.next(true);
+    }
+  }
+
+  // 4. v4: append the Mobile / Doom Scroll preset if missing. Never clobbers
+  //    user edits: only appends when the id is absent.
+  if (storedVersion < 4) {
+    if (!updated.some((p) => p.id === 'default-mobile-scroll')) {
+      const scrollProfile = defaultReaderProfiles.find((p) => p.id === 'default-mobile-scroll');
+      if (scrollProfile) {
+        updated.push(scrollProfile);
+        modified = true;
+      }
     }
   }
 
