@@ -62,6 +62,7 @@ import {
   withConflictRetry
 } from '$lib/functions/replication/error-handler';
 import { AbortError, throwIfAborted } from '$lib/functions/replication/replication-error';
+import { normalizeTitle } from '$lib/data/storage/unified-library';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import {
   replicationProgress$,
@@ -1367,7 +1368,18 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
             // treating the title as deleted. Otherwise we would clear the
             // local cache while the remote folder survives, and the next
             // server fetch resurrects the book.
+            let matchedKey = bookToDelete;
             let externalId = this.titleToId.get(bookToDelete);
+
+            if (!externalId) {
+              for (const [title, id] of this.titleToId.entries()) {
+                if (normalizeTitle(title) === normalizeTitle(bookToDelete)) {
+                  externalId = id;
+                  matchedKey = title;
+                  break;
+                }
+              }
+            }
 
             if (!externalId && this.rootId) {
               try {
@@ -1383,7 +1395,8 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
               // otherwise resurrect the folder as a ghost library item).
               // statistics_* replicas are preserved when the keep-statistics
               // setting is on, matching local deletion semantics.
-              let childFiles: ExternalFile[] = this.titleToFiles.get(bookToDelete) || [];
+              let childFiles: ExternalFile[] =
+                this.titleToFiles.get(matchedKey) || this.titleToFiles.get(bookToDelete) || [];
 
               if (!childFiles.length) {
                 try {
@@ -1406,16 +1419,19 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
 
                 try {
                   await this.executeDelete(filesToDelete[index].id);
-                } catch (childError) {
+                } catch (childError: any) {
                   // A stale cache entry (already-deleted remote file)
                   // shouldn't block removal of the remaining files.
-                  // Record it and continue; the folder delete below still
-                  // runs unless preservation applies.
-                  error = handleErrorDuringReplication(
-                    childError,
-                    `Error deleting ${bookToDelete}: `,
-                    []
-                  );
+                  if (
+                    !childError?.message?.includes('404') &&
+                    !childError?.message?.includes('not found')
+                  ) {
+                    error = handleErrorDuringReplication(
+                      childError,
+                      `Error deleting ${bookToDelete}: `,
+                      []
+                    );
+                  }
                 }
               }
 
@@ -1425,23 +1441,51 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
                 // stats files stay cached so future stats syncs and
                 // same-title re-imports can still merge them.
                 this.titleToFiles.set(bookToDelete, statisticsFiles);
+                if (matchedKey !== bookToDelete) {
+                  this.titleToFiles.set(matchedKey, statisticsFiles);
+                }
               } else {
-                await this.executeDelete(externalId);
+                try {
+                  await this.executeDelete(externalId);
+                } catch (folderError: any) {
+                  if (
+                    !folderError?.message?.includes('404') &&
+                    !folderError?.message?.includes('not found')
+                  ) {
+                    error = handleErrorDuringReplication(
+                      folderError,
+                      `Error deleting folder for ${bookToDelete}: `,
+                      []
+                    );
+                  }
+                }
                 this.titleToFiles.delete(bookToDelete);
                 this.titleToId.delete(bookToDelete);
+                if (matchedKey !== bookToDelete) {
+                  this.titleToFiles.delete(matchedKey);
+                  this.titleToId.delete(matchedKey);
+                }
               }
             } else {
               this.titleToFiles.delete(bookToDelete);
               this.titleToId.delete(bookToDelete);
+              if (matchedKey !== bookToDelete) {
+                this.titleToFiles.delete(matchedKey);
+                this.titleToId.delete(matchedKey);
+              }
             }
 
-            const deletedBookCard = this.titleToBookCard.get(bookToDelete);
+            const deletedBookCard =
+              this.titleToBookCard.get(bookToDelete) || this.titleToBookCard.get(matchedKey);
 
             if (deletedBookCard) {
               deleted.push(deletedBookCard.id);
             }
 
             this.titleToBookCard.delete(bookToDelete);
+            if (matchedKey !== bookToDelete) {
+              this.titleToBookCard.delete(matchedKey);
+            }
 
             database.dataListChanged$.next(this);
 
@@ -1458,11 +1502,8 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
     await Promise.all(deleteTasks).catch(() => {});
 
     // Force the next getBookList() to verify against the server instead of
-    // serving the just-mutated cache. If a remote delete failed, the refetch
-    // re-adds the title so the library reflects server truth.
-    if (!error) {
-      this.dataListFetched = false;
-    }
+    // serving the just-mutated cache.
+    this.dataListFetched = false;
 
     return { error, deleted };
   }

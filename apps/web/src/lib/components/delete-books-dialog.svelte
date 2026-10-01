@@ -7,18 +7,25 @@
 
   export let titles: string[] = [];
   export let cloudSummary = '';
+  export let hasCloudSource = false;
   export let hasLocalCopy = true;
   export let initialDeleteFromCloud = false;
-  export let resolver: (result: { canceled: boolean; deleteFromCloud: boolean }) => void;
+  export let initialDeleteStatistics = false;
+  export let resolver: (result: {
+    canceled: boolean;
+    deleteFromCloud: boolean;
+    deleteStatistics: boolean;
+  }) => void;
 
   let deleteFromCloud = initialDeleteFromCloud;
+  let deleteStatistics = initialDeleteStatistics;
 
   const dispatch = createEventDispatcher<{
     close: void;
   }>();
 
   function closeDialog(canceled: boolean) {
-    resolver({ canceled, deleteFromCloud });
+    resolver({ canceled, deleteFromCloud, deleteStatistics });
     dispatch('close');
   }
 
@@ -28,56 +35,105 @@
 <DialogTemplate>
   <svelte:fragment slot="header">
     {#if titles.length === 1}
-      <span class="block truncate" title={singleTitle}>Delete “{singleTitle}”?</span>
+      <span class="block truncate min-w-0" title={singleTitle}>Delete “{singleTitle}”?</span>
     {:else}
       Delete {titles.length} {pluralize(titles.length, 'Book', false)}?
     {/if}
   </svelte:fragment>
   <svelte:fragment slot="content">
-    <p style="white-space: pre-line; word-break: break-word;">
-      {#if titles.length === 1}
-        {#if hasLocalCopy}
-          This removes the local browser copy, reading progress, and manual bookmarks for “{singleTitle}”.
+    <div class="space-y-4 min-w-0 pb-4" data-testid="delete-books-dialog">
+      <p class="break-words [overflow-wrap:anywhere] text-sm opacity-90">
+        {#if titles.length === 1}
+          {#if hasLocalCopy}
+            This removes the local browser copy and reading progress for “{singleTitle}”.
+          {:else}
+            “{singleTitle}” has no local browser copy. This removes it from cloud storage.
+          {/if}
         {:else}
-          “{singleTitle}” has no local browser copy. This removes it from the cloud source(s) below.
+          {#if hasLocalCopy}
+            This removes local browser copies and reading progress for the {titles.length} selected books.
+          {:else}
+            The selected books have no local browser copies. This removes them from cloud storage.
+          {/if}
         {/if}
-      {:else}
-        {#if hasLocalCopy}
-          This removes the local browser copies, reading progress, and manual bookmarks for the
-          selected books.
-        {:else}
-          The selected books have no local browser copies. This removes them from the cloud
-          source(s) below.
+        {#if cloudSummary}
+          <br /><br />Also on: {cloudSummary}.
         {/if}
-      {/if}
-      {#if cloudSummary}
-        <br /><br />Also on: {cloudSummary}.
-      {/if}
-    </p>
-    {#if cloudSummary}
-      <p class="flex items-center min-w-0 mt-4">
-        <input id="del-cloud" type="checkbox" bind:checked={deleteFromCloud} />
-        <label class="ml-2 min-w-0" for="del-cloud"
-          >Also delete from cloud sources where these books exist</label
-        >
       </p>
-    {/if}
-    <p class="mt-3 text-sm opacity-70">
-      Reading statistics are kept per Settings → Keep Reading Statistics on Deletion (applies to
-      local and cloud copies).
-    </p>
+
+      <div
+        class="space-y-3 pt-2 border-t border-[var(--astryx-color-border-subtle,rgba(255,255,255,0.1))]"
+      >
+        {#if cloudSummary || hasCloudSource}
+          <label
+            class="flex items-start gap-2.5 cursor-pointer select-none min-w-0 min-h-[44px] py-1"
+          >
+            <input
+              id="del-cloud"
+              data-testid="delete-cloud-checkbox"
+              type="checkbox"
+              bind:checked={deleteFromCloud}
+              class="mt-0.5 h-4 w-4 shrink-0 rounded accent-[var(--astryx-color-primary,#6366f1)]"
+            />
+            <div class="min-w-0 flex-1">
+              <span class="block text-sm font-medium">Also delete from cloud storage</span>
+              <span class="block text-xs opacity-70 [overflow-wrap:anywhere]">
+                {#if cloudSummary}
+                  Removes files from {cloudSummary}.
+                {:else}
+                  Removes files from connected cloud storage if present.
+                {/if}
+              </span>
+            </div>
+          </label>
+        {/if}
+
+        <label
+          class="flex items-start gap-2.5 cursor-pointer select-none min-w-0 min-h-[44px] py-1"
+        >
+          <input
+            id="del-statistics"
+            data-testid="delete-statistics-checkbox"
+            type="checkbox"
+            bind:checked={deleteStatistics}
+            class="mt-0.5 h-4 w-4 shrink-0 rounded accent-[var(--astryx-color-danger,#ef4444)]"
+          />
+          <div class="min-w-0 flex-1">
+            <span class="block text-sm font-medium"
+              >Also delete reading statistics &amp; history</span
+            >
+            <span class="block text-xs opacity-70 [overflow-wrap:anywhere]">
+              Permanently purges reading time, character count, and Lookback records. When
+              unchecked, reading statistics are preserved.
+            </span>
+          </div>
+        </label>
+      </div>
+    </div>
   </svelte:fragment>
   <div class="flex min-w-0 grow flex-wrap justify-between gap-2" slot="footer">
-    <button class={buttonClasses} on:click={() => closeDialog(true)}>
+    <button class="{buttonClasses} relative overflow-hidden" on:click={() => closeDialog(true)}>
       Cancel
       <Ripple />
     </button>
-    <button class={buttonClasses} on:click={() => closeDialog(false)}>
+    <button
+      class="{buttonClasses} relative overflow-hidden {deleteStatistics
+        ? 'bg-[var(--astryx-color-danger,#ef4444)] !text-white hover:bg-[var(--astryx-color-danger-hover,#dc2626)]'
+        : ''}"
+      data-testid="confirm-delete-button"
+      on:click={() => closeDialog(false)}
+    >
       {deleteFromCloud
-        ? 'Delete everywhere'
+        ? deleteStatistics
+          ? 'Delete everywhere (all data)'
+          : 'Delete everywhere'
         : hasLocalCopy
-          ? 'Delete local copy'
-          : 'Delete from cloud'}
+          ? deleteStatistics
+            ? 'Delete local copy (all data)'
+            : 'Delete local copy'
+          : deleteStatistics
+            ? 'Delete from cloud (all data)'
+            : 'Delete from cloud'}
       <Ripple />
     </button>
   </div>
