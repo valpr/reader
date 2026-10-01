@@ -4,24 +4,16 @@
  * All rights reserved.
  */
 
-import {
-  NEVER,
-  filter,
-  fromEvent,
-  merge,
-  race,
-  switchMap,
-  take,
-  takeUntil,
-  tap,
-  throttleTime,
-  timer
-} from 'rxjs';
+import { NEVER, filter, fromEvent, merge, take, tap } from 'rxjs';
 
 import { FuriganaStyle } from '../../data/furigana-style';
 import { nextChapter$ } from '$lib/components/book-reader/book-toc/book-toc';
-import { pulseElement } from '$lib/functions/range-util';
-import { toggleImageGalleryPictureSpoiler$ } from '$lib/components/book-reader/book-reader-image-gallery/book-reader-image-gallery';
+import {
+  readerImageGalleryPictures$,
+  toggleImageGalleryPictureSpoiler$
+} from '$lib/components/book-reader/book-reader-image-gallery/book-reader-image-gallery';
+import { openImagePreview } from '$lib/components/book-reader/book-reader-image-preview/book-reader-image-preview';
+import { isElementGaiji } from '$lib/functions/is-element-gaiji';
 
 export function reactiveElements(
   document: Document,
@@ -37,7 +29,7 @@ export function reactiveElements(
       anchorTagDocumentListener(contentEl),
       rubyTagListener(contentEl, furiganaStyle),
       spoilerImageDocumentListener(contentEl),
-      openImageInNewTab(contentEl, hideSpoilerImage, isExtendedMode)
+      imagePreviewListener(contentEl, hideSpoilerImage, isExtendedMode)
     );
 }
 
@@ -114,79 +106,119 @@ function spoilerImageListener(document: Document) {
   };
 }
 
-function openImageInNewTab(
+function imagePreviewListener(
   contentEl: HTMLElement,
   hideSpoilerImage: boolean,
   isExtendedMode: boolean
 ) {
-  return merge(
-    ...[...contentEl.querySelectorAll<HTMLElement>(`${isExtendedMode ? 'img,' : ''}image`)].map(
-      (elm) => {
-        elm.draggable = false;
+  const imgElements = [
+    ...Array.from(contentEl.querySelectorAll<HTMLImageElement>('img')),
+    ...Array.from(contentEl.querySelectorAll<HTMLElement>('image'))
+  ].filter((el) => {
+    if (el.classList.contains('gaiji') || (el instanceof HTMLImageElement && isElementGaiji(el))) {
+      return false;
+    }
+    return true;
+  });
 
-        return merge(
-          fromEvent(elm, 'contextmenu').pipe(
-            tap((event) => {
-              if (isExtendedMode) {
-                event.preventDefault();
-              }
-            })
-          ),
-          fromEvent(elm, 'pointerdown').pipe(
-            switchMap((event) => {
-              const { clientX, clientY } = event as PointerEvent;
+  const svgElements = Array.from(contentEl.querySelectorAll<SVGElement>('svg')).filter((svg) => {
+    return svg.querySelector('image') !== null;
+  });
 
-              return timer(1000).pipe(
-                takeUntil(
-                  race(
-                    fromEvent(elm, 'pointermove').pipe(
-                      throttleTime(200, undefined, { trailing: true }),
-                      filter((event2) => {
-                        const { clientX: newX, clientY: newY } = event2 as PointerEvent;
+  const imgObservables = imgElements.map((elm) => {
+    elm.draggable = false;
 
-                        return Math.abs(clientX - newX) > 5 || Math.abs(clientY - newY) > 5;
-                      })
-                    ),
-                    fromEvent(elm, 'pointerup'),
-                    fromEvent(elm, 'pointercancel')
-                  )
-                )
-              );
-            }),
-            filter(
-              () =>
-                !hideSpoilerImage ||
-                elm.classList.contains('reader-unspoilered') ||
-                elm.classList.contains('ttu-unspoilered') ||
-                (!elm.closest('span[data-reader-spoiler-img]') &&
-                  !elm.closest('span[data-ttu-spoiler-img]'))
-            ),
-            switchMap(() => {
-              pulseElement(
-                elm.parentElement && elm.tagName.toLowerCase() === 'image'
-                  ? elm.parentElement
-                  : elm,
-                'add',
-                0.5,
-                500
-              );
+    return merge(
+      fromEvent(elm, 'contextmenu').pipe(
+        tap((event) => {
+          if (isExtendedMode) {
+            event.preventDefault();
+          }
+        })
+      ),
+      fromEvent<MouseEvent>(elm, 'click').pipe(
+        filter(() => {
+          if (elm.closest('a')) {
+            return false;
+          }
+          if (
+            hideSpoilerImage &&
+            (elm.closest('span[data-reader-spoiler-img]') ||
+              elm.closest('span[data-ttu-spoiler-img]')) &&
+            !elm.classList.contains('reader-unspoilered') &&
+            !elm.classList.contains('ttu-unspoilered')
+          ) {
+            return false;
+          }
+          return true;
+        }),
+        tap((ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
 
-              return merge(fromEvent(elm, 'pointerup'), fromEvent(elm, 'pointercancel')).pipe(
-                take(1),
-                tap(() => {
-                  const src = elm.getAttribute('src') || elm.getAttribute('href');
+          const src =
+            elm.getAttribute('src') ||
+            elm.getAttribute('href') ||
+            elm.getAttribute('xlink:href') ||
+            (elm as any).currentSrc;
+          if (!src) return;
 
-                  if (src) {
-                    window.open(src, '_blank');
-                  }
-                })
-              );
-            })
-          )
-        );
-      }
-    )
-  );
+          const pictures = readerImageGalleryPictures$.getValue();
+          const index = pictures.findIndex((p) => p.url === src);
+
+          openImagePreview(src, index, elm.getAttribute('alt') || undefined);
+        })
+      )
+    );
+  });
+
+  const svgObservables = svgElements.map((svgEl) => {
+    const childImage = svgEl.querySelector('image');
+    if (!childImage) return NEVER;
+
+    return merge(
+      fromEvent(svgEl, 'contextmenu').pipe(
+        tap((event) => {
+          if (isExtendedMode) {
+            event.preventDefault();
+          }
+        })
+      ),
+      fromEvent<MouseEvent>(svgEl, 'click').pipe(
+        filter((ev) => {
+          if (svgEl.closest('a') || childImage.closest('a')) return false;
+          if (ev.target === childImage) return false;
+          if (
+            hideSpoilerImage &&
+            (svgEl.closest('span[data-reader-spoiler-img]') ||
+              svgEl.closest('span[data-ttu-spoiler-img]')) &&
+            !svgEl.classList.contains('reader-unspoilered') &&
+            !svgEl.classList.contains('ttu-unspoilered')
+          ) {
+            return false;
+          }
+          return true;
+        }),
+        tap((ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+
+          const src =
+            childImage.getAttribute('href') ||
+            childImage.getAttribute('xlink:href') ||
+            childImage.getAttribute('src');
+          if (!src) return;
+
+          const pictures = readerImageGalleryPictures$.getValue();
+          const index = pictures.findIndex((p) => p.url === src);
+
+          openImagePreview(src, index, childImage.getAttribute('alt') || undefined);
+        })
+      )
+    );
+  });
+
+  return merge(...imgObservables, ...svgObservables);
 }
 
 function toggleImageGalleryPictureSpoiler(imageElement: Element | null, unspoilered: boolean) {

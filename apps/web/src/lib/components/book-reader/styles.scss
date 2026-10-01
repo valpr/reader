@@ -43,6 +43,12 @@
     justify-content: center;
   }
 
+  :global(.reader-illustration-container img),
+  :global(.ttu-illustration-container img),
+  :global(svg:has(image)) {
+    cursor: zoom-in;
+  }
+
   &:not(.reader-apply-important):not(.ttu-apply-important) {
     :global(p) {
       text-indent: var(--book-content-text-intendation, 0rem);
