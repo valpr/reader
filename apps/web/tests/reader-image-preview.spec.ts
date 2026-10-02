@@ -18,6 +18,21 @@ test.describe('Reader Image Preview', () => {
 
     const img = page.locator('#test-img-1');
     await expect(img).toBeVisible();
+    const contentSrc = await img.getAttribute('src');
+    expect(contentSrc).toBeTruthy();
+    expect(contentSrc).toContain('blob:');
+    const naturalWidth = await img.evaluate((el: HTMLImageElement) => el.naturalWidth);
+    expect(naturalWidth).toBeGreaterThan(0);
+
+    // Verify test-img-2 (current reader: format) is also hydrated and rendered
+    const img2 = page.locator('#test-img-2');
+    await expect(img2).toBeVisible();
+    const contentSrc2 = await img2.getAttribute('src');
+    expect(contentSrc2).toBeTruthy();
+    expect(contentSrc2).toContain('blob:');
+    const naturalWidth2 = await img2.evaluate((el: HTMLImageElement) => el.naturalWidth);
+    expect(naturalWidth2).toBeGreaterThan(0);
+
     await img.click();
 
     const dialog = page.locator('div[role="dialog"][aria-label="Image preview"]');

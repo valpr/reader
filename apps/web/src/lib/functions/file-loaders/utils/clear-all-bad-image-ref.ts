@@ -28,6 +28,7 @@ export default function clearAllBadImageRef(el: HTMLElement) {
 
   Array.from(el.getElementsByTagName('image')).forEach((tag) => {
     clearTagBadImageAttribute(tag, 'href');
+    clearTagBadImageAttribute(tag, 'xlink:href');
   });
 
   Array.from(el.getElementsByTagName('img')).forEach((tag) => {
