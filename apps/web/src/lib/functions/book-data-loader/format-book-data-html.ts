@@ -8,7 +8,9 @@ import { BlurMode } from '$lib/data/blur-mode';
 import type { BooksDbBookData } from '$lib/data/database/books-db/versions/books-db';
 import { Observable } from 'rxjs';
 import { BaseStorageHandler } from '$lib/data/storage/handler/base-handler';
-import buildDummyBookImage from '$lib/functions/file-loaders/utils/build-dummy-book-image';
+import buildDummyBookImage, {
+  buildLegacyDummyBookImage
+} from '$lib/functions/file-loaders/utils/build-dummy-book-image';
 import { isElementGaiji } from '$lib/functions/is-element-gaiji';
 import { map } from 'rxjs/operators';
 import {
@@ -45,22 +47,35 @@ function getHtmlWithImageSource(bookData: BooksDbBookData, isPaginated: boolean)
 
     let { elementHtml } = bookData;
 
-    Object.entries(blobs).forEach(([key, value]) => {
-      const url = URL.createObjectURL(
-        value.type
-          ? value
-          : new Blob([value], { type: BaseStorageHandler.getImageMimeTypeFromExtension(key) })
-      );
-      const dummyUrl = buildDummyBookImage(key);
+    Object.entries(blobs)
+      .sort(([a], [b]) => b.length - a.length)
+      .forEach(([key, value]) => {
+        const url = URL.createObjectURL(
+          value.type
+            ? value
+            : new Blob([value], { type: BaseStorageHandler.getImageMimeTypeFromExtension(key) })
+        );
+        const dummyUrl = buildDummyBookImage(key);
+        const legacyDummyUrl = buildLegacyDummyBookImage(key);
 
-      objectUrls.push(url);
-      urlIndexes.set(url, elementHtml.indexOf(dummyUrl));
+        objectUrls.push(url);
 
-      elementHtml = elementHtml
-        .replaceAll(dummyUrl, url)
-        .replaceAll(`reader:${key}`, url)
-        .replaceAll(`ttu:${key}`, url);
-    });
+        const candidateIndexes = [
+          elementHtml.indexOf(dummyUrl),
+          elementHtml.indexOf(legacyDummyUrl),
+          elementHtml.indexOf(`reader:${key}`),
+          elementHtml.indexOf(`ttu:${key}`)
+        ].filter((idx) => idx !== -1);
+
+        const dummyIndex = candidateIndexes.length ? Math.min(...candidateIndexes) : -1;
+        urlIndexes.set(url, dummyIndex);
+
+        elementHtml = elementHtml
+          .replaceAll(dummyUrl, url)
+          .replaceAll(legacyDummyUrl, url)
+          .replaceAll(`reader:${key}`, url)
+          .replaceAll(`ttu:${key}`, url);
+      });
     subscriber.next(elementHtml);
 
     const readerImageGalleryPictures: ReaderImageGalleryPicture[] = objectUrls.map((url) => ({
@@ -69,10 +84,13 @@ function getHtmlWithImageSource(bookData: BooksDbBookData, isPaginated: boolean)
     }));
 
     readerImageGalleryPictures.sort((picture1, picture2) => {
-      const index1 = urlIndexes.get(picture1.url) || 0;
-      const index2 = urlIndexes.get(picture2.url) || 0;
+      const index1 = urlIndexes.get(picture1.url);
+      const index2 = urlIndexes.get(picture2.url);
 
-      return index1 - index2;
+      const pos1 = index1 !== undefined && index1 !== -1 ? index1 : Number.MAX_SAFE_INTEGER;
+      const pos2 = index2 !== undefined && index2 !== -1 ? index2 : Number.MAX_SAFE_INTEGER;
+
+      return pos1 - pos2;
     });
 
     readerImageGalleryPictures$.next(readerImageGalleryPictures);
