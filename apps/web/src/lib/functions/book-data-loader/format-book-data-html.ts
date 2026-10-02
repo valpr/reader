@@ -8,7 +8,9 @@ import { BlurMode } from '$lib/data/blur-mode';
 import type { BooksDbBookData } from '$lib/data/database/books-db/versions/books-db';
 import { Observable } from 'rxjs';
 import { BaseStorageHandler } from '$lib/data/storage/handler/base-handler';
-import buildDummyBookImage from '$lib/functions/file-loaders/utils/build-dummy-book-image';
+import buildDummyBookImage, {
+  buildLegacyDummyBookImage
+} from '$lib/functions/file-loaders/utils/build-dummy-book-image';
 import { isElementGaiji } from '$lib/functions/is-element-gaiji';
 import { map } from 'rxjs/operators';
 import {
@@ -52,12 +54,23 @@ function getHtmlWithImageSource(bookData: BooksDbBookData, isPaginated: boolean)
           : new Blob([value], { type: BaseStorageHandler.getImageMimeTypeFromExtension(key) })
       );
       const dummyUrl = buildDummyBookImage(key);
+      const legacyDummyUrl = buildLegacyDummyBookImage(key);
 
       objectUrls.push(url);
-      urlIndexes.set(url, elementHtml.indexOf(dummyUrl));
+
+      const candidateIndexes = [
+        elementHtml.indexOf(dummyUrl),
+        elementHtml.indexOf(legacyDummyUrl),
+        elementHtml.indexOf(`reader:${key}`),
+        elementHtml.indexOf(`ttu:${key}`)
+      ].filter((idx) => idx !== -1);
+
+      const dummyIndex = candidateIndexes.length ? Math.min(...candidateIndexes) : -1;
+      urlIndexes.set(url, dummyIndex);
 
       elementHtml = elementHtml
         .replaceAll(dummyUrl, url)
+        .replaceAll(legacyDummyUrl, url)
         .replaceAll(`reader:${key}`, url)
         .replaceAll(`ttu:${key}`, url);
     });

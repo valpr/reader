@@ -98,15 +98,15 @@ export const SAMPLE_BOOK_WITH_IMAGES: TestBookData = {
   elementHtml: SAMPLE_BOOK.elementHtml.replace(
     '名前はまだ無い。',
     `名前はまだ無い。</p>
-      <p class="ttu-img-container ttu-illustration-container">
-        <img id="test-img-1" src="ttu:test-illustration-1.png" alt="Test Illustration 1" />
+      <p class="reader-illustration-container ttu-img-container ttu-illustration-container">
+        <img id="test-img-1" src="data:image/gif;ttu:test-illustration-1.png;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Test Illustration 1" />
       </p>
-      <p class="ttu-img-container ttu-illustration-container">
-        <img id="test-img-2" src="ttu:test-illustration-2.png" alt="Test Illustration 2" />
+      <p class="reader-illustration-container ttu-img-container ttu-illustration-container">
+        <img id="test-img-2" src="data:image/gif;reader:test-illustration-2.png;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Test Illustration 2" />
       </p>
       <p>Inline gaiji: <img class="gaiji" id="test-gaiji" src="ttu:test-illustration-1.png" alt="Gaiji Glyph" /> text after.</p>
-      <p class="ttu-img-container ttu-illustration-container"><img id="test-spoiler-img" src="ttu:test-illustration-1.png" alt="Spoiler Image" /></p>
-      <p><a href="#section-2" id="test-img-link"><img id="test-linked-img" src="ttu:test-illustration-1.png" alt="Linked Image" /></a></p>`
+      <p class="reader-illustration-container ttu-img-container ttu-illustration-container"><img id="test-spoiler-img" src="data:image/gif;ttu:test-illustration-1.png;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Spoiler Image" /></p>
+      <p><a href="#section-2" id="test-img-link"><img id="test-linked-img" src="data:image/gif;reader:test-illustration-1.png;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Linked Image" /></a></p>`
   ),
   blobs: {
     'test-illustration-1.png': RED_PIXEL_PNG,
