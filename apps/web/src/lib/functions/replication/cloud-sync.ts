@@ -47,6 +47,8 @@ import { isNetworkUnreachableError } from '$lib/functions/replication/error-hand
 import { ApiStorageHandler } from '$lib/data/storage/handler/api-handler';
 import { logger } from '$lib/data/logger';
 import type { BooksDbStorageSource } from '$lib/data/database/books-db/versions/books-db';
+import type { BaseStorageHandler } from '$lib/data/storage/handler/base-handler';
+import type { ReplicationContext } from '$lib/functions/replication/replication-progress';
 
 export const SYNC_DATA_TYPES = [
   StorageDataType.PROGRESS,
@@ -362,6 +364,115 @@ export async function triggerCloudSync(
     logger.error(`Cloud sync retry failed for ${sourceName}: ${message}`);
     return finish(message);
   }
+}
+
+/**
+ * Total error normalizer for sync legs: any rejection is a failure, so this
+ * never returns a falsy value. A bare `err.message` mapping turns thrown
+ * strings (and message-less rejections) into `undefined` — false success.
+ */
+export function asSyncErrorMessage(err: unknown): string {
+  if (typeof err === 'string') return err || 'Unknown sync error';
+  const message = (err as { message?: unknown } | null | undefined)?.message;
+  if (typeof message === 'string' && message) return message;
+  return 'Unknown sync error';
+}
+
+export interface SingleBookTwoPhaseParams {
+  localHandler: BaseStorageHandler;
+  externalHandler: BaseStorageHandler;
+  context: ReplicationContext;
+  /**
+   * Already-scoped data types (the caller applies the primary vs secondary
+   * `BOOK_SCOPED_DATA_TYPES` filter) — used as-is so scoping has a single
+   * source of truth.
+   */
+  dataTypes: StorageDataType[];
+  refreshDataList: boolean;
+  /**
+   * Runs after the Phase-1 download (read-state) lands locally, before the
+   * Phase-1 upload. Lets the reader re-resolve its resume position and offer
+   * a jump without ever auto-navigating.
+   */
+  onPhase1Downloaded?: () => Promise<void> | void;
+}
+
+/**
+ * Two-stage sync for the single open book (reader explicit sync).
+ *
+ * Phase 1 downloads then uploads reading position + manual bookmarks
+ * (`READ_READY_DATA_TYPES`) — the small payload the reader needs first —
+ * then Phase 2 downloads then uploads everything else queued. Download
+ * always precedes upload within each phase so the local copy converges
+ * before publishing; callers flush pending autosaves first so the upload
+ * publishes the live position rather than stale DB state (LWW guards the
+ * download leg on last-write-wins types, union merges guard the rest).
+ * Returns an error message (undefined on success).
+ */
+export async function replicateSingleBookTwoPhase({
+  localHandler,
+  externalHandler,
+  context,
+  dataTypes,
+  refreshDataList,
+  onPhase1Downloaded
+}: SingleBookTwoPhaseParams): Promise<string | undefined> {
+  const effectiveTypes = [...dataTypes];
+  if (!effectiveTypes.length) return undefined;
+
+  const phase1Types = effectiveTypes.filter((t) => READ_READY_DATA_TYPES.includes(t));
+  const restTypes = effectiveTypes.filter((t) => !READ_READY_DATA_TYPES.includes(t));
+  const contexts = [context];
+  const asError = asSyncErrorMessage;
+
+  if (phase1Types.length) {
+    const downError = await replicateData(
+      externalHandler,
+      localHandler,
+      false,
+      contexts,
+      phase1Types
+    ).catch(asError);
+    if (downError) return downError;
+
+    try {
+      await onPhase1Downloaded?.();
+    } catch {
+      // Best-effort UI refresh: never fail the sync when the reader
+      // re-reads its local position.
+    }
+
+    const upError = await replicateData(
+      localHandler,
+      externalHandler,
+      refreshDataList,
+      contexts,
+      phase1Types
+    ).catch(asError);
+    if (upError) return upError;
+  }
+
+  if (restTypes.length) {
+    const downError = await replicateData(
+      externalHandler,
+      localHandler,
+      false,
+      contexts,
+      restTypes
+    ).catch(asError);
+    if (downError) return downError;
+
+    const upError = await replicateData(
+      localHandler,
+      externalHandler,
+      refreshDataList,
+      contexts,
+      restTypes
+    ).catch(asError);
+    if (upError) return upError;
+  }
+
+  return undefined;
 }
 
 export type RecoveryDirection = 'push' | 'pull';
