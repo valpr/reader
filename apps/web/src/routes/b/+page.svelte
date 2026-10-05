@@ -192,6 +192,8 @@
   import {
     BOOK_SCOPED_DATA_TYPES,
     asSyncErrorMessage,
+    downloadOpenBookReadState,
+    openBookReadStateTypes,
     replicateSingleBookTwoPhase
   } from '$lib/functions/replication/cloud-sync';
   import {
@@ -2054,6 +2056,55 @@
     }
   }
 
+  /**
+   * Open-book-first reconnect prefetch: pulls this book's reading position +
+   * manual bookmarks right after re-auth, before the full library sync, so a
+   * newer cloud position surfaces via the jump offer without waiting.
+   * Best-effort and silent on failure — the full sync retries this download
+   * (degraded to metadata checks by the up-to-date gates) and reports
+   * through its own flows. Offer-only, never auto-navigates.
+   */
+  async function prefetchOpenBookReadState(): Promise<void> {
+    const raw = $rawBookData$;
+    if (!raw || !localStorageHandler || !externalStorageHandler) return;
+    const storageSourceName = raw.storageSource || $syncTarget$;
+    const readStateTypes = openBookReadStateTypes(storageSourceName === $syncTarget$);
+    if (!readStateTypes.length) return;
+    const context = { id: raw.id, title: raw.title, imagePath: raw.coverImage };
+
+    externalStorageHandler.updateSettings(
+      window,
+      false,
+      $replicationSaveBehavior$,
+      $statisticsMergeMode$,
+      $readingGoalsMergeMode$,
+      $cacheStorageData$,
+      true,
+      storageSourceName
+    );
+    try {
+      const downError = await downloadOpenBookReadState({
+        localHandler: localStorageHandler,
+        externalHandler: externalStorageHandler,
+        context,
+        dataTypes: readStateTypes,
+        onDownloaded: refreshOpenBookReadState
+      }).catch(asSyncErrorMessage);
+      if (downError) logger.warn(`Open-book read-state prefetch failed: ${downError}`);
+    } finally {
+      externalStorageHandler.updateSettings(
+        window,
+        true,
+        $replicationSaveBehavior$,
+        $statisticsMergeMode$,
+        $readingGoalsMergeMode$,
+        $cacheStorageData$,
+        false,
+        storageSourceName
+      );
+    }
+  }
+
   async function executeReplication(isSilent = true) {
     if (isReplicating || !dataToReplicate.length || !$rawBookData$ || !externalStorageHandler) {
       return;
@@ -2540,10 +2591,17 @@
     const preOpened = StorageOAuthManager.openAuthWindowSync(window);
     cloudReconnecting = true;
     try {
-      const ok = await reconnectAndSyncNow(window, expiredSyncTarget, preOpened);
+      const ok = await reconnectAndSyncNow(
+        window,
+        expiredSyncTarget,
+        preOpened,
+        [],
+        prefetchOpenBookReadState
+      );
       if (ok && $rawBookData$?.id) {
-        // R1: the full library sync already healed IndexedDB; surface the
-        // open book's new position immediately via the jump offer (offer-only).
+        // The prefetch already surfaced the open book's position; refresh
+        // again after the full sync in case it pulled anything newer.
+        // Offer-only, never auto-navigates.
         await refreshOpenBookReadState();
       }
       if (ok && wasFullscreen && !fullscreenManager.fullscreenElement) {

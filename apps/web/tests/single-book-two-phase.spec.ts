@@ -192,6 +192,261 @@ test.describe('Single-book two-phase sync (reader explicit sync)', () => {
     expect(result.calls).toBe(0);
   });
 
+  test('open-book read-state types stay book-scoped on secondary clouds', async ({ page }) => {
+    await page.goto('/manage');
+
+    const result = await page.evaluate(async () => {
+      const cloudSyncPath = '/src/lib/functions/replication/cloud-sync.ts';
+      const mod = await import(/* @vite-ignore */ cloudSyncPath);
+      return {
+        primary: mod.openBookReadStateTypes(true),
+        secondary: mod.openBookReadStateTypes(false)
+      };
+    });
+
+    expect(result.primary).toEqual(['bookmark', 'userBookmark']);
+    expect(result.secondary).toEqual(['bookmark', 'userBookmark']);
+  });
+
+  test('read-state prefetch downloads position and bookmarks only, never uploads', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    const result = await page.evaluate(async () => {
+      const cloudSyncPath = '/src/lib/functions/replication/cloud-sync.ts';
+      const storageTypesPath = '/src/lib/data/storage/storage-types.ts';
+      const mod = await import(/* @vite-ignore */ cloudSyncPath);
+      const typesMod = await import(/* @vite-ignore */ storageTypesPath);
+      const StorageDataType = typesMod.StorageDataType;
+      const timeline: string[] = [];
+
+      function makeHandler(name: string) {
+        return {
+          name,
+          storageType: `fake-${name}`,
+          isCacheDisabled: () => false,
+          getCurrentStorageSource: () => name,
+          getFilenameForRecentCheck: async () => `${name}-recent`,
+          isProgressPresentAndUpToDate: async () => false,
+          getProgress: async () => {
+            timeline.push(`${name}:getProgress`);
+            return { exploredCharCount: 900, progress: 0.09, lastBookmarkModified: 7 };
+          },
+          saveProgress: async () => {
+            timeline.push(`${name}:saveProgress`);
+          },
+          getUserBookmarks: async () => {
+            timeline.push(`${name}:getUserBookmarks`);
+            return [];
+          },
+          saveUserBookmarks: async () => {
+            timeline.push(`${name}:saveUserBookmarks`);
+          },
+          isAudioBookPresentAndUpToDate: async () => false,
+          getAudioBook: async () => {
+            timeline.push(`${name}:getAudioBook`);
+            return undefined;
+          },
+          isCoverPresentAndUpToDate: async () => true
+        };
+      }
+
+      const local = makeHandler('local');
+      const external = makeHandler('external');
+      let callbackCalls = 0;
+      const error = await mod.downloadOpenBookReadState({
+        localHandler: local,
+        externalHandler: external,
+        context: { title: 'Prefetch Book' },
+        dataTypes: [
+          StorageDataType.PROGRESS,
+          StorageDataType.USER_BOOKMARKS,
+          StorageDataType.AUDIOBOOK
+        ],
+        onDownloaded: () => {
+          callbackCalls += 1;
+        }
+      });
+
+      return { error: error ?? null, timeline, callbackCalls };
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.callbackCalls).toBe(1);
+    // Download direction only: bodies flow external -> local.
+    expect(result.timeline).toContain('external:getProgress');
+    expect(result.timeline).toContain('local:saveProgress');
+    expect(result.timeline).toContain('external:getUserBookmarks');
+    expect(result.timeline).toContain('local:saveUserBookmarks');
+    // No upload leg and no out-of-scope types.
+    expect(result.timeline).not.toContain('local:getProgress');
+    expect(result.timeline).not.toContain('external:saveProgress');
+    expect(result.timeline).not.toContain('external:getAudioBook');
+  });
+
+  test('read-state prefetch failure returns the error without firing the callback', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    const result = await page.evaluate(async () => {
+      const cloudSyncPath = '/src/lib/functions/replication/cloud-sync.ts';
+      const storageTypesPath = '/src/lib/data/storage/storage-types.ts';
+      const mod = await import(/* @vite-ignore */ cloudSyncPath);
+      const typesMod = await import(/* @vite-ignore */ storageTypesPath);
+      const StorageDataType = typesMod.StorageDataType;
+
+      const local = {
+        storageType: 'fake-local',
+        isCacheDisabled: () => false,
+        getFilenameForRecentCheck: async () => 'recent',
+        isProgressPresentAndUpToDate: async () => false,
+        getProgress: async () => ({ exploredCharCount: 1, progress: 0, lastBookmarkModified: 1 }),
+        saveProgress: async () => {},
+        getUserBookmarks: async () => [],
+        saveUserBookmarks: async () => {},
+        isCoverPresentAndUpToDate: async () => true
+      };
+      const external = {
+        storageType: 'fake-external',
+        isCacheDisabled: () => false,
+        getFilenameForRecentCheck: async () => 'recent',
+        isProgressPresentAndUpToDate: async () => false,
+        getProgress: async () => {
+          throw new Error('prefetch offline');
+        },
+        saveProgress: async () => {},
+        getUserBookmarks: async () => [],
+        saveUserBookmarks: async () => {},
+        isCoverPresentAndUpToDate: async () => true
+      };
+
+      let callbackCalls = 0;
+      const error = await mod.downloadOpenBookReadState({
+        localHandler: local,
+        externalHandler: external,
+        context: { title: 'Prefetch Failure Book' },
+        dataTypes: [StorageDataType.PROGRESS],
+        onDownloaded: () => {
+          callbackCalls += 1;
+        }
+      });
+
+      return { error: error ?? null, callbackCalls };
+    });
+
+    expect(result.error).toContain('prefetch offline');
+    expect(result.callbackCalls).toBe(0);
+  });
+
+  test('second pass over synced read-state fetches no bodies', async ({ page }) => {
+    // Proves the no-redownload property: after one download, the progress
+    // up-to-date gate and the user-bookmarks exact-state marker make a
+    // repeat pass metadata-only, so the follow-up full sync is cheap.
+    await page.goto('/manage');
+
+    const result = await page.evaluate(async () => {
+      const cloudSyncPath = '/src/lib/functions/replication/cloud-sync.ts';
+      const storageTypesPath = '/src/lib/data/storage/storage-types.ts';
+      const mod = await import(/* @vite-ignore */ cloudSyncPath);
+      const typesMod = await import(/* @vite-ignore */ storageTypesPath);
+      const StorageDataType = typesMod.StorageDataType;
+      const StorageKey = typesMod.StorageKey;
+      const CLOUD_TS = 100;
+      const timeline: string[] = [];
+      let savedTs = 0;
+
+      const local = {
+        storageType: StorageKey.BROWSER,
+        isCacheDisabled: () => false,
+        isOverwriteMode: () => false,
+        getCurrentStorageSource: () => 'browser-test',
+        getFilenameForRecentCheck: async () => `progress_local_ts_${savedTs}`,
+        isProgressPresentAndUpToDate: async (referenceFilename: string) => {
+          timeline.push(`local:isProgressUpToDate:${referenceFilename}`);
+          const match = /(\d+)$/.exec(referenceFilename || '');
+          return savedTs >= Number(match?.[1] || 0);
+        },
+        getProgress: async () => {
+          timeline.push('local:getProgress');
+          return { exploredCharCount: 1, progress: 0, lastBookmarkModified: savedTs };
+        },
+        saveProgress: async (data: { lastBookmarkModified: number }) => {
+          timeline.push('local:saveProgress');
+          savedTs = data.lastBookmarkModified;
+        },
+        getUserBookmarks: async () => {
+          timeline.push('local:getUserBookmarks');
+          return [];
+        },
+        saveUserBookmarks: async () => {
+          timeline.push('local:saveUserBookmarks');
+        },
+        isCoverPresentAndUpToDate: async () => true
+      };
+      const external = {
+        storageType: 'fake-external',
+        isCacheDisabled: () => false,
+        isOverwriteMode: () => false,
+        getCurrentStorageSource: () => 'external-test',
+        getFilenameForRecentCheck: async () => `progress_external_ts_${CLOUD_TS}`,
+        isProgressPresentAndUpToDate: async () => false,
+        getProgress: async () => {
+          timeline.push('external:getProgress');
+          return { exploredCharCount: 1200, progress: 0.12, lastBookmarkModified: CLOUD_TS };
+        },
+        saveProgress: async () => {
+          timeline.push('external:saveProgress');
+        },
+        getUserBookmarks: async () => {
+          timeline.push('external:getUserBookmarks');
+          return [];
+        },
+        saveUserBookmarks: async () => {
+          timeline.push('external:saveUserBookmarks');
+        },
+        isCoverPresentAndUpToDate: async () => true,
+        listFilesWithPrefix: async () => {
+          timeline.push('external:listFiles');
+          return [];
+        }
+      };
+
+      const params = {
+        localHandler: local,
+        externalHandler: external,
+        context: { id: 4242, title: 'No Redownload Book', imagePath: 'cover.png' },
+        dataTypes: [StorageDataType.PROGRESS, StorageDataType.USER_BOOKMARKS]
+      };
+      const firstError = await mod.downloadOpenBookReadState(params);
+      const firstPass = [...timeline];
+      timeline.length = 0;
+      const secondError = await mod.downloadOpenBookReadState(params);
+      const secondPass = [...timeline];
+
+      return {
+        firstError: firstError ?? null,
+        secondError: secondError ?? null,
+        firstPass,
+        secondPass
+      };
+    });
+
+    expect(result.firstError).toBeNull();
+    expect(result.secondError).toBeNull();
+    // First pass pulls both bodies.
+    expect(result.firstPass).toContain('external:getProgress');
+    expect(result.firstPass).toContain('local:saveProgress');
+    expect(result.firstPass).toContain('external:getUserBookmarks');
+    // Second pass: metadata checks only, zero body fetches or saves.
+    expect(result.secondPass).not.toContain('external:getProgress');
+    expect(result.secondPass).not.toContain('local:saveProgress');
+    expect(result.secondPass).not.toContain('external:getUserBookmarks');
+    expect(result.secondPass).not.toContain('local:saveUserBookmarks');
+    expect(result.secondPass).not.toContain('local:getProgress');
+  });
+
   test('error normalizer never reports failure as success', async ({ page }) => {
     await page.goto('/manage');
 

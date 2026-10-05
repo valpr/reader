@@ -378,6 +378,73 @@ export function asSyncErrorMessage(err: unknown): string {
   return 'Unknown sync error';
 }
 
+/**
+ * Read-state types for the open book, honoring the primary vs secondary
+ * scope: secondary clouds only ever see book-scoped payloads. Both
+ * `READ_READY_DATA_TYPES` happen to be book-scoped today; the filter keeps
+ * that invariant explicit if the set ever grows.
+ */
+export function openBookReadStateTypes(isPrimary: boolean): StorageDataType[] {
+  return READ_READY_DATA_TYPES.filter((t) => isPrimary || BOOK_SCOPED_DATA_TYPES.includes(t));
+}
+
+export interface OpenBookReadStateParams {
+  localHandler: BaseStorageHandler;
+  externalHandler: BaseStorageHandler;
+  context: ReplicationContext;
+  /**
+   * Candidate types (the caller applies the primary vs secondary scope via
+   * `openBookReadStateTypes`); only read-state types are ever downloaded.
+   */
+  dataTypes: StorageDataType[];
+  /**
+   * Runs after the download lands locally. Lets the reader re-resolve its
+   * resume position and offer a jump without ever auto-navigating.
+   */
+  onDownloaded?: () => Promise<void> | void;
+}
+
+/**
+ * Phase-1 download only for the open book: pulls reading position + manual
+ * bookmarks so the reader can offer a jump before the full library sync
+ * runs. Uploads ride along with the full sync moments later. Returns an
+ * error message (undefined on success); failures stay silent by design and
+ * the full sync retries and reports them through its own flows.
+ *
+ * No redownload on the follow-up pass: this runs through the same
+ * `replicateData` path, so the full sync's repeat over this book degrades
+ * to metadata checks — the progress up-to-date gate and the user-bookmarks
+ * exact-state marker recorded here skip both bodies.
+ */
+export async function downloadOpenBookReadState({
+  localHandler,
+  externalHandler,
+  context,
+  dataTypes,
+  onDownloaded
+}: OpenBookReadStateParams): Promise<string | undefined> {
+  const readStateTypes = dataTypes.filter((t) => READ_READY_DATA_TYPES.includes(t));
+  if (!readStateTypes.length) return undefined;
+
+  const downError = await replicateData(
+    externalHandler,
+    localHandler,
+    false,
+    [context],
+    readStateTypes
+  ).catch(asSyncErrorMessage);
+  if (downError) return downError;
+
+  try {
+    await onDownloaded?.();
+  } catch {
+    // Best-effort UI refresh: never fail the sync when the reader
+    // re-reads its local position.
+  }
+
+  return undefined;
+}
+
 export interface SingleBookTwoPhaseParams {
   localHandler: BaseStorageHandler;
   externalHandler: BaseStorageHandler;

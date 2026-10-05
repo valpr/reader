@@ -88,16 +88,28 @@ async function promptManualRetry(
  * Explicit re-auth from a button click (banner / top-bar icon / Settings).
  * Call `StorageOAuthManager.openAuthWindowSync()` synchronously in the click
  * handler and pass it in so iOS/Safari does not block the popup.
+ *
+ * `beforeFullSync` is an optional best-effort fast path that runs after
+ * reconnect and before the full library sync (e.g. the reader pulls the
+ * open book's read-state first so it can offer a jump without waiting).
+ * It never blocks or fails the full sync, which retries and reports
+ * through its own flows.
  */
 export async function reconnectAndSyncNow(
   window: Window,
   sourceName: string,
   preOpenedWindow: Window | null | undefined,
-  storageSources: BooksDbStorageSource[] = []
+  storageSources: BooksDbStorageSource[] = [],
+  beforeFullSync?: () => Promise<void>
 ): Promise<boolean> {
   if (!sourceName) return false;
   const connected = await StorageOAuthManager.reconnect(window, sourceName, preOpenedWindow);
   if (!connected) return false;
+  try {
+    await beforeFullSync?.();
+  } catch {
+    // Intentionally silent; syncAfterReconnect owns error reporting.
+  }
   return syncAfterReconnect(window, sourceName, storageSources);
 }
 
