@@ -189,7 +189,13 @@
   import { reconnectAndSyncNow } from '$lib/functions/replication/cloud-reauth';
   import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
   import { suppressDictionaryScan } from '$lib/functions/suppress-dictionary-scan';
-  import { BOOK_SCOPED_DATA_TYPES } from '$lib/functions/replication/cloud-sync';
+  import {
+    BOOK_SCOPED_DATA_TYPES,
+    asSyncErrorMessage,
+    downloadOpenBookReadState,
+    openBookReadStateTypes,
+    replicateSingleBookTwoPhase
+  } from '$lib/functions/replication/cloud-sync';
   import {
     StorageOAuthManager,
     getExpiredSyncTargets,
@@ -2030,6 +2036,75 @@
     nextChapter$.next(nextChapter.reference);
   }
 
+  /**
+   * Re-read the open book's local position after a read-state download so a
+   * newer cloud position surfaces immediately. Offer-only: refreshes the
+   * resume bookmark and jump offer, never auto-navigates. Best-effort and
+   * safe to call when no book is open. Awaiting the resolve guarantees its
+   * convergence write lands before the Phase-1 upload reads the position.
+   */
+  async function refreshOpenBookReadState(): Promise<void> {
+    const dataId = getBookIdSync();
+    if (!dataId) return;
+    try {
+      bookmarkData = resolveResumeBookmark(dataId);
+      await bookmarkData.catch(() => undefined);
+      await refreshUserBookmarks();
+      maybeOfferJump();
+    } catch {
+      // Best-effort UI refresh: sync outcome is reported separately.
+    }
+  }
+
+  /**
+   * Open-book-first reconnect prefetch: pulls this book's reading position +
+   * manual bookmarks right after re-auth, before the full library sync, so a
+   * newer cloud position surfaces via the jump offer without waiting.
+   * Best-effort and silent on failure — the full sync retries this download
+   * (degraded to metadata checks by the up-to-date gates) and reports
+   * through its own flows. Offer-only, never auto-navigates.
+   */
+  async function prefetchOpenBookReadState(): Promise<void> {
+    const raw = $rawBookData$;
+    if (!raw || !localStorageHandler || !externalStorageHandler) return;
+    const storageSourceName = raw.storageSource || $syncTarget$;
+    const readStateTypes = openBookReadStateTypes(storageSourceName === $syncTarget$);
+    if (!readStateTypes.length) return;
+    const context = { id: raw.id, title: raw.title, imagePath: raw.coverImage };
+
+    externalStorageHandler.updateSettings(
+      window,
+      false,
+      $replicationSaveBehavior$,
+      $statisticsMergeMode$,
+      $readingGoalsMergeMode$,
+      $cacheStorageData$,
+      true,
+      storageSourceName
+    );
+    try {
+      const downError = await downloadOpenBookReadState({
+        localHandler: localStorageHandler,
+        externalHandler: externalStorageHandler,
+        context,
+        dataTypes: readStateTypes,
+        onDownloaded: refreshOpenBookReadState
+      }).catch(asSyncErrorMessage);
+      if (downError) logger.warn(`Open-book read-state prefetch failed: ${downError}`);
+    } finally {
+      externalStorageHandler.updateSettings(
+        window,
+        true,
+        $replicationSaveBehavior$,
+        $statisticsMergeMode$,
+        $readingGoalsMergeMode$,
+        $cacheStorageData$,
+        false,
+        storageSourceName
+      );
+    }
+  }
+
   async function executeReplication(isSilent = true) {
     if (isReplicating || !dataToReplicate.length || !$rawBookData$ || !externalStorageHandler) {
       return;
@@ -2078,13 +2153,30 @@
     let error: string | undefined;
 
     try {
-      error = await replicateData(
-        localStorageHandler,
-        externalStorageHandler,
-        refreshDataList,
-        [context],
-        types
-      ).catch((err: any) => err.message);
+      if (!isSilent) {
+        // Explicit footer sync: two-stage so reading position + manual
+        // bookmarks converge before the heavier payloads. Flush the debounced
+        // autosave first so the upload publishes the live position rather
+        // than pre-turn DB state. Silent background sync stays single-shot
+        // upload-only.
+        await flushPendingAutosave().catch(() => undefined);
+        error = await replicateSingleBookTwoPhase({
+          localHandler: localStorageHandler,
+          externalHandler: externalStorageHandler,
+          context,
+          dataTypes: types,
+          refreshDataList,
+          onPhase1Downloaded: refreshOpenBookReadState
+        }).catch(asSyncErrorMessage);
+      } else {
+        error = await replicateData(
+          localStorageHandler,
+          externalStorageHandler,
+          refreshDataList,
+          [context],
+          types
+        ).catch(asSyncErrorMessage);
+      }
     } finally {
       externalStorageHandler.updateSettings(
         window,
@@ -2499,7 +2591,19 @@
     const preOpened = StorageOAuthManager.openAuthWindowSync(window);
     cloudReconnecting = true;
     try {
-      const ok = await reconnectAndSyncNow(window, expiredSyncTarget, preOpened);
+      const ok = await reconnectAndSyncNow(
+        window,
+        expiredSyncTarget,
+        preOpened,
+        [],
+        prefetchOpenBookReadState
+      );
+      if (ok && $rawBookData$?.id) {
+        // The prefetch already surfaced the open book's position; refresh
+        // again after the full sync in case it pulled anything newer.
+        // Offer-only, never auto-navigates.
+        await refreshOpenBookReadState();
+      }
       if (ok && wasFullscreen && !fullscreenManager.fullscreenElement) {
         const restored = await fullscreenManager.requestFullscreen(document.documentElement);
         if (!restored) {
@@ -2917,6 +3021,8 @@
       <div
         tabindex="0"
         role="button"
+        aria-label="Sync now"
+        data-testid="reader-manual-sync"
         class="flex h-full w-8 items-center justify-center text-sm sm:text-lg"
         class:text-red-500={externalStorageErrors > 1}
         class:animate-pulse={externalStorageErrors > 1 || isReplicating}
