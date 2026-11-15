@@ -43,7 +43,8 @@ import {
 import {
   BaseStorageHandler,
   FilePrefix,
-  type ExternalFile
+  type ExternalFile,
+  type FileIdentity
 } from '$lib/data/storage/handler/base-handler';
 import { getStorageHandler } from '$lib/data/storage/storage-handler-factory';
 import {
@@ -504,6 +505,15 @@ export abstract class ApiStorageHandler extends BaseStorageHandler {
           ? { name: entry.name }
           : { name: entry.name, revision: entry.revision }
       );
+  }
+
+  async listRootFileIdentities(prefix: string): Promise<FileIdentity[] | undefined> {
+    const files = await this.listRootFilesByPrefix(prefix);
+    return files.map((entry) =>
+      entry.revision === undefined
+        ? { name: entry.name }
+        : { name: entry.name, revision: entry.revision }
+    );
   }
 
   async getBook(context: ReplicationContext) {

@@ -37,4 +37,35 @@ test.describe('Sync diagnostics', () => {
     expect(runs[0]).toMatchObject({ startedAt: 54, target: 'test-target' });
     expect(runs.at(-1)).toMatchObject({ startedAt: 5, target: 'test-target' });
   });
+
+  test('records whole-sync early-exit skips', async ({ page }) => {
+    await page.goto('/');
+
+    const runs = await page.evaluate(async () => {
+      const modulePath = '/src/lib/functions/replication/sync-diagnostics.ts';
+      const diagnostics = await import(/* @vite-ignore */ modulePath);
+
+      diagnostics.recordSyncRun({
+        startedAt: 1,
+        durationMs: 2,
+        target: 'test-target',
+        attemptedTypes: [],
+        skipped: true
+      });
+      diagnostics.recordSyncRun({
+        startedAt: 2,
+        durationMs: 3,
+        target: 'test-target',
+        attemptedTypes: []
+      });
+
+      return diagnostics.getSyncRuns();
+    });
+
+    expect(runs).toHaveLength(2);
+    expect(runs[0].startedAt).toBe(2);
+    expect(runs[0].skipped).toBeUndefined();
+    expect(runs[1].startedAt).toBe(1);
+    expect(runs[1].skipped).toBe(true);
+  });
 });

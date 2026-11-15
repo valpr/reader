@@ -41,6 +41,11 @@ import {
 } from '$lib/functions/replication/sync-priority';
 import { ensureDeviceIdentity } from '$lib/functions/replication/device-identity';
 import { recordSyncRun } from '$lib/functions/replication/sync-diagnostics';
+import {
+  recordFullSyncState,
+  SYNC_STATE_GATED_TYPES,
+  trySkipFullSync
+} from '$lib/functions/replication/sync-state';
 import { syncStatisticContributions } from '$lib/functions/replication/contribution-sync';
 import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
 import { isNetworkUnreachableError } from '$lib/functions/replication/error-handler';
@@ -127,6 +132,7 @@ export async function triggerCloudSync(
   const dataTypes = requestedTypes?.length ? requestedTypes : SYNC_DATA_TYPES;
   let deletionCounts: { deletedBookmarks: number; removedTagTitles: number } | undefined;
   let runId = 0;
+  let skippedRun = false;
   const finish = (error = '') => {
     // Safety net: transient network failures (any data type) must retain the
     // pending marker even if the per-request handler never ran, so the next
@@ -140,6 +146,7 @@ export async function triggerCloudSync(
       target: sourceName,
       attemptedTypes: dataTypes,
       ...(error ? { error } : {}),
+      ...(skippedRun ? { skipped: true } : {}),
       ...(deletionCounts || {})
     });
     return error;
@@ -213,19 +220,63 @@ export async function triggerCloudSync(
       });
 
     const friendlyTarget = getFriendlyStorageSourceName(sourceName) || sourceName;
-    runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
+
+    // Lightweight presence refresh: re-list cloud folders (metadata only,
+    // no book blob download) so remote-only / remotely-deleted books appear
+    // in the library. Handlers are singletons, so invalidating here is seen
+    // by the unified library stream. Emit undefined (not the handler) so
+    // `database.dataList$` subscribers keep their expected source.
+    const refreshPresence = async () => {
+      try {
+        if (targetHandler instanceof ApiStorageHandler) {
+          targetHandler.invalidateBookListCache();
+          await targetHandler.getBookList();
+        }
+      } catch (listError: any) {
+        logger.warn(`Cloud book list refresh failed for ${sourceName}: ${listError?.message}`);
+      } finally {
+        database.listLoading$.next(false);
+        database.dataListChanged$.next(undefined);
+      }
+    };
 
     // List warming: one batched metadata listing up front so the per-book
     // getExternalFiles calls in both passes below serve the in-memory cache
     // (titleToId/titleToFiles) instead of issuing O(books) per-folder
     // listings on a cold cache. Metadata-only (folder/file names), no blob
     // download; no-op when already fetched. Best-effort: failure falls back
-    // to today's per-book listing and must never fail the sync.
+    // to today's per-book listing and must never fail the sync. Runs
+    // before the early-exit gate below so the gate's per-book listings are
+    // cache-served too.
     try {
       await targetHandler.getBookList();
     } catch (listError: any) {
       logger.warn(`Cloud book list warm-up failed for ${sourceName}: ${listError?.message}`);
     }
+
+    // Whole-sync early exit: when the local fingerprint and the remote
+    // file inventory both match the last successful full sync, there is
+    // nothing to download or upload. The gate is advisory and fail-open:
+    // any doubt runs the full sync below. The last-sync time is still
+    // updated — currency was verified just now — and the presence refresh
+    // still runs so remote-only books show up.
+    if (
+      await trySkipFullSync(sourceName, {
+        db,
+        localHandler: localStorageHandler,
+        remoteHandler: targetHandler,
+        dataTypes
+      })
+    ) {
+      skippedRun = true;
+      markLastSync(sourceName);
+      clearPendingCloudSync(sourceName);
+      await refreshPresence();
+      pushTransientNotice(`Already in sync (${getFriendlyStorageSourceName(sourceName)})`);
+      return finish();
+    }
+
+    runId = beginSyncActivity(`${buildSyncLabel('Syncing', dataTypes)} — ${friendlyTarget}`);
 
     // Two-phase prioritized sync. Phase 1 downloads reading position +
     // manual bookmarks for currently-reading books first — the payload the
@@ -331,21 +382,18 @@ export async function triggerCloudSync(
     markLastSync(sourceName);
     clearPendingCloudSync(sourceName);
 
-    // Lightweight presence refresh: re-list cloud folders (metadata only,
-    // no book blob download) so remote-only / remotely-deleted books appear
-    // in the library. Handlers are singletons, so invalidating here is seen
-    // by the unified library stream. Emit undefined (not the handler) so
-    // `database.dataList$` subscribers keep their expected source.
-    try {
-      if (targetHandler instanceof ApiStorageHandler) {
-        targetHandler.invalidateBookListCache();
-        await targetHandler.getBookList();
-      }
-    } catch (listError: any) {
-      logger.warn(`Cloud book list refresh failed for ${sourceName}: ${listError?.message}`);
-    } finally {
-      database.listLoading$.next(false);
-      database.dataListChanged$.next(undefined);
+    await refreshPresence();
+
+    // Record the post-sync exact state for the early-exit gate. Only runs
+    // that covered all gated types may mint a marker (see sync-state.ts);
+    // best-effort, never fails the sync.
+    if (SYNC_STATE_GATED_TYPES.every((type) => dataTypes.includes(type))) {
+      await recordFullSyncState(sourceName, {
+        db,
+        localHandler: localStorageHandler,
+        remoteHandler: targetHandler,
+        dataTypes
+      });
     }
 
     endSyncActivity(runId);
