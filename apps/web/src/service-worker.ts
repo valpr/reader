@@ -12,7 +12,14 @@ const BUILD_CACHE_NAME = `build:${version}`;
 
 const prerenderedSet = new Set(prerendered);
 
-const assetsToCache = build.concat(files).concat(prerendered);
+// Dotfiles in `static/` (notably `.nojekyll`, the GitHub Pages marker) are
+// not fetchable assets: Pages answers 404 for them, and `cache.addAll`
+// rejects the whole install if any single URL fails, so the worker would
+// never activate. Keep them deployed, but out of the precache list.
+const assetsToCache = build
+  .concat(files)
+  .concat(prerendered)
+  .filter((asset) => !asset.split('/').pop()?.startsWith('.'));
 const cachedAssets = new Set(assetsToCache);
 
 worker.addEventListener('install', (event) => {
