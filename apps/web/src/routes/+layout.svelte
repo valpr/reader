@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
+  import { base } from '$app/paths';
   import { page } from '$app/stores';
   import CloudSyncStatus from '$lib/components/cloud/cloud-sync-status.svelte';
   import { basePath, clearConsoleOnReload } from '$lib/data/env';
@@ -106,6 +107,22 @@
     zIndex = '';
   }
 
+  // Install the service worker (src/service-worker.ts) so the app shell is
+  // precached and the initial page loads offline from local books. SvelteKit
+  // does not register it on its own, so without this the worker never
+  // installs and every load needs the network. Registration failures must
+  // never break the app, so they are logged and ignored.
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) {
+      return;
+    }
+
+    void navigator.serviceWorker.register(`${base}/service-worker.js`).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`Service worker registration failed: ${message}`);
+    });
+  }
+
   dialogManager.dialogs$.subscribe((d) => {
     clickOnCloseDisabled = d[0]?.disableCloseOnClick ?? false;
     zIndex = d[0]?.zIndex ?? '';
@@ -118,6 +135,8 @@
     }
 
     void migrateUserFontsCache();
+
+    registerServiceWorker();
 
     startProactiveRefresh();
 
