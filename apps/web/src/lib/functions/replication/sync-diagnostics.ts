@@ -16,6 +16,12 @@ export interface SyncRun {
   attemptedTypes: StorageDataType[];
   error?: string;
   /**
+   * True when the run ended early via the whole-sync exact-state gate
+   * (`sync-state.ts`): local and remote state both matched the last
+   * successful full sync, so no download or upload ran.
+   */
+  skipped?: boolean;
+  /**
    * Deletion-state census (tag/bookmark deletion sync): soft-deleted
    * bookmark rows and locally-removed tag titles held at the end of the run.
    * Deleted rows live indefinitely by design (no tombstone GC — a dormant
@@ -64,6 +70,7 @@ function isSyncRun(value: unknown): value is SyncRun {
     typeof run.target === 'string' &&
     Array.isArray(run.attemptedTypes) &&
     (run.error === undefined || typeof run.error === 'string') &&
+    (run.skipped === undefined || typeof run.skipped === 'boolean') &&
     (run.deletedBookmarks === undefined || typeof run.deletedBookmarks === 'number') &&
     (run.removedTagTitles === undefined || typeof run.removedTagTitles === 'number')
   );

@@ -151,6 +151,19 @@ export abstract class BaseStorageHandler {
     context: ReplicationContext
   ): Promise<FileIdentity[]>;
 
+  /**
+   * Metadata-only listing of files sharing a name prefix at the storage
+   * root (or the equivalent scope for the handler). Used by exact-state
+   * sync gates to recognize an unchanged remote set without downloading
+   * bodies. Implementations must return every match (not first-match) so
+   * duplicate files are visible. The default returns undefined, which
+   * disables the gate: handlers without a file-backed root (browser,
+   * backup) must never report an "unchanged" set they cannot observe.
+   */
+  async listRootFileIdentities(_prefix: string): Promise<FileIdentity[] | undefined> {
+    return undefined;
+  }
+
   abstract getBook(
     context: ReplicationContext
   ): Promise<Omit<BooksDbBookData, 'id'> | File | undefined>;

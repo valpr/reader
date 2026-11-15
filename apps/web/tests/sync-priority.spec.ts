@@ -277,8 +277,15 @@ test.describe('Read-ready indicators', () => {
       let noticeFiredWhileActivityActive = false;
 
       let bookListInvocations = 0;
+      // The presence refresh is the invalidate + fetch pair, not just "any
+      // getBookList after warm-up": triggerCloudSync also takes a bare
+      // metadata listing for the early-exit gate's post-sync inventory
+      // capture (cache-served; see sync-state.ts), which must not count
+      // as a refresh.
+      let awaitingPresenceFetch = false;
       targetHandler.invalidateBookListCache = () => {
         timeline.push('invalidateBookListCache');
+        awaitingPresenceFetch = true;
         return origInvalidate();
       };
 
@@ -288,11 +295,16 @@ test.describe('Read-ready indicators', () => {
           timeline.push('warmUpBookList');
           return [];
         }
-        timeline.push('presenceRefreshStart');
-        presenceRefreshInProgress = true;
-        await new Promise((r) => setTimeout(r, 60));
-        presenceRefreshInProgress = false;
-        timeline.push('presenceRefreshEnd');
+        if (awaitingPresenceFetch) {
+          awaitingPresenceFetch = false;
+          timeline.push('presenceRefreshStart');
+          presenceRefreshInProgress = true;
+          await new Promise((r) => setTimeout(r, 60));
+          presenceRefreshInProgress = false;
+          timeline.push('presenceRefreshEnd');
+          return [];
+        }
+        timeline.push('inventoryBookList');
         return [];
       };
 
@@ -351,6 +363,7 @@ test.describe('Read-ready indicators', () => {
       'invalidateBookListCache',
       'presenceRefreshStart',
       'presenceRefreshEnd',
+      'inventoryBookList',
       'transientNotice:Sync complete'
     ]);
   });
