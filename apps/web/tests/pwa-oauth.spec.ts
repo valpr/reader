@@ -173,6 +173,92 @@ test.describe('PWA OAuth same-window redirect flow', () => {
     expect(remainingState).toBeNull();
   });
 
+  test('auth callback with code delivered in URL fragment exchanges token and redirects', async ({
+    page
+  }) => {
+    await page.goto('/manage');
+
+    // Seed storage source in IndexedDB using database.db
+    await page.evaluate(async () => {
+      const storePath = '/src/lib/data/store.ts';
+      const { database } = await import(/* @vite-ignore */ storePath);
+      const db = await database.db;
+      await db.put('storageSource', {
+        name: 'custom-onedrive-source',
+        type: 'onedrive',
+        storedInManager: false,
+        encryptionDisabled: true,
+        data: { clientId: 'test-client', refreshToken: 'old-refresh-token' },
+        disconnected: false,
+        lastSourceModified: Date.now()
+      });
+    });
+
+    // Mock token endpoint
+    await page.route('**/oauth2/v2.0/token', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'new-pwa-access-token',
+          expires_in: '3600',
+          scope: 'Files.ReadWrite.AppFolder User.Read',
+          refresh_token: 'new-pwa-refresh-token'
+        })
+      });
+    });
+
+    // Mock Microsoft Graph user endpoint
+    await page.route('**/v1.0/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          userPrincipalName: 'user@outlook.com',
+          displayName: 'PWA User'
+        })
+      });
+    });
+
+    // Seed PWA OAuth state in sessionStorage
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'pwa_oauth_state',
+        JSON.stringify({
+          storageSourceName: 'custom-onedrive-source',
+          storageType: 'onedrive',
+          clientId: 'test-client',
+          clientSecret: 'test-secret',
+          sendSecret: false,
+          tokenEndpoint: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+          codeVerifier: 'mock_code_verifier_12345678901234567890',
+          oauthState: 'mock-oauth-state',
+          returnUrl: '/manage',
+          triggerSyncOnReturn: true,
+          timestamp: Date.now()
+        })
+      );
+    });
+
+    // Some providers (notably Microsoft's personal-account flow) return the
+    // code in the URL fragment instead of the query string.
+    await page.goto('/auth#code=mock_authorization_code&state=mock-oauth-state');
+
+    // Should redirect back to /manage
+    await expect(page).toHaveURL(/\/manage/, { timeout: 15000 });
+
+    // Verify storage source was updated in IndexedDB with new refresh token
+    const storedData = await page.evaluate(async () => {
+      const storePath = '/src/lib/data/store.ts';
+      const { database } = await import(/* @vite-ignore */ storePath);
+      const db = await database.db;
+      return db.get('storageSource', 'custom-onedrive-source');
+    });
+
+    expect(storedData).toBeDefined();
+    expect(storedData.data.refreshToken).toBe('new-pwa-refresh-token');
+  });
+
   test('auth callback with pre-upgrade state lacking oauthState succeeds without state check error', async ({
     page
   }) => {

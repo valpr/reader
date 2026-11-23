@@ -99,7 +99,11 @@
           url.searchParams.get('error') ||
           'Unknown error'
       );
-    } else if (url.searchParams.has('code')) {
+    } else if (url.searchParams.has('code') || hashParams.has('code')) {
+      // Some providers (notably Microsoft's personal-account flow) return the
+      // authorization code in the URL fragment instead of the query string.
+      // Accept both — checking the query alone lands here with no recognized
+      // parameters and surfaces as "Unexpected authentication context".
       const params = new URLSearchParams();
       let clientId: string;
       let clientSecret: string | undefined;
@@ -120,7 +124,7 @@
         // CSRF check for same-window redirects: the provider must echo the
         // `state` we stored before leaving. In-flight states from before upgrade
         // may omit this field, so only enforce when pwaState.oauthState is present.
-        const returnedState = url.searchParams.get('state');
+        const returnedState = url.searchParams.get('state') || hashParams.get('state');
         if (pwaState.oauthState && returnedState !== pwaState.oauthState) {
           reportError(
             url.origin,
@@ -148,7 +152,7 @@
         params.append('client_secret', clientSecret);
       }
 
-      params.append('code', url.searchParams.get('code') || '');
+      params.append('code', url.searchParams.get('code') || hashParams.get('code') || '');
       params.append('code_verifier', codeVerifier);
 
       fetch(tokenEndpoint, {
