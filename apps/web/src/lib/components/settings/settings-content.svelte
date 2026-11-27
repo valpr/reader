@@ -715,7 +715,7 @@
 
     const wasCanceled = await confirmAction(
       'Adopt a fresh device identity?',
-      `Use this when sync says this device's identity was cloned — another device or browser is publishing statistics under the same identity, so publishing is held.\n\n- Nothing on this device is deleted: books, progress, and statistics stay.\n- The existing cloud statistics file stays untouched and still counts toward your totals.\n- New reading publishes under the fresh identity; sync again afterwards to resume publishing.`,
+      `Use this only to split this device off a shared sync identity — for example, two phones or browsers that should track statistics as separate devices from now on. Diverged statistics under a shared identity merge automatically; you do not need this to fix a sync error.\n\n- Nothing on this device is deleted: books, progress, and statistics stay.\n- Statistics already synced under the shared identity stay as they are and still count toward your totals.\n- New reading on this device publishes under the fresh identity.`,
       { confirmLabel: 'Adopt fresh identity' }
     );
     if (wasCanceled) return;
@@ -729,7 +729,7 @@
           props: {
             title: 'New device identity adopted',
             message:
-              'This device now publishes under a fresh identity. Sync again to resume publishing your statistics.'
+              'This device now publishes under a fresh identity. Statistics synced under the shared identity still count toward your totals.'
           }
         }
       ]);
@@ -1763,7 +1763,7 @@
       </ListItem>
       <ListItem
         headline="Adopt a fresh device identity"
-        description="Fixes a held sync that says this device's identity was cloned. Nothing is deleted; new reading publishes under a fresh identity and the old cloud statistics file still counts toward your totals."
+        description="Splits this device onto its own sync identity when two devices are sharing one. Diverged statistics merge automatically — use this only to keep the devices separate from now on. Nothing is deleted."
       >
         <div slot="suffix">
           <Button

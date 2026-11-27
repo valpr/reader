@@ -395,7 +395,7 @@ test.describe('Sync conflicts (M3)', () => {
     expect(result.members).toEqual(['2026-09-01', '2026-09-08']);
   });
 
-  test('cloned device identity holds publish without overwriting', async ({ page }) => {
+  test('shared device identity merges diverged files instead of holding', async ({ page }) => {
     await page.goto('/');
 
     const result = await page.evaluate(async () => {
@@ -478,6 +478,27 @@ test.describe('Sync conflicts (M3)', () => {
         ]
       });
 
+      // A local-only row the clone never saw: the merge must keep it.
+      await db.storeStatistics(
+        title,
+        [
+          {
+            title,
+            dateKey: '2026-09-04',
+            charactersRead: 300,
+            readingTime: 60,
+            minReadingSpeed: 18000,
+            altMinReadingSpeed: 18000,
+            lastReadingSpeed: 18000,
+            maxReadingSpeed: 18000,
+            lastStatisticModified: 3000,
+            sessionCount: 1
+          }
+        ],
+        ReplicationSaveBehavior.Overwrite,
+        MergeMode.LOCAL
+      );
+
       let cloneMessage = '';
       try {
         await sync.publishContributionFiles(db, remote, 'device-a');
@@ -520,14 +541,22 @@ test.describe('Sync conflicts (M3)', () => {
 
       return {
         cloneMessage,
-        heldRows: held.rows.map((row: any) => row.charactersRead),
+        heldRows: held.rows
+          .map((row: any) => ({ dateKey: row.dateKey, charactersRead: row.charactersRead }))
+          .sort((a: any, b: any) => (a.dateKey > b.dateKey ? 1 : -1)),
         resumedRows: resumed?.rows.map((row: any) => row.dateKey),
         freshDiffers: freshId !== 'device-a'
       };
     });
 
-    expect(result.cloneMessage).toMatch(/cloned device identity/i);
-    expect(result.heldRows).toEqual([9999]);
+    // No hold: publishing succeeds, the diverged row resolves to the
+    // higher-revision (clone) version, and the local-only row survives —
+    // the published file is the union of both sides.
+    expect(result.cloneMessage).toEqual('');
+    expect(result.heldRows).toEqual([
+      { dateKey: '2026-09-02', charactersRead: 9999 },
+      { dateKey: '2026-09-04', charactersRead: 300 }
+    ]);
     expect(result.freshDiffers).toBe(true);
     expect(result.resumedRows).toEqual(['2026-09-03']);
   });

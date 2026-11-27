@@ -2021,6 +2021,66 @@ export class DatabaseService {
   }
 
   /**
+   * Merge a downloaded copy of THIS device's own contribution file back
+   * into the local contribution store. Two contexts sharing one device
+   * identity (e.g. the installed app and a browser tab on one phone) can
+   * diverge: each holds rows the other lacks. Rows are unioned by
+   * (title, dateKey) and never summed — same-device rows are one dataset
+   * seen twice, so the per-row winner is the higher revision, with
+   * lastStatisticModified as the tie-break. The local revision counter is
+   * raised past the merged maximum so future saves stay monotonic.
+   */
+  async mergeOwnContributionFile(file: StatisticContributionFile): Promise<void> {
+    if (!file?.deviceId || !Array.isArray(file.rows) || !file.rows.length) return;
+    const db = await this.db;
+    const tx = db.transaction(['statisticContribution', 'statisticSyncState'], 'readwrite');
+    try {
+      const store = tx.objectStore('statisticContribution');
+      let maxRevision = 0;
+      for (const row of file.rows) {
+        if (!row?.title || !row?.dateKey) continue;
+        maxRevision = Math.max(maxRevision, row.revision || 0);
+        const existing = await store.get([row.title, row.dateKey]);
+        const remoteWins =
+          !existing ||
+          (row.revision || 0) > (existing.revision || 0) ||
+          ((row.revision || 0) === (existing.revision || 0) &&
+            (row.lastStatisticModified || 0) > (existing.lastStatisticModified || 0));
+        if (remoteWins) {
+          await store.put({
+            ...row,
+            deviceId: file.deviceId,
+            year: getYearFromDateKey(row.dateKey)
+          });
+        }
+      }
+      if (maxRevision > 0) {
+        const syncStateStore = tx.objectStore('statisticSyncState');
+        const stateKey = `contribution-revision-${file.deviceId}`;
+        const state = await syncStateStore.get(stateKey);
+        const current = state?.revisionByFile?.['local'] || 0;
+        if (maxRevision > current) {
+          await syncStateStore.put({
+            id: stateKey,
+            updatedAt: Date.now(),
+            revisionByFile: { ...(state?.revisionByFile || {}), local: maxRevision }
+          });
+        }
+      }
+      await tx.done;
+    } catch (error: any) {
+      try {
+        tx.abort();
+        await tx.done;
+      } catch (_) {
+        // no-op
+      }
+      throw error;
+    }
+    await this.refoldAllFromStores();
+  }
+
+  /**
    * Persist downloaded remote contribution files into the remote cache, then
    * recompute display. Each file replaces its device's cached rows, so a
    * re-pull of identical files is a no-op. Rows stamped with our own

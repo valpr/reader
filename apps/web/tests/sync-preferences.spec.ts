@@ -62,7 +62,7 @@ test.describe('Sync preferences (M4)', () => {
     await page.goto('/settings/data');
     await expect(page.getByRole('tab', { name: 'Data' })).toHaveAttribute('aria-selected', 'true');
 
-    // Adoption is a local fix for a held publish: available without a sync target.
+    // Adoption is a local identity split: available without a sync target.
     const adopt = page.getByRole('button', { name: 'Adopt…' }).first();
     await expect(adopt).toBeVisible();
     await expect(adopt).toBeEnabled();
@@ -70,7 +70,7 @@ test.describe('Sync preferences (M4)', () => {
 
     await expect(page.getByText('Adopt a fresh device identity?')).toBeVisible();
     const dialog = page.locator('section', { hasText: 'Adopt a fresh device identity?' });
-    await expect(dialog.getByText(/publishing is held/)).toBeVisible();
+    await expect(dialog.getByText(/separate devices from now on/)).toBeVisible();
     await expect(dialog.getByText(/Nothing on this device is deleted/)).toBeVisible();
     const confirm = dialog.getByRole('button', { name: 'Adopt fresh identity' });
     await expect(confirm).toBeVisible();

@@ -23,23 +23,6 @@ export function isConflictError(error: unknown): error is ConflictError {
 }
 
 /**
- * A second writer is publishing under our own deviceId (cloned identity or a
- * restored backup syncing beside its source). Publishing is held — never a
- * silent overwrite — until the device adopts a fresh identity.
- */
-export class CloneSuspectError extends Error {
-  name = 'CloneSuspectError';
-}
-
-export function isCloneSuspectError(error: unknown): error is CloneSuspectError {
-  return (
-    !!error &&
-    typeof error === 'object' &&
-    (error as CloneSuspectError).name === 'CloneSuspectError'
-  );
-}
-
-/**
  * Network-level failure with no HTTP response (XHR `status 0`, `Failed to
  * fetch`, `NetworkError`, offline). Covers every cloud data type because all
  * API traffic funnels through `ApiStorageHandler.request()` — profiles,

@@ -61,7 +61,7 @@ for (const width of [412, 360]) {
       hasText: 'Adopt a fresh device identity?'
     });
     await expectDialogFitsViewport(adoptDialog);
-    await expect(adoptDialog.getByText(/publishing is held/)).toBeVisible();
+    await expect(adoptDialog.getByText(/separate devices from now on/)).toBeVisible();
     const adoptConfirm = adoptDialog.getByRole('button', { name: 'Adopt fresh identity' });
     await expect(adoptConfirm).toBeVisible();
     await expect(adoptConfirm).toBeEnabled();
