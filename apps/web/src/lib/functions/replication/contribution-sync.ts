@@ -9,7 +9,7 @@ import type {
   BooksDbStatistic,
   BooksDbStatisticSyncState
 } from '$lib/data/database/books-db/versions/books-db';
-import { createDeviceId } from '$lib/functions/replication/device-identity';
+import { adoptFreshDeviceIdentity } from '$lib/functions/replication/device-identity';
 import { CloneSuspectError } from '$lib/functions/replication/error-handler';
 import {
   MIGRATION_MARKER_FORMAT,
@@ -171,7 +171,8 @@ export async function publishContributionFiles(
           `Contribution file ${fileKey} changed outside this device (revision ` +
             `${match.revision}, last published ${last.revision}). Publishing is held so a ` +
             `cloned device identity cannot overwrite another device's reading. Adopt a ` +
-            `fresh device identity, then sync again.`
+            `fresh device identity (Settings → Data → Sync Recovery → Adopt fresh ` +
+            `identity), then sync again.`
         );
       }
     }
@@ -228,7 +229,6 @@ export async function adoptNewDeviceIdentity(
   db: DatabaseService,
   deviceLabel = 'This device'
 ): Promise<string> {
-  const deviceId = createDeviceId();
-  await db.putDeviceIdentity({ id: 0, deviceId, deviceLabel });
-  return deviceId;
+  const identity = await adoptFreshDeviceIdentity(db, deviceLabel);
+  return identity.deviceId;
 }

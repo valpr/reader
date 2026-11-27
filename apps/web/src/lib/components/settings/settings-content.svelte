@@ -82,6 +82,7 @@
   import { secondsToMinutes } from '$lib/functions/statistic-util';
   import { dummyFn } from '$lib/functions/utils';
   import { runOneShotRecovery } from '$lib/functions/replication/cloud-sync';
+  import { adoptFreshDeviceIdentity } from '$lib/functions/replication/device-identity';
   import { map } from 'rxjs';
   import Fa from 'svelte-fa';
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
@@ -704,6 +705,46 @@
       ]);
     } finally {
       isRecovering = false;
+    }
+  }
+
+  let isAdoptingIdentity = false;
+
+  async function runAdoptIdentity() {
+    if (isAdoptingIdentity) return;
+
+    const wasCanceled = await confirmAction(
+      'Adopt a fresh device identity?',
+      `Use this when sync says this device's identity was cloned — another device or browser is publishing statistics under the same identity, so publishing is held.\n\n- Nothing on this device is deleted: books, progress, and statistics stay.\n- The existing cloud statistics file stays untouched and still counts toward your totals.\n- New reading publishes under the fresh identity; sync again afterwards to resume publishing.`,
+      { confirmLabel: 'Adopt fresh identity' }
+    );
+    if (wasCanceled) return;
+
+    isAdoptingIdentity = true;
+    try {
+      await adoptFreshDeviceIdentity(database);
+      dialogManager.dialogs$.next([
+        {
+          component: MessageDialog,
+          props: {
+            title: 'New device identity adopted',
+            message:
+              'This device now publishes under a fresh identity. Sync again to resume publishing your statistics.'
+          }
+        }
+      ]);
+    } catch (err: any) {
+      dialogManager.dialogs$.next([
+        {
+          component: MessageDialog,
+          props: {
+            title: 'Identity change failed',
+            message: `Could not adopt a fresh device identity: ${err?.message || err}`
+          }
+        }
+      ]);
+    } finally {
+      isAdoptingIdentity = false;
     }
   }
 
@@ -1717,6 +1758,21 @@
             on:click={() => runRecovery('pull')}
           >
             Pull…
+          </Button>
+        </div>
+      </ListItem>
+      <ListItem
+        headline="Adopt a fresh device identity"
+        description="Fixes a held sync that says this device's identity was cloned. Nothing is deleted; new reading publishes under a fresh identity and the old cloud statistics file still counts toward your totals."
+      >
+        <div slot="suffix">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isAdoptingIdentity}
+            on:click={() => runAdoptIdentity()}
+          >
+            Adopt…
           </Button>
         </div>
       </ListItem>
