@@ -47,6 +47,42 @@ test.describe('Sync preferences (M4)', () => {
     await expect(page.getByRole('button', { name: 'Pull…' }).first()).toBeDisabled();
   });
 
+  test('adopt fresh identity confirms, then replaces the device identity', async ({ page }) => {
+    await page.goto('/');
+    const readIdentity = () =>
+      page.evaluate(async () => {
+        const identityPath = '/src/lib/functions/replication/device-identity.ts';
+        const storePath = '/src/lib/data/store.ts';
+        const { ensureDeviceIdentity } = await import(/* @vite-ignore */ identityPath);
+        const { database } = await import(/* @vite-ignore */ storePath);
+        return (await ensureDeviceIdentity(database)).deviceId;
+      });
+    const before = await readIdentity();
+
+    await page.goto('/settings/data');
+    await expect(page.getByRole('tab', { name: 'Data' })).toHaveAttribute('aria-selected', 'true');
+
+    // Adoption is a local identity split: available without a sync target.
+    const adopt = page.getByRole('button', { name: 'Adopt…' }).first();
+    await expect(adopt).toBeVisible();
+    await expect(adopt).toBeEnabled();
+    await adopt.click();
+
+    await expect(page.getByText('Adopt a fresh device identity?')).toBeVisible();
+    const dialog = page.locator('section', { hasText: 'Adopt a fresh device identity?' });
+    await expect(dialog.getByText(/separate devices from now on/)).toBeVisible();
+    await expect(dialog.getByText(/Nothing on this device is deleted/)).toBeVisible();
+    const confirm = dialog.getByRole('button', { name: 'Adopt fresh identity' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+
+    await expect(page.getByText('New device identity adopted')).toBeVisible({ timeout: 30000 });
+    const after = await readIdentity();
+    expect(after).toBeTruthy();
+    expect(after).not.toEqual(before);
+  });
+
   test('recovery actions confirm before running and report the outcome', async ({ page }) => {
     await page.goto('/');
     await seedSyncConfig(page, { syncTarget: 'ttu-gdrive-default' });

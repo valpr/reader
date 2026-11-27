@@ -9,8 +9,8 @@ import type {
   BooksDbStatistic,
   BooksDbStatisticSyncState
 } from '$lib/data/database/books-db/versions/books-db';
-import { createDeviceId } from '$lib/functions/replication/device-identity';
-import { CloneSuspectError } from '$lib/functions/replication/error-handler';
+import { logger } from '$lib/data/logger';
+import { adoptFreshDeviceIdentity } from '$lib/functions/replication/device-identity';
 import {
   MIGRATION_MARKER_FORMAT,
   MIGRATION_MARKER_VERSION,
@@ -133,25 +133,52 @@ export async function pullContributionFiles(
 }
 
 /**
- * Publish: overwrite our own stable per-year files in place. Files the
- * remote already holds at an equal-or-newer revision are skipped, so a
- * no-op re-sync performs no writes.
+ * Publish: overwrite our own stable per-year files in place. A file whose
+ * content already matches the remote is skipped, so a no-op re-sync
+ * performs no writes.
  *
- * Clone hold (M3): our last-published revision+hash per file is remembered.
- * If our remote file advanced beyond (or diverged from) what we published,
- * another writer is reusing our deviceId — publishing is held with a visible
- * error instead of silently overwriting their contribution.
+ * Shared-identity merge: two contexts can carry the same deviceId — most
+ * often the installed app and a browser tab on one phone, whose storage
+ * is separate but whose reading is one person's. If our remote file has
+ * diverged from what this context last published (advanced revision, or
+ * different content at the same revision), the answer is a merge, never
+ * a hold and never a silent overwrite: the remote rows are unioned into
+ * the local contribution store (per-row winner by revision — same-device
+ * rows are one dataset seen twice, never summed), the display is
+ * refolded, and the merged file is what gets published, at a revision
+ * past the remote's so the write is never skipped on a stale comparison.
  */
 export async function publishContributionFiles(
   db: DatabaseService,
   remote: ContributionRemote,
   deviceId: string
 ): Promise<void> {
-  const own = await db.getOwnContributionFiles(deviceId);
+  let own = await db.getOwnContributionFiles(deviceId);
   if (!own.length) return;
   const existing = (await remote.listContributionFiles()).filter(isContributionFile);
   const published = await getPublishedV2State(db);
   const toWrite: StatisticContributionFile[] = [];
+
+  // Merge first, as a separate pass: merging one year's file refolds the
+  // display and can change every year's payload, so rebuild `own` once
+  // after all merges land.
+  let mergedAny = false;
+  for (const file of own) {
+    const match = existing.find(
+      (entry) => entry.deviceId === file.deviceId && entry.year === file.year
+    );
+    if (!match) continue;
+    if (hashContributionRows(match.rows) === hashContributionRows(file.rows)) continue;
+    await db.mergeOwnContributionFile(match);
+    mergedAny = true;
+    logger.info(
+      `Contribution file ${file.deviceId}/${file.year} had diverged under a shared ` +
+        `device identity; merged the remote rows into this device instead of holding.`
+    );
+  }
+  if (mergedAny) {
+    own = await db.getOwnContributionFiles(deviceId);
+  }
 
   for (const file of own) {
     const fileKey = `${file.deviceId}/${file.year}`;
@@ -159,37 +186,22 @@ export async function publishContributionFiles(
       (entry) => entry.deviceId === file.deviceId && entry.year === file.year
     );
     const ownHash = hashContributionRows(file.rows);
-    const last = published.files[fileKey];
 
-    if (match && last) {
-      const remoteHash = hashContributionRows(match.rows);
-      if (
-        (match.revision || 0) > (last.revision || 0) ||
-        ((match.revision || 0) === (last.revision || 0) && remoteHash !== last.hash)
-      ) {
-        throw new CloneSuspectError(
-          `Contribution file ${fileKey} changed outside this device (revision ` +
-            `${match.revision}, last published ${last.revision}). Publishing is held so a ` +
-            `cloned device identity cannot overwrite another device's reading. Adopt a ` +
-            `fresh device identity, then sync again.`
-        );
-      }
-    }
-
-    if (match && (match.revision || 0) >= (file.revision || 0)) {
-      published.files[fileKey] = {
-        revision: match.revision || 0,
-        hash: hashContributionRows(match.rows)
-      };
-      continue;
-    }
     if (match && hashContributionRows(match.rows) === ownHash) {
       published.files[fileKey] = { revision: match.revision || 0, hash: ownHash };
       continue;
     }
 
-    toWrite.push(file);
-    published.files[fileKey] = { revision: file.revision || 0, hash: ownHash };
+    // Content differs: write ours (post-merge, the union). If the remote
+    // revision is ahead of ours — possible when the union's extra rows
+    // carry low revisions — publish past it so the write cannot be
+    // mistaken for a stale copy downstream.
+    const revision =
+      match && (match.revision || 0) >= (file.revision || 0)
+        ? (match.revision || 0) + 1
+        : file.revision || 0;
+    toWrite.push({ ...file, revision });
+    published.files[fileKey] = { revision, hash: ownHash };
   }
 
   if (toWrite.length) {
@@ -228,7 +240,6 @@ export async function adoptNewDeviceIdentity(
   db: DatabaseService,
   deviceLabel = 'This device'
 ): Promise<string> {
-  const deviceId = createDeviceId();
-  await db.putDeviceIdentity({ id: 0, deviceId, deviceLabel });
-  return deviceId;
+  const identity = await adoptFreshDeviceIdentity(db, deviceLabel);
+  return identity.deviceId;
 }

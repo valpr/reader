@@ -41,6 +41,28 @@ export async function ensureDeviceIdentity(
   return identity;
 }
 
+/**
+ * Escape hatch for a held publish (clone suspect): mint a fresh device
+ * identity and persist it to BOTH stores, so the localStorage mirror can
+ * never resurrect the old identity on the next `ensureDeviceIdentity`.
+ * Existing local contribution rows keep the old deviceId — they stay
+ * published under the old cloud file, which later pulls treat as a peer
+ * device and keep folding into the display totals.
+ */
+export async function adoptFreshDeviceIdentity(
+  database: DatabaseService,
+  deviceLabel = 'This device'
+): Promise<BooksDbDeviceIdentity> {
+  const identity: BooksDbDeviceIdentity = {
+    id: 0,
+    deviceId: createDeviceId(),
+    deviceLabel
+  };
+  await database.putDeviceIdentity(identity);
+  writeStoredIdentity(identity);
+  return identity;
+}
+
 function readStoredIdentity(): BooksDbDeviceIdentity | undefined {
   if (typeof localStorage === 'undefined') return undefined;
 

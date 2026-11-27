@@ -49,5 +49,27 @@ for (const width of [412, 360]) {
     await cancel.tap();
     await expect(page.getByText('Erase this device and copy from cloud?')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
+
+    // The clone-hold escape hatch lives in the same section and its confirm
+    // dialog (long unbreakable strings in the held-sync wording) must fit too.
+    const adopt = page.getByRole('button', { name: 'Adopt…' }).first();
+    await expect(adopt).toBeVisible();
+    await expect(adopt).toBeEnabled();
+    await adopt.tap();
+    await expect(page.getByText('Adopt a fresh device identity?')).toBeVisible();
+    const adoptDialog = page.locator('section', {
+      hasText: 'Adopt a fresh device identity?'
+    });
+    await expectDialogFitsViewport(adoptDialog);
+    await expect(adoptDialog.getByText(/separate devices from now on/)).toBeVisible();
+    const adoptConfirm = adoptDialog.getByRole('button', { name: 'Adopt fresh identity' });
+    await expect(adoptConfirm).toBeVisible();
+    await expect(adoptConfirm).toBeEnabled();
+    const adoptCancel = adoptDialog.getByRole('button', { name: 'Cancel' });
+    await expect(adoptCancel).toBeVisible();
+    await expect(adoptCancel).toBeEnabled();
+    await adoptCancel.tap();
+    await expect(page.getByText('Adopt a fresh device identity?')).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
   });
 }
